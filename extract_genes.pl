@@ -132,7 +132,7 @@ foreach my $gbp (@gbpaths){
 		my $ncds_feats = scalar @cds_feats;
 		
 		# Check that minimum number of CDS regions are present
-		warn "Sequence $seqname in $gbp only has $ncds_feats CDS features, it will be skipped\n" and next unless $ncds_feats >= $mincds;
+		warn "Sequence $seqname in $gbp has $ncds_feats CDS features, it will be skipped\n" and next unless $ncds_feats >= $mincds;
 		
 		# If requires any CDS regions
 		if(@reqcds){
