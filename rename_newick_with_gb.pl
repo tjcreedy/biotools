@@ -46,7 +46,7 @@ Description:
 		ORGANISM
 		TAXONOMY
 	
-	The TAXONOMY field corresponds to the semicolon-separated string given immediately after the ORGANISM field in a GenBank-format file, plus the ORGANISM. The number of taxonomic levels to be returned can be controlled using the -ntax option, starting at the lowest taxonomic level. Thus the use of -f ORGANISM and -f TAXONOMY -ntax 1 is exactly identical.
+	The TAXONOMY field corresponds to the semicolon-separated string given immediately after the ORGANISM field in a GenBank-format file, plus the ORGANISM. Semicolons will be replaced with commas. The number of taxonomic levels to be returned can be controlled using the -ntax option, starting at the lowest taxonomic level. Thus the use of -f ORGANISM and -f TAXONOMY -ntax 1 is exactly identical.
 	
 	The selected fields will be concatenated with hypens and surround by single quotation marks. Optionally, spaces can be replaced with underscores using the -replacespace option.
 	
@@ -105,6 +105,7 @@ foreach my $gbpath (@gbpaths){
 				my @taxa = $seq->species->classification();
 				$taxitems = scalar @taxa if(!$taxitems or $taxitems > scalar @taxa);
 				$outitem =  join(";", reverse(@taxa[0..$taxitems-1]));
+				$outitem =~ s/;/,/g;
 			}
 			$outitem =~ s/\.$//;
 			push @fieldarray, $outitem;
