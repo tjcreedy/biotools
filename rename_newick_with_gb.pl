@@ -45,8 +45,11 @@ Description:
 		LENGTH
 		ORGANISM
 		TAXONOMY
+		NCDS
 	
 	The TAXONOMY field corresponds to the semicolon-separated string given immediately after the ORGANISM field in a GenBank-format file, plus the ORGANISM. Semicolons will be replaced with commas. The number of taxonomic levels to be returned can be controlled using the -ntax option, starting at the lowest taxonomic level. Thus the use of -f ORGANISM and -f TAXONOMY -ntax 1 is exactly identical.
+	
+	The NCDS field counts the number of CDS features present in the GenBank entry.
 	
 	The selected fields will be concatenated with hypens and surround by single quotation marks. Optionally, spaces can be replaced with underscores using the -replacespace option.
 	
@@ -106,6 +109,9 @@ foreach my $gbpath (@gbpaths){
 				$taxitems = scalar @taxa if(!$taxitems or $taxitems > scalar @taxa);
 				$outitem =  join(";", reverse(@taxa[0..$taxitems-1]));
 				$outitem =~ s/;/,/g;
+			} elsif($f eq "NCDS"){
+				my @cds_feats = grep {$_->primary_tag eq 'CDS' and $_->has_tag('gene')} ($seq->get_SeqFeatures);
+				$outitem = scalar @cds_feats;
 			}
 			$outitem =~ s/\.$//;
 			push @fieldarray, $outitem;
