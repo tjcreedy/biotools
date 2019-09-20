@@ -46,7 +46,7 @@ Description:
 		ORGANISM
 		TAXONOMY
 	
-	The TAXONOMY field corresponds to the semicolon-separated string given immediately after the ORGANISM field in a GenBank-format file, plus the ORGANISM. The number of taxonomic levels to be returned can be controlled using the -taxitems option, starting at the lowest taxonomic level. Thus the use of -f ORGANISM and -f TAXONOMY -taxitems 1 is exactly identical.
+	The TAXONOMY field corresponds to the semicolon-separated string given immediately after the ORGANISM field in a GenBank-format file, plus the ORGANISM. The number of taxonomic levels to be returned can be controlled using the -ntax option, starting at the lowest taxonomic level. Thus the use of -f ORGANISM and -f TAXONOMY -ntax 1 is exactly identical.
 	
 	The selected fields will be concatenated with hypens and surround by single quotation marks. Optionally, spaces can be replaced with underscores using the -replacespace option.
 	
@@ -62,7 +62,7 @@ Arguments:
 	          tree:  The path to a text file containing one or more trees
 	           out:  The path to write the renamed trees
 	        fields:  A space-separated list of fields to use for renaming
-	      taxitems:  If TAXONOMY is specified, the number of taxonomic levels to include
+	          ntax:  If TAXONOMY is specified, the number of taxonomic levels to include
 	  replacespace:  Replace spaces in new names with underscores
 	          help:  Prints out this helpful message
 
@@ -75,7 +75,7 @@ GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "tree=s"		=> \$treepath,
 	   "out=s"		=> \$outpath,
 	   "fieldstring=s{1,}"	=> \@fieldstrings,
-	   "taxitems=i"		=> \$taxitems,
+	   "ntax=i"		=> \$taxitems,
 	   "replacespace"	=> \$replacespace,
 	   "help"		=> \$help) or die "\nError getting options\n\n";
 
