@@ -21,6 +21,8 @@ my %fieldmethods = ('LOCUS'		=> 'display_id',
 my @fieldstrings;
 my $taxitems;
 my $replacespace;
+my $sepchar = "~";
+my $bracket = "\'";
 my $help;
 
 my $script = basename($0, ());
@@ -51,7 +53,7 @@ Description:
 	
 	The NCDS field counts the number of CDS features present in the GenBank entry.
 	
-	The selected fields will be concatenated with hypens and surround by single quotation marks. Optionally, spaces can be replaced with underscores using the -replacespace option.
+	The selected fields will be concatenated with the character(s) specified by the -sepchar option (default ~) and surrounded by the character specified by the -bracket option (default '). Spaces can be replaced with underscores using the -replacespace option, the default is to leave spaces.
 	
 	Any tree terminals not in the supplied GenBank-format files will be silently ignored and unchanged.
 	
@@ -79,6 +81,8 @@ GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "out=s"		=> \$outpath,
 	   "fieldstring=s{1,}"	=> \@fieldstrings,
 	   "ntax=i"		=> \$taxitems,
+	   "sepchar=s"		=> \$sepchar,
+	   "bracket=s"		=> \$bracket,
 	   "replacespace"	=> \$replacespace,
 	   "help"		=> \$help) or die "\nError getting options\n\n";
 
@@ -117,9 +121,9 @@ foreach my $gbpath (@gbpaths){
 			push @fieldarray, $outitem;
 		}
 		
-		my $outline = join("-", @fieldarray);
+		my $outline = join($sepchar, @fieldarray);
 		$outline =~ s/ /_/g if $replacespace;
-		$outline = "\'$outline\'";
+		$outline = "$bracket$outline$bracket";
 		$conversion{$seqname} = $outline;
 	}
 }
