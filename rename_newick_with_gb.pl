@@ -136,7 +136,7 @@ while(my $tree = <$treein>){
 	foreach my $seqname (keys %conversion){
 		if($tree =~ /$seqname/){
 			print "Renaming $seqname -> $conversion{$seqname}\n";
-			$tree =~ s/$seqname/$conversion{$seqname}/;
+			$tree =~ s/(?<=[\(,])$seqname:/$conversion{$seqname}:/;
 		}
 	}
 	print $treeout "$tree\n";
