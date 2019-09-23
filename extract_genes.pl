@@ -121,7 +121,7 @@ foreach my $gbp (@gbpaths){
 	
 	# Initialise genbank read object
 	my $gb_in = Bio::SeqIO->new(-file => $gbp,
-				    -format => "genbank"
+				    -format => "genbank",
 				    -verbose => -1);
 	
 	# Work through sequences in object
