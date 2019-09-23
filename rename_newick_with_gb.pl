@@ -91,7 +91,8 @@ my %conversion;
 
 foreach my $gbpath (@gbpaths){
 	my $gb_in = Bio::SeqIO->new(-file => $gbpath,
-				    -format => "genbank");
+				    -format => "genbank",
+				    -verbose => -1);
 	
 	while(my $seq = $gb_in->next_seq){
 		$seq->verbose(-1);
