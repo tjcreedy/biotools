@@ -102,7 +102,8 @@ print "\nUsing $taxlevel suffix \"$nicesuffix\" to identify the taxonomic level 
 
 
 my $gb_in = Bio::SeqIO->new(-file => $gbpath,
-			    -format => "genbank");
+			    -format => "genbank",
+			    -verbose => -1);
 
 my %outhandle;
 
