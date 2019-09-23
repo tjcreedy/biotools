@@ -102,14 +102,14 @@ print "\nUsing $taxlevel suffix \"$nicesuffix\" to identify the taxonomic level 
 
 
 my $gb_in = Bio::SeqIO->new(-file => $gbpath,
-			    -format => "genbank",
-			    -verbose => -1);
+			    -format => "genbank");
 
 my %outhandle;
 
 foreach my $of (@outfiles){
 	$outhandle{$of} = Bio::SeqIO->new(-file => ">${outname}_$of.gb",
-					  -format => "genbank");
+					  -format => "genbank",
+					  -verbose => -1);
 }
 
 my %matchrecords;
