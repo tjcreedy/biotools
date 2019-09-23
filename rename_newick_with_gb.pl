@@ -6,7 +6,6 @@ use strict;
 use Data::Dumper;
 use Getopt::Long;
 use Bio::SeqIO;
-use Bio::TreeIO;
 use File::Basename;
 
 my @gbpaths;
@@ -95,7 +94,7 @@ foreach my $gbpath (@gbpaths){
 				    -format => "genbank");
 	
 	while(my $seq = $gb_in->next_seq){
-		
+		$seq->verbose(-1);
 		my $seqname = $seq->display_id();
 		my @fieldarray;
 		
