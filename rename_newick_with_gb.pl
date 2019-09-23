@@ -110,8 +110,9 @@ foreach my $gbpath (@gbpaths){
 				$outitem = $seq->species->node_name();
 			} elsif($f eq "TAXONOMY"){
 				my @taxa = $seq->species->classification();
-				$taxitems = scalar @taxa if(!$taxitems or $taxitems > scalar @taxa);
-				$outitem =  join(";", reverse(@taxa[0..$taxitems-1]));
+				my $taxitems_run = $taxitems;
+				$taxitems_run = scalar @taxa if(!$taxitems or $taxitems > scalar @taxa);
+				$outitem =  join(";", reverse(@taxa[0..$taxitems_run-1]));
 				$outitem =~ s/;/,/g;
 			} elsif($f eq "NCDS"){
 				my @cds_feats = grep {$_->primary_tag eq 'CDS' and $_->has_tag('gene')} ($seq->get_SeqFeatures);
