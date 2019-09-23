@@ -26,10 +26,13 @@ my $script = basename($0, ());
 my %genesort = (ATP6 => "ATP6",
 		ATP8 => "ATP8",
 		COX1 => "COX1",
+		CO1  => "COX1",
 		COI  => "COX1",
 		COX2 => "COX2",
+		CO2  => "COX2",
 		COII => "COX2",
 		COX3 => "COX3",
+		CO3  => "COX3",
 		COIII=> "COX3",
 		CYTB => "CYTB",
 		COB  => "CYTB",
@@ -118,7 +121,8 @@ foreach my $gbp (@gbpaths){
 	
 	# Initialise genbank read object
 	my $gb_in = Bio::SeqIO->new(-file => $gbp,
-				    -format => "genbank");
+				    -format => "genbank"
+				    -verbose => -1);
 	
 	# Work through sequences in object
 	while(my $seq = $gb_in->next_seq){
