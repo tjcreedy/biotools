@@ -119,7 +119,7 @@ my %outseqs;
 
 while(my $seq = $gb_in->next_seq){
 	$nseq++;
-	
+	$seq->verbose(-1);
 	my @taxonomy = $seq->species->classification();
 	
 	my @taxa = grep(/$suffix *$/, @taxonomy);
