@@ -108,8 +108,7 @@ my %outhandle;
 
 foreach my $of (@outfiles){
 	$outhandle{$of} = Bio::SeqIO->new(-file => ">${outname}_$of.gb",
-					  -format => "genbank",
-					  -verbose => -1);
+					  -format => "genbank");
 }
 
 my %matchrecords;

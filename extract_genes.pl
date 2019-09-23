@@ -126,7 +126,7 @@ foreach my $gbp (@gbpaths){
 	
 	# Work through sequences in object
 	while(my $seq = $gb_in->next_seq){
-		
+		$seq->verbose(-1);
 		my $seqname = $seq->display_id;
 		#printf "Working on sequence %s from $gbp\n", $seq->display_id;
 		warn "Sequence $seqname in $gbp does not fit standard naming conventions, it will be skipped\n" and next unless ($seqname =~ /^[A-Za-z_]+\d+$/ and length($seqname) <= 16 ) or $dontchecknames;
@@ -151,6 +151,7 @@ foreach my $gbp (@gbpaths){
 		
 		# Work through each feature
 		foreach my $feat (@cds_feats){
+			$feat->verbose(-1);
 			my ($gene) = $feat->get_tag_values('gene');
 			$gene = uc $gene;
 			$gene =~ s/[;\-_\s].*$//;
@@ -173,7 +174,7 @@ foreach my $gbp (@gbpaths){
 			# Compile output sequence object
 			my $outseq = $feat->seq;
 			$outseq->display_id($seq->display_id);
-			
+			$outseq->verbose(-1);
 			# Write out sequence object
 			$faobjs{$gene}->write_seq($outseq);
 		}
