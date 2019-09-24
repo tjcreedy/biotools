@@ -67,6 +67,8 @@ Arguments:
 	           out:  The path to write the renamed trees
 	        fields:  A space-separated list of fields to use for renaming
 	          ntax:  If TAXONOMY is specified, the number of taxonomic levels to include
+	       sepchar:  The character used to separate parts of the new name
+	       bracket:  The character used to flank the new name
 	  replacespace:  Replace spaces in new names with underscores
 	          help:  Prints out this helpful message
 
