@@ -168,7 +168,7 @@ foreach my $taxon (keys %matchrecords){
 			$result = "excluded";
 		}
 		
-		$outhandle{$result}->write_seq($seqs[0]);
+		$outhandle{$result}->write_seq($seqs[$i]);
 		$outseqs{$result}++;
 	}
 	
