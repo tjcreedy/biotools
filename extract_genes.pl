@@ -37,7 +37,7 @@ my %genesort = (ATP6 => "ATP6",
 		CO3  => "COX3",
 		COIII=> "COX3",
 		CYTB => "CYTB",
-		CYB  => "CYTB"
+		CYB  => "CYTB",
 		COB  => "CYTB",
 		ND1  => "ND1",
 		NAD1 => "ND1",
