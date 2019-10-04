@@ -14,8 +14,8 @@ use List::MoreUtils qw(uniq);
 my @gbpaths;
 my $outdir;
 
-my $mincds = 0;
-my @reqcds;
+my $minregion = 0;
+my @reqregion;
 
 my $dontchecknames;
 my $showgenes;
@@ -28,12 +28,16 @@ my %genesort = (ATP6 => "ATP6",
 		ATP8 => "ATP8",
 		APT8 => "ATP8",
 		COX1 => "COX1",
+		COXI => "COX1",
 		CO1  => "COX1",
 		COI  => "COX1",
+#		'MT-CO1' => "COX1",
 		COX2 => "COX2",
+		COXII => "COX2",
 		CO2  => "COX2",
 		COII => "COX2",
 		COX3 => "COX3",
+		COXIII => "COX3",
 		CO3  => "COX3",
 		COIII=> "COX3",
 		CYTB => "CYTB",
@@ -56,7 +60,12 @@ my %genesort = (ATP6 => "ATP6",
 		ND5  => "ND5",
 		NAD5 => "ND5",
 		ND6  => "ND6",
-		NAD6 => "ND6");
+		NAD6 => "ND6",
+		"12SRRN" => "12S",
+		"12S" => "12S",
+		"16SRRN" => "16S",
+		"16S" => "16S"
+		);
 
 ########################################################
 # USAGE
@@ -64,33 +73,33 @@ my %genesort = (ATP6 => "ATP6",
 my $usage =<<USAGE;
 
 Description:
-	This script finds and extracts the sequences corresponding to all CDS annotations from a set of sequences from one or more genbank-format flat files. 
+	This script finds and extracts the sequences corresponding to all CDS and rRNA annotations from a set of sequences from one or more genbank-format flat files. 
 	
-	The gene of each CDS is identified based on the /gene tag in the genbank-format flat file. Two methods are used to ensure that naming variants are correctly identified as the same gene:
+	The gene of each CDS or rRNA is identified based on the /gene tag in the genbank-format flat file. Two methods are used to ensure that naming variants are correctly identified as the same gene:
 		1. the gene name is converted to uppercase (so that "atp8" is the same as "ATP8")
-		2. the script removes any semicolons, underscores, hyphens or spaces, and any characters following these, from gene names ("ATP8-0" -> "ATP8", "ATP8; atp8" -> "ATP8", etc)
+		2. the script removes any semicolons, underscores, hyphens or spaces, and any characters following these, from gene names ("ATP8-0" -> "ATP8", "ATP8; atp8" -> "ATP8", etc) - except if the first part of the name is "MT-".
 	
-	Additionally, common naming variants of mitochondrial CDS regions are hardcoded into the script (e.g. CDS regions COX1 and COI will both be output to COX1). The variants that the script knows about can be reviewed using the -showgenes option.
+	Additionally, common naming variants of mitochondrial CDS or rRNA regions are hardcoded into the script (e.g. CDS regions COX1 and COI will both be output to COX1). The variants that the script knows about can be reviewed using the -showgenes option.
 	
-	A separate fasta will be written for each CDS gene found, containing all of the sequences of that CDS from across all the different sequences in the genbank file(s). The LOCUS name of the sequence in the genbank-format flat file will be used as the sequence header.
+	A separate fasta will be written for each CDS or rRNA gene found, containing all of the sequences of that CDS from across all the different sequences in the genbank file(s). The LOCUS name of the sequence in the genbank-format flat file will be used as the sequence header.
 	
-	Optionally, you can specify that CDS sequences will only be output for sequences where a minimum number of CDS annotations are met using -mincds. Similarly, you can optionally specify that certain CDS regions must be present in a sequence for it to output any CDS regions using the -reqcds option. For example, if you only wanted to retrieve sequences for CDS regions from genomes that contain COX1 and COB, you would specify -reqcds COX1 COB. The names used must conform with the standard set of output names (the second column when using the -showgenes option).
+	Optionally, you can specify that CDS or rRNA sequences will only be output for entries where a minimum number of CDS or rRNA annotations are met using -minregion. Similarly, you can optionally specify that certain CDS or rRNA regions must be present in a sequence for it to output any CDS or rRNA regions using the -reqregion option. For example, if you only wanted to retrieve sequences for CDS or rRNA regions from genomes that contain COX1 and COB, you would specify -reqregion COX1 COB. The names used must conform with the standard set of output names (the second column when using the -showgenes option). All available regions will still be output.
 	
 	By default, the script will check that sequence names fit standard naming conventions (a string of letters followed by a string of numbers, with no other characters, less than 16 characters), ignoring any input sequences that do not pass. This can be turned off.
 	
 Usage:
 
-	perl $script -genbank <in.gb> [<in2.gb>] -out <out/> [-dontchecknames] [-mincds <n>] [-reqcds <CDS1> <CDS2>]
+	perl $script -genbank <in.gb> [<in2.gb>] -out <out/> [-dontchecknames] [-minregion <n>] [-reqregion <CDS1> <CDS2>]
 	perl $script -showgenes
 
 Arguments:
 
 	       genbank:  The path to one or more genbank files from which CDS regions should be extracted
 	           out:  The path to a directory in which to place a fasta file for each CDS
-	        mincds:  A minimum number of CDS regions that must be present in a sequence for it to output anything
-	        reqcds:  A list of CDS regions that must be present in a sequence for it to output anything
+	     minregion:  A minimum number of regions that must be present in a sequence for it to output anything
+	     reqregion:  A list of regions that must be present in a sequence for it to output anything
 	dontchecknames:  Turns off checking that sequence names fit the standard format
-	     showgenes:  Prints the hardcoded conversions for CDS naming variants
+	     showgenes:  Prints the hardcoded conversions for region naming variants
 	          help:  Prints out this helpful message
 
 USAGE
@@ -100,8 +109,8 @@ USAGE
 
 GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "out=s"		=> \$outdir,
-	   "mincds=i"		=> \$mincds,
-	   "reqcds=s{0,}"	=> \@reqcds,
+	   "minregion=i"	=> \$minregion,
+	   "reqregion=s{0,}"	=> \@reqregion,
 	   "dontchecknames"	=> \$dontchecknames,
 	   "showgenes"		=> \$showgenes,
 	   "help"		=> \$help) or die "\nError getting options\n\n";
@@ -110,9 +119,9 @@ print $usage and exit if $help;
 print "\t\'VARIANT\' => \'OUTPUT\'\n", Dumper \%genesort and exit if $showgenes;
 
 
-# Check all values of reqcds make sense
+# Check all values of reqregion make sense
 my @knowngenes = uniq (values %genesort);
-die "Error: one or more CDS names given to -reqcds don't match any known gene names\n" unless scalar (intersect(@reqcds, @knowngenes)) == scalar @reqcds;
+die "Error: one or more CDS names given to -reqregion don't match any known gene names\n" unless scalar (intersect(@reqregion, @knowngenes)) == scalar @reqregion;
 
 # Make output directory
 make_path($outdir);
@@ -138,30 +147,30 @@ foreach my $gbp (@gbpaths){
 		#printf "Working on sequence %s from $gbp\n", $seq->display_id;
 		warn "Sequence $seqname in $gbp does not fit standard naming conventions, it will be skipped\n" and next unless ($seqname =~ /^[A-Za-z_]+\d+$/ and length($seqname) <= 16 ) or $dontchecknames;
 		
-		# Get all CDS features from sequence
-		my @cds_feats = grep {$_->primary_tag eq 'CDS' and $_->has_tag('gene')} ($seq->get_SeqFeatures);
-		my $ncds_feats = scalar @cds_feats;
+		# Get all reg features from sequenc
+		my @reg_feats = grep {($_->primary_tag eq 'CDS' or $_->primary_tag eq 'rRNA') and $_->has_tag('gene')} ($seq->get_SeqFeatures);
+		my $nreg_feats = scalar @reg_feats;
 		
 		# Check that minimum number of CDS regions are present
-		warn "Sequence $seqname in $gbp has $ncds_feats CDS features, it will be skipped\n" and next unless $ncds_feats >= $mincds;
+		warn "Sequence $seqname in $gbp has $nreg_feats CDS or rRNA features, it will be skipped\n" and next unless $nreg_feats >= $minregion;
 		
 		# If requires any CDS regions
-		if(@reqcds){
+		if(@reqregion){
 			# Extract and standardise gene names
-			my @cds_feats_genes = map {$_->get_tag_values('gene')} @cds_feats;
-			@cds_feats_genes = uniq @cds_feats_genes;
-			@cds_feats_genes = map {$_ =~ s/[;\-_\s].*$//; uc $_} @cds_feats_genes;
-			@cds_feats_genes = map {$genesort{$_} if $genesort{$_}} @cds_feats_genes;
+			my @reg_feats_genes = map {$_->get_tag_values('gene')} @reg_feats;
+			@reg_feats_genes = uniq @reg_feats_genes;
+			@reg_feats_genes = map {$_ =~ s/[;_ ].*$|(?<!MT)-.*$//; uc $_} @reg_feats_genes;
+			@reg_feats_genes = map {$genesort{$_} if $genesort{$_}} @reg_feats_genes;
 			# Check that all required CDS are present
-			warn "Sequence $seqname in $gbp does not include all required CDS regions, it will be skipped\n" and next if scalar (intersect(@reqcds, @cds_feats_genes)) < scalar @reqcds;
+			warn "Sequence $seqname in $gbp does not include all required regions, it will be skipped\n" and next if scalar (intersect(@reqregion, @reg_feats_genes)) < scalar @reqregion;
 		}
 		
 		# Work through each feature
-		foreach my $feat (@cds_feats){
+		foreach my $feat (@reg_feats){
 			$feat->verbose(-1);
 			my ($gene) = $feat->get_tag_values('gene');
 			$gene = uc $gene;
-			$gene =~ s/[;\-_\s].*$//;
+			$gene =~ s/[;_ ].*$|(?<!MT)-.*$//;
 			
 			# Overwrite gene name if it's in the hash
 			if($genesort{$gene}){
