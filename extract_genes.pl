@@ -14,7 +14,7 @@ use List::MoreUtils qw(uniq);
 my @gbpaths;
 my $outdir;
 
-my $minregion = 0;
+my $minregion = 1;
 my @reqregion;
 
 my $dontchecknames;
@@ -46,29 +46,41 @@ my %genesort = (ATP6 => "ATP6",
 		ND1  => "ND1",
 		NAD1 => "ND1",
 		NSD1 => "ND1",
+		NADH1 => "ND1",
 		ND2  => "ND2",
 		NAD2 => "ND2",
 		NSD2 => "ND2",
+		NADH2 => "ND2",
 		ND3  => "ND3",
 		NAD3 => "ND3",
 		NSD3 => "ND3",
+		NADH3 => "ND3",
 		ND4  => "ND4",
 		NAD4 => "ND4",
 		NSD4 => "ND4",
+		NADH4 => "ND4",
 		ND4L => "ND4L",
-		NAD4L=> "ND4L",
+		NAD4L => "ND4L",
+		NSD4L => "ND4L",
+		NADH4L => "ND4L",
 		ND5  => "ND5",
 		NAD5 => "ND5",
+		NSD5 => "ND5",
+		NADH5 => "ND5"
 		ND6  => "ND6",
 		NAD6 => "ND6",
+		NSD6 => "ND6",
+		NADH6 => "ND6",
 		"12SRRN" => "12S",
 		"12S" => "12S",
 		"16SRRN" => "16S",
 		"16S" => "16S",
 		"RRNL" => "RRNL",
 		"L" => "RRNL",
+		"LSU" => "RRNL",
 		"RRNS" => "RRNS",
-		"S" => "RRNS"
+		"S" => "RRNS",
+		"SSU" => "RRNS"
 		);
 
 ########################################################
@@ -151,7 +163,7 @@ foreach my $gbp (@gbpaths){
 		#printf "Working on sequence %s from $gbp\n", $seq->display_id;
 		warn "Sequence $seqname in $gbp does not fit standard naming conventions, it will be skipped\n" and next unless ($seqname =~ /^[A-Za-z_]+\d+$/ and length($seqname) <= 16 ) or $dontchecknames;
 		
-		# Get all reg features from sequenc
+		# Get all reg features from sequence
 		my @reg_feats = grep {($_->primary_tag eq 'CDS' or $_->primary_tag eq 'rRNA') and $_->has_tag('gene')} ($seq->get_SeqFeatures);
 		my $nreg_feats = scalar @reg_feats;
 		
