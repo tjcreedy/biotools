@@ -66,7 +66,7 @@ my %genesort = (ATP6 => "ATP6",
 		ND5  => "ND5",
 		NAD5 => "ND5",
 		NSD5 => "ND5",
-		NADH5 => "ND5"
+		NADH5 => "ND5",
 		ND6  => "ND6",
 		NAD6 => "ND6",
 		NSD6 => "ND6",
@@ -75,12 +75,12 @@ my %genesort = (ATP6 => "ATP6",
 		"12S" => "12S",
 		"16SRRN" => "16S",
 		"16S" => "16S",
-		"RRNL" => "RRNL",
-		"L" => "RRNL",
-		"LSU" => "RRNL",
-		"RRNS" => "RRNS",
-		"S" => "RRNS",
-		"SSU" => "RRNS"
+		RRNL => "RRNL",
+		L => "RRNL",
+		LSU => "RRNL",
+		RRNS => "RRNS",
+		S => "RRNS",
+		SSU => "RRNS"
 		);
 
 ########################################################
