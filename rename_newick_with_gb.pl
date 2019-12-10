@@ -136,11 +136,18 @@ open my $treeout, '>', $outpath or die "Error opening $outpath for writing\n";
 
 while(my $tree = <$treein>){
 	chomp $tree;
+	my $r;
 	foreach my $seqname (keys %conversion){
-		if($tree =~ /$seqname/){
-			print "Renaming $seqname -> $conversion{$seqname}\n";
+		my $p = 1;
+		$r++;
+		if($tree =~ /(?<=[\(,])$seqname:/){
 			$tree =~ s/(?<=[\(,])$seqname:/$conversion{$seqname}:/;
+		} elsif($tree =~ /\t\t(\n )?$seqname,?/){
+			$tree =~ s/$seqname/$conversion{$seqname}/;
+		} else {
+			$p = 0
 		}
+		print "Renaming $seqname -> $conversion{$seqname}\n" if $p;
 	}
 	print $treeout "$tree\n";
 }
