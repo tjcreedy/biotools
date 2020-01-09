@@ -20,8 +20,8 @@ parser.add_argument("-f", "--fasta",		help = "fasta file path", metavar = "FASTA
 parser.add_argument("-s", "--sintax",		help = "sintax file path", metavar = "SINTAX", type = str)
 parser.add_argument("-t", "--taxa",	help = "one or more taxa with level specifiers", metavar = 
 "TAXON", nargs = '+')
-parser.add_argument("-a", "--all",	help = "reject the specified taxa", default = False, action = "store_true")
-parser.add_argument("-r", "--reject",	help = "reject the specified taxa", default = False, action = "store_true")
+parser.add_argument("-a", "--all",	help = "select sequences matching all filters (as opposed to any)", default = False, action = "store_true")
+parser.add_argument("-r", "--reject",	help = "reject the selected taxa (as opposed to retaining)", default = False, action = "store_true")
 
 
 
