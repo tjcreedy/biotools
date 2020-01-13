@@ -63,6 +63,7 @@ Arguments:
 	        number:  The number of entries to select from each taxonomic group (Default: 1)
 	        random:  Select entries randomly
 	  includesmall:  Include entries from a taxonomic group where the number of entries in that group is < number
+	  customsuffix:  Identify the grouping values according to a custom suffix
 	          help:  Prints out this helpful message
 
 USAGE
@@ -120,6 +121,8 @@ while(my $seq = $gb_in->next_seq){
 	$nseq++;
 	$seq->verbose(-1);
 	my @taxonomy = $seq->species->classification();
+	
+	shift @taxonomy;
 	
 	my @taxa = grep(/$suffix *$/, @taxonomy);
 	
