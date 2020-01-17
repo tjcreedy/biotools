@@ -7,7 +7,6 @@
 from Bio import SeqIO
 import argparse
 import sys
-import warnings
 
 # Global variables
 
@@ -16,6 +15,7 @@ parser = argparse.ArgumentParser(description = "Standalone tool for converting a
 parser.add_argument("nucpath", help = "path to corresponding aligned nucleotides", metavar = "NUCPATH")
 parser.add_argument("table", help = "translation table number, required", choices = range(1,33), type = int, metavar = "TABLE")
 
+parser.add_argument("-i","--input", help = "amino acid alignment", type = str)
 parser.add_argument("-r","--reading_frame", help = "reading frame, default frame 1", type = int, choices = [1,2,3], default = 1)
 
 # Function definitions
@@ -26,6 +26,7 @@ if __name__ == "__main__":
 	
 	# Get options
 	
+	args = parser.parse_args(['-r', '1', '-i', 'aa.fa', 'nt.fa', '5'])
 	args = parser.parse_args()
 	
 	rf0 = args.reading_frame-1
@@ -45,16 +46,12 @@ if __name__ == "__main__":
 	# Find gap positions and convert nucleotide data
 	n = 0
 	nuc_aln = list()
-	
 	for aaa_rec, nuc_rec in zip(aaa_records, nuc_records):
 		n += 1
 		
 		# Run checks
 		if(aaa_rec.id != nuc_rec.id):
 			sys.exit("Error: sequence identifiers do not match for sequence " + str(n) + " (alignment: " + aaa_rec.id + " nucleotides: " + nuc_rec.id)
-		
-		if(len(str(aaa_rec.seq).replace("-", "")) != len(nuc_rec.seq)/3 + rf0):
-			sys.exit("Error: number of bases / amino acids do not correspond in sequence number " + str(n) + " " + aaa_rec.id + " (alignment")
 		
 		# Find gap positions
 		aa_gaps = [i for i, b in enumerate(aaa_rec.seq) if b == "-"]
@@ -66,6 +63,13 @@ if __name__ == "__main__":
 		# Insert gaps
 		for g in nuc_gaps:
 			nuc_rec.seq = nuc_rec.seq[:g] + "---" + nuc_rec.seq[g:]
+		
+		lendiff = len(str(aaa_rec.seq)) * 3 - (len(nuc_rec.seq) + rf0)
+		if( lendiff != 0 ):
+			if( lendiff < 3 ):
+				nuc_rec.seq = nuc_rec.seq + ("-" * lendiff)
+			else:
+				sys.exit("Error: number of bases / amino acids do not correspond in sequence number " + str(n) + " " + aaa_rec.id + " (alignment")
 		
 		nuc_aln.append(nuc_rec)
 	
