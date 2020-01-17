@@ -27,6 +27,7 @@ parser.add_argument("-c", "--context", help = "the name(s) of annotations to giv
 parser.add_argument("-o", "--overlap", help = "the number of bases of overlap to use for correction of --annotation", type = int, metavar = "N")
 parser.add_argument("-m", "--overlap_maxdist", help = "threshold maximum existing spacing/overlap of context/target annotations for overlap (default 50)", type = int, metavar = "N", default = 50)
 
+parser.add_argument("-w", "--write_unmodified", help = "output entries that are not modified anyway", action = "store_true", default = False )
 # Class definitons
 
 # Function definitions
@@ -84,6 +85,7 @@ def correct_positions(target_features, context_features, overlap, maxoverlap, se
 			sys.exit(err)
 	
 	# Work through combinations of target and context features
+	# TODO: throw errors if annotation or context missing
 	for target in target_features:
 		tpos = [int(target.location.start), int(target.location.end)]
 		for context_name in context_features:
@@ -122,7 +124,7 @@ def correct_positions(target_features, context_features, overlap, maxoverlap, se
 if __name__ == "__main__":
 	
 	# Read in arguments
-	#args = parser.parse_args(['-a', "ND2", '-c', 'TRNM', '-o', 0, '-i', 'BIOD00191.gb'])
+	#args = parser.parse_args(['-a', "NAD2", '-c', 'TRNM(CAU)', '-o', 0, '-i', 'BIOD00004.gb', '-w'])
 	args = parser.parse_args()
 	
 	# Check arguments
@@ -142,7 +144,7 @@ if __name__ == "__main__":
 	# Find universal names for inputs
 	err = "Error: unrecognised locus name supplied to"
 	if all(a.upper() in namevariants for a in args.annotation):
-		args.annotations = [namevariants[a.upper()] for a in args.annotation]
+		args.annotation = [namevariants[a.upper()] for a in args.annotation]
 	else:
 		err = err + " --annotation"
 		sys.exit(err)
@@ -162,19 +164,29 @@ if __name__ == "__main__":
 	for seq_record in SeqIO.parse(args.input, "genbank"):
 		#seq_record = next(SeqIO.parse(args.input, "genbank"))
 		seqname = seq_record.name
+		write = False
 		target_features, context_features, record_unrecognised_names = get_features_from_names(seq_record, args.annotation, args.context, namevariants)
 		unrecognised_names.update(record_unrecognised_names)
 		
 		if(args.overlap != None):
-			correct_positions(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
+			ntf = len(target_features)
+			ncf = len(context_features)
+			if(ntf > 0 and ncf > 0):
+				correct_positions(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
+				write = True
+			else:
+				err = "Warning: sequence " + seqname + " has"
+				if ntf == 0: err += " no " + args.annotation[0] + " annotation" 
+				if ntf == 0 and ncf == 0: err += " and "
+				if ncf == 0: err += " none of the specified context annotation(s)"
+				sys.stderr.write(err + "\n")
+				write = args.write_unmodified
 		
-		output_records.append(seq_record)
+		if write: output_records.append(seq_record) 
 	
-	SeqIO.write(output_records, sys.stdout, "genbank")
+	if len(output_records)>0 : SeqIO.write(output_records, sys.stdout, "genbank")
 	
 	if(len(unrecognised_names) > 0):
 		sys.stderr.write("Warning: could not recognise some feature names - %s \n" % (', '.join(unrecognised_names)))
 	
 	exit()
-	
-
