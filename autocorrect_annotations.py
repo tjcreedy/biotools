@@ -16,7 +16,7 @@ from Bio import SeqIO, SeqFeature
 
 # Global variables
 
-parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nCurrently, the only option available is to shorten or lengthen all instances of a specified annotation according to a specified overlap with a specified context annotation. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed.")
+parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nCurrently, the only option available is to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed.")
 
 
 parser.add_argument("-i", "--input", help = "a genbank file containing one or more entries to correct", type = str, metavar = "GENBANK", required = True)
@@ -124,7 +124,7 @@ def correct_positions(target_features, context_features, overlap, maxoverlap, se
 if __name__ == "__main__":
 	
 	# Read in arguments
-	#args = parser.parse_args(['-a', "NAD2", '-c', 'TRNM(CAU)', '-o', 0, '-i', 'BIOD00004.gb', '-w'])
+	#args = parser.parse_args(['-a', "NAD2", '-c', 'TRNM(CAU)', '-o', 0, '-i', 'source/BIOD00005.gb', '-w'])
 	args = parser.parse_args()
 	
 	# Check arguments
@@ -170,7 +170,7 @@ if __name__ == "__main__":
 		
 		if(args.overlap != None):
 			ntf = len(target_features)
-			ncf = len(context_features)
+			ncf = sum([len(cfl) for gene, cfl in context_features.items()])
 			if(ntf > 0 and ncf > 0):
 				correct_positions(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
 				write = True
