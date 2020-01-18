@@ -46,6 +46,7 @@ def get_features_from_names(seqrecord, target_names, context_names, namevariants
 	target_features = list()
 	context_features = { c : list() for c in context_names}
 	unrecognised_names = set()
+	seqname = seqrecord.name
 	
 	for feat in seqrecord.features:
 		# Remove any translations
@@ -58,10 +59,12 @@ def get_features_from_names(seqrecord, target_names, context_names, namevariants
 			featname = feat.qualifiers['gene'][0].upper()
 		elif('product' in feat.qualifiers.keys()):
 			featname = feat.qualifiers['product'][0].upper()
-		elif(feat.type == 'source'):
+		elif('label' in feat.qualifiers.keys()):
+			featname = feat.qualifiers['label'][0].upper()
+		elif(feat.type in ['source', 'misc_feature']):
 			continue
 		else:
-			sys.stderr.write("Warning, %s annotation from position %s to %s does not have a gene or product tag and so cannot be identified" % (feat.type, str(int(feat.location.start)), str(int(feat.location.end))))
+			sys.stderr.write("Warning, %s annotation in %s from position %s to %s does not have a gene, product or label tag and so cannot be identified\n" % (feat.type, seqname, str(int(feat.location.start)+1), str(int(feat.location.end))))
 			continue
 		
 		if(featname in namevariants):
@@ -81,7 +84,9 @@ def correct_positions(target_features, context_features, overlap, maxoverlap, se
 	for name, feats in context_features.items():
 		locations = [feat.location for feat in feats]
 		if(not all(locations[0] == loc for loc in locations)):
-			err = "Error: positions of context annotation " + name + " in " + seqname + " do not match"
+			err = "Error, positions of " + str(len(locations)) + " context annotations for " + name + " in " + seqname + " do not match with one another:\n"
+			for i, feat in enumerate(feats):
+				err += "\t(" + str(i+1) + ") " + feat.type +" is located at bases " + str(int(feat.location.start)+1) + " to " + str(int(feat.location.end)) + "\n"
 			sys.exit(err)
 	
 	# Work through combinations of target and context features
@@ -105,7 +110,7 @@ def correct_positions(target_features, context_features, overlap, maxoverlap, se
 			
 			# Warn and skip this context annotation if 
 			if(distance[min_distance_i] > maxoverlap):
-				sys.stderr.write("Warning: context annotation %s is more than %s bases from target for sequence %s, this will be skipped" % (context_name, str(maxoverlap), seqname))
+				sys.stderr.write("Warning, context annotation %s in %s is more than %s bases from target for sequence %s, this annotation will be ignored\n" % (context_name, seqname, str(maxoverlap), seqname))
 				continue
 			
 			# Find the orientation (+ve, context follows target)
@@ -175,9 +180,9 @@ if __name__ == "__main__":
 				correct_positions(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
 				write = True
 			else:
-				err = "Warning: sequence " + seqname + " has"
+				err = "Warning, sequence " + seqname + " has"
 				if ntf == 0: err += " no " + args.annotation[0] + " annotation" 
-				if ntf == 0 and ncf == 0: err += " and "
+				if ntf == 0 and ncf == 0: err += " and"
 				if ncf == 0: err += " none of the specified context annotation(s)"
 				sys.stderr.write(err + "\n")
 				write = args.write_unmodified
@@ -187,6 +192,6 @@ if __name__ == "__main__":
 	if len(output_records)>0 : SeqIO.write(output_records, sys.stdout, "genbank")
 	
 	if(len(unrecognised_names) > 0):
-		sys.stderr.write("Warning: could not recognise some feature names - %s \n" % (', '.join(unrecognised_names)))
+		sys.stderr.write("Warning, could not recognise some feature names - %s \n" % (', '.join(unrecognised_names)))
 	
 	exit()
