@@ -13,6 +13,8 @@ import argparse
 import urllib.request
 
 from Bio import Seq, SeqIO, SeqFeature
+from Bio.SeqFeature import SeqFeature, FeatureLocation
+from copy import copy
 
 # Global variables
 
@@ -49,6 +51,8 @@ def loadnamevariants():
 	return(output)
 
 def get_features_from_names(seqrecord, names, namevariants):
+	names = [names] if isinstance(names, str) else names
+	
 	features = { n : list() for n in names}
 	unrecognised_names = set()
 	seqname = seqrecord.name
@@ -133,6 +137,42 @@ def correct_positions(target_features, context_features, overlap, maxoverlap, se
 			else:
 				target.location = SeqFeature.FeatureLocation(target.location.start, corrected_tpos, target.location.strand)
 
+def extract_subject_region(seqrecord, feat, end, code, distance):
+	'''For a given feature and end ("start" or "finish"), extract a sequence of either nucleotides (code = 'N') or amino acids (code = 'A'), consisting of the first or last position plus or minus positions equal to distance in the reading direction of the feature'''
+	
+	
+	# Find the centre point and distances for the subject region
+	central_position = feat.location.start
+	distances = (distance, distance + 1)
+	if((end == "start" and feat.location.strand == -1) or (end == "finish" and feat.location.strand == 1)):
+		central_position = feat.location.end
+		distances = (distance + 1, distance)
+	
+	if(code == 'A'):
+		# Multiply by 3
+		distances = tuple(3*d for d in distances)
+		
+		#Find how many trailing out-of-frame bases
+		trailing_bases = len(feat.extract(seqrecord.seq)) % 3
+		
+		if(end == "finish"):
+			modifier = 0
+			if(trailing_bases is not 0):
+				modifier = 3 - trailing_bases
+			# Correct distances to ensure in-frame translation for out-of-frame trailing bases and for strand direction
+			distances = (distances[0] + (-1 * feat.location.strand * modifier), distances[1] + (feat.location.strand * modifier))
+	
+	# Delimit the region and create feature
+	end_positions = (central_position - distances[0], central_position + distances[1])
+	subject_feat = SeqFeature(FeatureLocation(end_positions[0],end_positions[1]), strand = feat.location.strand, type = "CDS")
+	
+	# Extract the sequence
+	sequence = subject_feat.extract(seqrecord.seq)
+	
+	sequence = sequence.translate(table = 5) if(code == 'A') else sequence
+	
+	return(sequence)
+
 def str_is_int(s):
 	try: 
 		int(s)
@@ -147,6 +187,37 @@ def find_all(a_str, sub):
 		if start == -1: return
 		yield start
 		start += 1
+
+# Testing data load
+namevariants = loadnamevariants()	
+
+seq_record_for = next(SeqIO.parse("/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb", "genbank"))
+features_for, record_unrecognised_names = get_features_from_names(seq_record_for, "ATP8", namevariants)
+features_for = features_for["ATP8"]
+
+seq_record_rev = next(SeqIO.parse("/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00002.gb", "genbank"))
+features_rev, record_unrecognised_names = get_features_from_names(seq_record_rev, "ATP8", namevariants)
+features_rev = features_rev["ATP8"]
+
+feat = copy(features_for[0])
+feat = copy(features_rev[0])
+
+feat.location = FeatureLocation(feat.location.start, feat.location.end+1, strand = 1)
+feat.location = FeatureLocation(feat.location.start, feat.location.end+2, strand = 1)
+
+feat.location = FeatureLocation(feat.location.start-1, feat.location.end, strand = -1)
+feat.location = FeatureLocation(feat.location.start-2, feat.location.end, strand = -1)
+
+distance = 3
+seqrecord = seq_record_for
+seqrecord = seq_record_rev
+end = "start"
+end = "finish"
+code = 'N'
+code = 'A'
+				
+
+
 
 if __name__ == "__main__":
 	
@@ -246,7 +317,6 @@ if __name__ == "__main__":
 			
 			nf = len(features)
 			if(nf > 0):
-				
 				feat = features[0]
 				
 				# Store original start and end
@@ -274,28 +344,13 @@ if __name__ == "__main__":
 							continue
 					
 					# Generate sequence for searching
-						# set whether the sequence is around the start or finish
-					endpos = instart 
-					if( (end is 'start' and feat.location.strand == -1) or (end is 'finish' and feat.location.strand == 1) ):
-						endpos = infin 
+					subject_sequence = extract_subject_region(seq_record, feat, end, search[0], args.search_distance)
 					
-					changemod = feat.location.strand * args.search_distance # compute the strand-direction-modified distance
-					changemult = 1 if search[0] == 'N' else 3 # Add a multiplier to the changemod if amino acid
 					
-					startcorrect = -2 if feat.location.strand == -1 and search[0] == 'A' else 0 # Set the correction for AA depending on strand
-					fincorrect = 2 if feat.location.strand == 1 and search[0] == 'A' else 0
+					# TODO FROM HERE
 					
-					feat.location = SeqFeature.FeatureLocation(
-						SeqFeature.ExactPosition(endpos - changemod * changemult + startcorrect),
-						SeqFeature.ExactPosition(endpos + changemod * changemult + fincorrect),
-						feat.location.strand)
-					
-					subjectseq = feat.extract(seq_record.seq)
-					if(search[0] == 'A'):
-						subjectseq = subjectseq.translate(table = args.translation_table)
-					
-					# Find location of query
-					locations = list(find_all(str(subjectseq), search[1]))
+					# Find locations of query
+					locations = list(find_all(str(subject_sequence), search[1]))
 					
 					# Check if in reading frame
 					if(search[0] == 'N'):
