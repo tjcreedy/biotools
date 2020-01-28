@@ -13,7 +13,6 @@ import sys
 parser = argparse.ArgumentParser(description = "Standalone tool for translating nucleotide sequences in a multifasta, supplied on STDIN. All sequences are translated in the forward direction, using the same reading frame and translation table. Results are written to STDOUT")
 
 parser.add_argument("table", help = "translation table number, required", choices = range(1,33), type = int, metavar = "TABLE")
-
 parser.add_argument("-r","--reading_frame",help = "reading frame, default frame 1", type = int, choices = [1,2,3], default = 1)
 
 # Function definitions
@@ -28,10 +27,7 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	
 	# Read nucleotides
-	if(args.input is not None):
-		nuc_records = SeqIO.parse(args.input, "fasta")
-	else:
-		nuc_records = SeqIO.parse(sys.stdin, "fasta")
+	nuc_records = SeqIO.parse(sys.stdin, "fasta")
 	
 	
 	# Translate nucleotides
