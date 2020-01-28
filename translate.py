@@ -7,7 +7,6 @@
 from Bio import SeqIO
 import argparse
 import sys
-import warnings
 
 # Global variables
 
@@ -29,7 +28,7 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	
 	# Read nucleotides
-	if(args.input):
+	if(args.input is not None):
 		nuc_records = SeqIO.parse(args.input, "fasta")
 	else:
 		nuc_records = SeqIO.parse(sys.stdin, "fasta")
@@ -44,4 +43,3 @@ if __name__ == "__main__":
 	
 	# Write amino acids
 	SeqIO.write(aa_records, sys.stdout, "fasta")
-	
