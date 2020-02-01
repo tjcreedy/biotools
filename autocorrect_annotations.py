@@ -12,13 +12,11 @@ import argparse
 
 import urllib.request
 
-from Bio import Seq, SeqIO, SeqFeature
-from Bio.SeqFeature import SeqFeature, FeatureLocation
-from copy import copy
+from Bio import SeqIO, SeqFeature
 
 # Global variables
 
-parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed. \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence, the reading frame of the first base (N only) and whether to use the first (F), last (L) or no (N) occurences if the sequence matches multiple times. For example \"-e N,ATT,1,F\". The sequence will be searched for within +/- --search_distance positions (default 10). Note: use * to represent a stop codon in AA sequences; reading frame 1 is the frame of the existing annotation; if the search sequence is found multiple times, the ")
+parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed. \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. The sequence will be searched for within +/- --search_distance positions (default 10). In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence, the codon position of the first base (N only), and a code denoting how to select which match to use if multiple matches (F, FC, C, LC, L). For example \"-e N,ATT,1,F\". If F is chosen, the first match will be selected starting at the position --search_distance positions before the current position and moving downstream. If FC is chosen, the first match will be selected starting at the current position and moving upstream. If C is chosen, the first match will be selected starting at the current position and moving upstream and downstream simultaneously - ties will result in no position being selected. If LC is chosen, the first match will be selected starting at the current position and moving downstream. Finally, if L is selected, the first match will be selected starting at --search_distance positions after the current position and moving upstream. Note: use * to represent a stop codon in AA sequences; codon position 1 is in the reading frame of the existing annotation")
 
 
 parser.add_argument("-i", "--input", help = "a genbank file containing one or more entries to correct", type = str, metavar = "GENBANK", required = True)
@@ -89,7 +87,7 @@ def get_features_from_names(seqrecord, names, namevariants):
 	
 	return(features, unrecognised_names)
 
-def correct_positions(target_features, context_features, overlap, maxoverlap, seqname):
+def correct_positions_by_overlap(target_features, context_features, overlap, maxoverlap, seqname):
 	
 	# Check context_features all match in positions
 	for name, feats in context_features.items():
@@ -137,6 +135,94 @@ def correct_positions(target_features, context_features, overlap, maxoverlap, se
 			else:
 				target.location = SeqFeature.FeatureLocation(target.location.start, corrected_tpos, target.location.strand)
 
+def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, featurename):
+	feat_start, feat_finish = feat.location.start, feat.location.end
+	errstart = "Warning: sequence " + seqname
+	
+	for end, search in query_spec.items():
+		
+		# Unpack search tuple
+		code, query, out_rf, selector = search if len(search) == 4 else search + tuple("X")
+		selector = out_rf if code == 'A' else selector
+		
+		# Check if already ends with the searched sequence
+		if(end_already_correct(feat.extract(seq_record).seq, query, end, code, out_rf)):
+			continue
+		
+		# Generate sequence for searching
+		subject_sequence, subject_start = extract_subject_region(seq_record, feat, end, code, distance)
+		
+		# Find locations of query
+		locations = list(find_all(str(subject_sequence), query))
+		
+		# Retain only locations in the specified reading frame
+		if(code == 'N'):
+			if(end == "start"):
+				locations = [l for l in locations if (l + distance) % 3 + 1 == int(out_rf)]
+				# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
+			else:
+				locations = [l for l in locations if (len(feat)-distance + l - 1) % 3 + 1 == int(search[2])]
+		
+		# Parse location results
+		errend = query  + " at the " + end + " of " + featurename + "\n"
+		
+		if(len(locations) > 0):
+			# Select the first location by default
+			location = locations[0]
+			
+			if(len(locations) > 1):
+				if(selector == 'N'):
+					# If more than 1 locations but the user wishes none to be selected
+					sys.stderr.write(errstart + " has multiple matches of " + errend)
+					location = distance
+				elif(selector == 'L'):
+					# If more than 1 locations but the user wants the last selected
+					location = locations[-1]
+				elif(selector == 'C'):
+					loc_dist = [abs(distance-l) for l in locations]
+					if(loc_dist.count(min(loc_dist)) == 1):
+						location = locations[loc_dist.index(min(loc_dist))]
+					else:
+						sys.stderr.write(errstart + "has multiple closest matches of " + errend)
+						location = distance
+				elif(selector == "FC"):
+					locations = [l for l in locations if l < distance]
+					if(len(locations) > 0):
+						location = locations[-1]
+					else:
+						sys.stderr.write(errstart + "has no first closest matches of " + errend)
+						location = distance
+				elif(selector == "LC"):
+					locations = [l for l in locations if l > distance]
+					if(len(locations) > 0):
+						location = locations[0]
+					else:
+						sys.stderr.write(errstart + "has no last closest matches of " + errend)
+						location = distance
+			
+			# Convert locations if on reverse strand
+			if(feat.location.strand == -1):
+				locations = [abs(l - (len(subject_sequence))) for l in locations]
+			
+			# Generate the new end position
+				# Correct by one base if at the finish end
+			change = location + feat.location.strand if end == "finish" else location
+				# Multiply by 3 if AA
+			change = change * 3 if code == 'A' else change
+				# Calculate
+			newend = subject_start + change
+			
+			if((end == "start" and feat.location.strand == 1) or (
+					end == "finish" and feat.location.strand == -1)):
+				feat_start = newend
+			else:
+				feat_finish = newend
+			
+		else:
+			sys.stderr.write(errstart + " has no matches of " + errend)
+	
+	return(feat_start, feat_finish)
+
 def extract_subject_region(seqrecord, feat, end, code, distance):
 	'''For a given feature and end ("start" or "finish"), extract a sequence of either nucleotides (code = 'N') or amino acids (code = 'A'), consisting of the first or last position plus or minus positions equal to distance in the reading direction of the feature'''
 	
@@ -157,21 +243,21 @@ def extract_subject_region(seqrecord, feat, end, code, distance):
 		
 		if(end == "finish"):
 			modifier = 0
-			if(trailing_bases is not 0):
+			if(trailing_bases != 0):
 				modifier = 3 - trailing_bases
 			# Correct distances to ensure in-frame translation for out-of-frame trailing bases and for strand direction
 			distances = (distances[0] + (-1 * feat.location.strand * modifier), distances[1] + (feat.location.strand * modifier))
 	
 	# Delimit the region and create feature
 	end_positions = (central_position - distances[0], central_position + distances[1])
-	subject_feat = SeqFeature(FeatureLocation(end_positions[0],end_positions[1]), strand = feat.location.strand, type = "CDS")
+	subject_feat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(end_positions[0],end_positions[1]), strand = feat.location.strand, type = "CDS")
 	
 	# Extract the sequence
 	sequence = subject_feat.extract(seqrecord.seq)
 	
 	sequence = sequence.translate(table = 5) if(code == 'A') else sequence
 	
-	return(sequence)
+	return(sequence, end_positions[0])
 
 def str_is_int(s):
 	try: 
@@ -188,36 +274,14 @@ def find_all(a_str, sub):
 		yield start
 		start += 1
 
-# Testing data load
-namevariants = loadnamevariants()	
-
-seq_record_for = next(SeqIO.parse("/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb", "genbank"))
-features_for, record_unrecognised_names = get_features_from_names(seq_record_for, "ATP8", namevariants)
-features_for = features_for["ATP8"]
-
-seq_record_rev = next(SeqIO.parse("/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00002.gb", "genbank"))
-features_rev, record_unrecognised_names = get_features_from_names(seq_record_rev, "ATP8", namevariants)
-features_rev = features_rev["ATP8"]
-
-feat = copy(features_for[0])
-feat = copy(features_rev[0])
-
-feat.location = FeatureLocation(feat.location.start, feat.location.end+1, strand = 1)
-feat.location = FeatureLocation(feat.location.start, feat.location.end+2, strand = 1)
-
-feat.location = FeatureLocation(feat.location.start-1, feat.location.end, strand = -1)
-feat.location = FeatureLocation(feat.location.start-2, feat.location.end, strand = -1)
-
-distance = 3
-seqrecord = seq_record_for
-seqrecord = seq_record_rev
-end = "start"
-end = "finish"
-code = 'N'
-code = 'A'
-				
-
-
+def end_already_correct(nuc_seq, query_seq, end, code, frame):
+	if(code == 'N'):
+		return((end == "start" and frame == "1" and nuc_seq.startswith(query_seq)) or # Starts with sequence, rf is 1
+			(end == "finish" and nuc_seq.endswith(query_seq) and nuc_seq.rfind(query_seq) % 3 + 1 == int(frame)))
+	else:
+		aa_seq = nuc_seq.translate(table = args.translation_table)
+		return((end == "start" and aa_seq.startswith(query_seq)) or
+			(end == "finish" and aa_seq.endswith(query_seq)))
 
 if __name__ == "__main__":
 	
@@ -238,6 +302,11 @@ if __name__ == "__main__":
 		if(args.startstring or args.finishstring):
 			sys.exit("Error: --startstring or --finishstring not compatible with --overlap. Run consecutive iterations to perform both options")
 	if(args.startstring is not None or args.finishstring is not None):
+		if(args.annotation is None or len(args.annotation) != 1):
+			sys.exit("Error: please supply one and only one annotation name to --annotation if using --*string")
+		if(args.context is not None):
+			sys.exit("Error: no context annotations are used in --*string")
+		
 		for end, searchstring in zip(['start','finish'], [args.startstring, args.finishstring]):
 			if(searchstring is None):
 				continue
@@ -249,23 +318,26 @@ if __name__ == "__main__":
 				sys.exit(err + " does not have only two or three items")
 			elif(search[0] == 'N' and len(search) not in [3,4]):
 				sys.exit(err + " does not have only three or four items")
-			elif(search[0] == "A" and search[1] not in list("GPAVLIMCFYWHKRQNEDST*")):
+			elif(search[0] == "A" and any(s not in list("GPAVLIMCFYWHKRQNEDST*") for s in search[1])):
 				sys.exit(err + " is specified as amino acid but non-standard character(s) included (must be GPAVLIMCFYWHKRQNEDST*)")
-			elif(search[0] == "N" and search[1] not in list("ATGC")):
+			elif(search[0] == "N" and any(s not in list("ATGC") for s in search[1])):
 				sys.exit(err + " is specified as nucleotide but non-standard character(s) included (must be ATGC)")
 			elif(search[0] == "N" and (not str_is_int(search[2]) or search[2] not in ['1','2','3'])):
 				sys.exit(err + " has an unrecognised reading frame")
 			elif(search[0] == "A" and str_is_int(search[2])):
 				sys.exit(err + " is searching for an amino acid sequence but includes what seems to be a reading frame")
-			elif(( (search[0] == "N" and len(search) == 4) or (search[0] == "A" and len(search) == 3) ) and (not search[3] in ['F','L','N'])):
+			elif(( (search[0] == "N" and len(search) == 4) or (search[0] == "A" and len(search) == 3) ) and (not search[3] in ['F','L','C','FC','LC','N'])):
 				sys.exit(err + " has an unrecognised multiple-hit handling instruction ( must be F, L or N)")
 			stringspec[end] = search
+		
+		args.context = []
+		
 	else:
 		sys.exit("Error: please supply a value to --overlap or to --startstring and/or --endstring")
 	
 	# Read and parse gene name variants
 	
-	namevariants = loadnamevariants()	
+	namevariants = loadnamevariants()
 	
 	# Find universal names for inputs
 	err = "Error: unrecognised locus name supplied to"
@@ -302,7 +374,7 @@ if __name__ == "__main__":
 			ntf = len(target_features)
 			ncf = sum([len(cfl) for gene, cfl in context_features.items()])
 			if(ntf > 0 and ncf > 0):
-				correct_positions(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
+				correct_positions_by_overlap(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
 				write = True
 			else:
 				err = "Warning, sequence " + seqname + " has"
@@ -316,93 +388,22 @@ if __name__ == "__main__":
 			features = features[args.annotation[0]]
 			
 			nf = len(features)
+			
 			if(nf > 0):
-				feat = features[0]
-				
-				# Store original start and end
-				instart, infin = feat.location.start, feat.location.end
-				
-				# Search for changes
-				startchange, finchange = 0, 0
-				
-				errstart = "Warning: sequence " + seqname
-				
-				for end, search in stringspec.items():
-					end = "finish"
-					search = ('A','*','F')
+				for feat in features:
+					# Get new start and finish positions
+					corrected_start, corrected_finish = correct_feature_by_query(feat, stringspec, seq_record, seqname, args.search_distance, args.annotation[0])
 					
-					# Check if already ends with the searched sequence
-					nuc_seq = feat.extract(seq_record.seq)
-					if(search[0] == 'N'):
-						if((end is "start" and search[2] == 1 and nuc_seq.startswith(search[1])) or  # Starts with sequence, rf is 1
-						   (end is "finish" and nuc_seq.endswith(search[1]) and nuc_seq.rfind(search[1]) % 3 + 1 == search[2])): # ends with and is in the appropriate frame
-							continue
+					if(corrected_start == feat.location.start and corrected_finish == feat.location.end):
+						write = args.write_unmodified
+						continue
 					else:
-						aa_seq = nuc_seq.translate(table = args.translation_table)
-						if((end is "start" and aa_seq.startswith(search[1])) or
-						    end is "finish" and aa_seq.endswith(search[1])):
-							continue
-					
-					# Generate sequence for searching
-					subject_sequence = extract_subject_region(seq_record, feat, end, search[0], args.search_distance)
-					
-					
-					# TODO FROM HERE
-					
-					# Find locations of query
-					locations = list(find_all(str(subject_sequence), search[1]))
-					
-					# Check if in reading frame
-					if(search[0] == 'N'):
-						locations = [l for l in locations if (l + 1) % 3 == int(search[2]) + (args.search_distance % 3)]
-						# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
-					
-					# Parse location results
-					errend = search[1]  + " at the " + end + " of " + args.annotation[0] + "\n"
-					if(len(locations) > 0):
-						location = locations[0]
-						if(len(locations) > 1):
-							if(start[3] == 'N'):
-								sys.stderr.write(errstart + " has multiple matches of " + errend)
-							elif(start[3] == 'L'):
-								location = locations[-1]
-						if(search[0] == 'A'):
-							
-							if(end is "start):
-								startchange = location - changemod / changemult
-							else:
-								finchange = location - changemod / changemult
-					else:
-						sys.stderr.write(errstart + " has no matches of " + errend)
-					
-				
-				if(startchange == 0 and finchange == 0):
-					write = args.write_unmodified
-				
-				feat.location = SeqFeature.FeatureLocation(
-						SeqFeature.ExactPosition(instart + startchange),
-						SeqFeature.ExactPosition(infin + startchange),
-						feat.location.strand)
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				
-				.translate(table=5)
-				
-				
+						feat.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, feat.location.strand)
+						write = True
 			else:
 				err = "Warning, sequence " + seqname + " has no " + args.annotation[0] + " annotation(s)\n"
 				sys.stderr.write(err)
 				write = args.write_unmodified
-		
-		
-		
 		
 		if write: output_records.append(seq_record) 
 	
