@@ -301,8 +301,8 @@ if __name__ == "__main__":
 	
 	# Read in arguments
 	#args = parser.parse_args(['-a', "NAD2", '-c', 'TRNM(CAU)', '-o', 0, '-i', 'source/BIOD00005.gb', '-w'])
-	args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
-	#args = parser.parse_args()
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
+	args = parser.parse_args()
 	
 	# Check arguments
 	
