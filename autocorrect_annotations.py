@@ -315,7 +315,7 @@ if __name__ == "__main__":
 			sys.exit("Error: please supply one or two context annotation names to --context if using --overlap")
 		if(args.startstring or args.finishstring):
 			sys.exit("Error: --startstring or --finishstring not compatible with --overlap. Run consecutive iterations to perform both options")
-	if(args.startstring is not None or args.finishstring is not None):
+	elif(args.startstring is not None or args.finishstring is not None):
 		if(args.annotation is None or len(args.annotation) != 1):
 			sys.exit("Error: please supply one and only one annotation name to --annotation if using --*string")
 		if(args.context is not None):
