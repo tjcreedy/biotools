@@ -13,10 +13,14 @@ import argparse
 import urllib.request
 
 from Bio import SeqIO, SeqFeature
+from Bio import BiopythonWarning
+import warnings
+with warnings.catch_warnings():
+	warnings.simplefilter('ignore', BiopythonWarning)
 
 # Global variables
 
-parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed. \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. The sequence will be searched for within +/- --search_distance positions (default 10). In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence, the codon position of the first base (N only), and a code denoting how to select which match to use if multiple matches (F, FC, C, LC, L). For example \"-e N,ATT,1,F\". If F is chosen, the first match will be selected starting at the position --search_distance positions before the current position and moving downstream. If FC is chosen, the first match will be selected starting at the current position and moving upstream. If C is chosen, the first match will be selected starting at the current position and moving upstream and downstream simultaneously - ties will result in no position being selected. If LC is chosen, the first match will be selected starting at the current position and moving downstream. Finally, if L is selected, the first match will be selected starting at --search_distance positions after the current position and moving upstream. Note: use * to represent a stop codon in AA sequences; codon position 1 is in the reading frame of the existing annotation")
+parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed. \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. The sequence will be searched for within +/- --search_distance positions (default 10). In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence, the codon position of the first base (N only), and a code denoting how to select which match to use if multiple matches (F, FC, C, LC, L or N). For example \"-e N,ATT,1,F\". If F is chosen, the first match will be selected starting at the position --search_distance positions before the current position and moving downstream. If FC is chosen, the first match will be selected starting at the current position and moving upstream. If C is chosen, the first match will be selected starting at the current position and moving upstream and downstream simultaneously - ties will result in no position being selected. If LC is chosen, the first match will be selected starting at the current position and moving downstream. If L is selected, the first match will be selected starting at --search_distance positions after the current position and moving upstream. Finally, if N is given, no match will be selected and the sequence output unchanged. Note: use * to represent a stop codon in AA sequences; codon position 1 is in the reading frame of the existing annotation")
 
 
 parser.add_argument("-i", "--input", help = "a genbank file containing one or more entries to correct", type = str, metavar = "GENBANK", required = True)
@@ -136,17 +140,22 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 				target.location = SeqFeature.FeatureLocation(target.location.start, corrected_tpos, target.location.strand)
 
 def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, featurename):
+	#query_spec = stringspec
+	#distance = args.search_distance
+	#featurename = args.annotation[0]
+	
 	feat_start, feat_finish = feat.location.start, feat.location.end
 	errstart = "Warning: sequence " + seqname
 	
 	for end, search in query_spec.items():
+		#end, search = next(iter(query_spec.items()))
 		
 		# Unpack search tuple
 		code, query, out_rf, selector = search if len(search) == 4 else search + tuple("X")
 		selector = out_rf if code == 'A' else selector
 		
 		# Check if already ends with the searched sequence
-		if(end_already_correct(feat.extract(seq_record).seq, query, end, code, out_rf)):
+		if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf)):
 			continue
 		
 		# Generate sequence for searching
@@ -275,6 +284,11 @@ def find_all(a_str, sub):
 		start += 1
 
 def end_already_correct(nuc_seq, query_seq, end, code, frame):
+	#nuc_seq = feat.extract(seq_record.seq)
+	#query_seq = query
+	#frame = out_rf
+	
+	
 	if(code == 'N'):
 		return((end == "start" and frame == "1" and nuc_seq.startswith(query_seq)) or # Starts with sequence, rf is 1
 			(end == "finish" and nuc_seq.endswith(query_seq) and nuc_seq.rfind(query_seq) % 3 + 1 == int(frame)))
@@ -287,8 +301,8 @@ if __name__ == "__main__":
 	
 	# Read in arguments
 	#args = parser.parse_args(['-a', "NAD2", '-c', 'TRNM(CAU)', '-o', 0, '-i', 'source/BIOD00005.gb', '-w'])
-	args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb', '-a', 'ND5', '-c' 'TRNM(CAU)', '-t', '5'])
-	args = parser.parse_args()
+	args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
+	#args = parser.parse_args()
 	
 	# Check arguments
 	
@@ -312,22 +326,29 @@ if __name__ == "__main__":
 				continue
 			search = tuple(searchstring.split(","))
 			err = "Error: search string " + searchstring
-			if(search[0] not in ["A", "N"]):
+			if(search[0] not in ['A', 'N']):
 				sys.exit(err + " has an unrecognised sequence type")
-			elif(search[0] == 'A' and len(search) not in [2,3]):
-				sys.exit(err + " does not have only two or three items")
-			elif(search[0] == 'N' and len(search) not in [3,4]):
-				sys.exit(err + " does not have only three or four items")
-			elif(search[0] == "A" and any(s not in list("GPAVLIMCFYWHKRQNEDST*") for s in search[1])):
-				sys.exit(err + " is specified as amino acid but non-standard character(s) included (must be GPAVLIMCFYWHKRQNEDST*)")
-			elif(search[0] == "N" and any(s not in list("ATGC") for s in search[1])):
-				sys.exit(err + " is specified as nucleotide but non-standard character(s) included (must be ATGC)")
-			elif(search[0] == "N" and (not str_is_int(search[2]) or search[2] not in ['1','2','3'])):
-				sys.exit(err + " has an unrecognised reading frame")
-			elif(search[0] == "A" and str_is_int(search[2])):
-				sys.exit(err + " is searching for an amino acid sequence but includes what seems to be a reading frame")
-			elif(( (search[0] == "N" and len(search) == 4) or (search[0] == "A" and len(search) == 3) ) and (not search[3] in ['F','L','C','FC','LC','N'])):
-				sys.exit(err + " has an unrecognised multiple-hit handling instruction ( must be F, L or N)")
+			elif(search[0] == 'A'):
+				if(len(search) != 3):
+					sys.exit(err + " does not have only two or three items")
+				elif(any(s not in list("GPAVLIMCFYWHKRQNEDST*") for s in search[1])):
+					sys.exit(err + " is specified as amino acid but non-standard character(s) included (must be GPAVLIMCFYWHKRQNEDST*)")
+				elif(str_is_int(search[2])):
+					sys.exit(err + " is searching for an amino acid sequence but includes what seems to be a reading frame")
+				elif(args.translation_table is None):
+					sys.exit(err + " is specified as amino acid but no --translation_table given")
+			else:
+				if(len(search) != 4):
+					sys.exit(err + " does not have only three or four items")
+				elif(any(s not in list("ATGC") for s in search[1])):
+					sys.exit(err + " is specified as nucleotide but non-standard character(s) included (must be ATGC)")
+				elif(not str_is_int(search[2]) or search[2] not in ['1','2','3']):
+					sys.exit(err + " has an unrecognised reading frame")
+			
+			mmhi = search[3] if search[0] == 'N' else search[2]
+			if( mmhi not in ['F','L','C','FC','LC','N'] ):
+				sys.exit(err + " has an unrecognised multiple-hit handling instruction ( must be F, FC, C, LC, L or N)")
+			
 			stringspec[end] = search
 		
 		args.context = []
@@ -391,6 +412,8 @@ if __name__ == "__main__":
 			
 			if(nf > 0):
 				for feat in features:
+					#feat = features[0]
+					
 					# Get new start and finish positions
 					corrected_start, corrected_finish = correct_feature_by_query(feat, stringspec, seq_record, seqname, args.search_distance, args.annotation[0])
 					
