@@ -17,6 +17,7 @@ my $outdir;
 my $minregion = 1;
 my @reqregion;
 my @regiontypes = ('CDS');
+my $keepframe;
 
 my $dontchecknames;
 my $showgenes;
@@ -83,10 +84,11 @@ Description:
 	
 	Optionally, you can specify that sequences will only be output for entries where a minimum number of regions are met using -minregion. Similarly, you can optionally specify that certain regions must be present in a sequence for it to output any regions using the -reqregion option. For example, if you only wanted to retrieve sequences for regions from genomes that contain COX1 and COB, you would specify -reqregion COX1 COB. The names used must conform with the standard set of output names (the second column when using the -showgenes option). All available regions will still be output.
 	
+	In rare cases, an annotation is truncated by the end of a contig at the 5' end, which may leave an incomplete codon at the start of an output sequence and cause downstream issues. To detect this, the script can optionally remove these excess 1 or 2 bases using the -keepframe option. Note this only works if the /codon_start tag is present in the genbank-format features. 
 
 Usage:
 
-	perl $script -genbank <in.gb> [<in2.gb>] -out <out/> [-minregion <n>] [-reqregion <CDS1> <CDS2>] [-regiontypes CDS tRNA rRNA]
+	perl $script -genbank <in.gb> [<in2.gb>] -out <out/> [-minregion <n>] [-reqregion <CDS1> <CDS2>] [-regiontypes CDS tRNA rRNA] [-keepframe]
 	perl $script -showgenes
 
 Arguments:
@@ -97,6 +99,7 @@ Arguments:
 	     reqregion:  A list of regions that must be present in a sequence for it to output anything
 	   regiontypes:  One or more region types to extract, currently CDS rRNA and/or tRNA
 	     showgenes:  Prints the hardcoded conversions for region naming variants
+	     keepframe:  Removes excess out-of-frame bases at the beginning of truncated annotations
 	          help:  Prints out this helpful message
 
 USAGE
@@ -110,6 +113,7 @@ GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "reqregion=s{0,}"	=> \@reqregion,
 	   "regiontypes=s{1,3}"	=> \@regiontypes,
 	   "showgenes"		=> \$showgenes,
+	   "keepframe"		=> \$keepframe,
 	   "help"		=> \$help) or die "\nError getting options\n\n";
 
 print $usage and exit if $help;
@@ -200,8 +204,17 @@ foreach my $gbp (@gbpaths){
 									 -format => "fasta");
 				}
 				
+				# Check if gene sequence is truncated
+				my $codon_start = 1;
+				if($feat->has_tag('codon_start') and $keepframe){
+					my @values = $feat->get_tag_values("codon_start");
+					die "Error: $seqname $feattype annotation $gene has multiple \\codon_start values!\n" if(scalar @values > 1);
+					$codon_start = $values[0]
+				}
+				
 				# Compile output sequence object and store
 				my $outseq = $feat->seq;
+				$outseq = $outseq->trunc($codon_start, $outseq->length());
 				$outseq->display_id($seqname);
 				$outseq->description("");
 				$outseq->verbose(-1);
