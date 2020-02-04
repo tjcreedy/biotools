@@ -46,9 +46,13 @@ def loadnamevariants():
 	for line in urllib.request.urlopen("https://raw.githubusercontent.com/tjcreedy/biotools/master/gene_name_variants.txt"):
 		line = line.decode('utf-8').strip()
 		name = line.split(";")[0]
+		annotype = line.split(":")[0].split(";")[1]
 		variants = line.split(":")[1].split(",")
 		for v in variants:
-			output[v] = name
+			for g in ['', ' ']:
+				v = v.replace(g, '')
+				for s in ['',' GENE', ' '+annotype.upper()]:
+					output[v+s] = name
 	return(output)
 
 def get_features_from_names(seqrecord, names, namevariants):
