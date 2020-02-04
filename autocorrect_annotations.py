@@ -37,7 +37,6 @@ parser.add_argument("-d", "--search_distance", help = "threshold maximum distanc
 
 parser.add_argument("-t", "--translation_table", help = "the amino acid translation table to use, where relevant", type = int, metavar = "N")
 
-parser.add_argument("-w", "--write_unmodified", help = "output entries that are not modified anyway", action = "store_true", default = False )
 # Class definitons
 
 # Function definitions
@@ -66,19 +65,19 @@ def get_features_from_names(seqrecord, names, namevariants):
 		
 		# Extract the feature name
 		featname = 0
-		if('gene' in feat.qualifiers.keys()):
-			featname = feat.qualifiers['gene'][0].upper()
-		elif('product' in feat.qualifiers.keys()):
-			featname = feat.qualifiers['product'][0].upper()
-		elif('label' in feat.qualifiers.keys()):
-			featname = feat.qualifiers['label'][0].upper()
-		elif(feat.type in ['source', 'misc_feature']):
+		nametags = ['gene', 'product', 'label', 'standard_name']
+		if(any(t in feat.qualifiers.keys() for t in nametags)):
+			for t in nametags:
+				if(t in feat.qualifiers.keys()):
+					featname = feat.qualifiers[t][0].upper()
+					continue
+		elif(feat.type in ['source', 'misc_feature', 'repeat_region', 'D-loop', 'rep_origin','gap']):
 			continue
 		else:
-			err = "Warning, %s annotation in %s" % (feat.type, seqname)
+			err = "Warning, can't identify %s %s annotation" % (seqname, feat.type)
 			if(hasattr(feat.location, 'start')):
-				err += " from position %s to %s" % (str(int(feat.location.start)+1), str(int(feat.location.end)))
-			err += " does not have a gene, product or label tag and so cannot be identified\n"
+				err += " %s-%s" % (str(int(feat.location.start)+1), str(int(feat.location.end)))
+			err += ": no gene/product/label/standard_name tag\n"
 			sys.stderr.write(err)
 			continue
 		
@@ -97,10 +96,11 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 	for name, feats in context_features.items():
 		locations = [feat.location for feat in feats]
 		if(not all(locations[0] == loc for loc in locations)):
-			err = "Error, positions of " + str(len(locations)) + " context annotations for " + name + " in " + seqname + " do not match with one another:\n"
+			err = "Warning, positions of " + str(len(locations)) + " context annotations for " + name + " in " + seqname + " do not match with one another, this entry will not be modified:\n"
 			for i, feat in enumerate(feats):
 				err += "\t(" + str(i+1) + ") " + feat.type +" is located at bases " + str(int(feat.location.start)+1) + " to " + str(int(feat.location.end)) + "\n"
-			sys.exit(err)
+			sys.stderr.write(err)
+			return
 	
 	# Work through combinations of target and context features
 	# TODO: throw errors if annotation or context missing
@@ -381,12 +381,13 @@ if __name__ == "__main__":
 	# Work through input genbank
 	
 	unrecognised_names = set()
+	missing_annotation = set()
+	missing_context = set()
 	output_records = list()
 	
 	for seq_record in SeqIO.parse(args.input, "genbank"):
 		#seq_record = next(SeqIO.parse(args.input, "genbank"))
 		seqname = seq_record.name
-		write = False
 		features, record_unrecognised_names = get_features_from_names(seq_record, args.annotation + args.context, namevariants)
 		unrecognised_names.update(record_unrecognised_names)
 		
@@ -398,14 +399,14 @@ if __name__ == "__main__":
 			ncf = sum([len(cfl) for gene, cfl in context_features.items()])
 			if(ntf > 0 and ncf > 0):
 				correct_positions_by_overlap(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
-				write = True
 			else:
-				err = "Warning, sequence " + seqname + " has"
-				if ntf == 0: err += " no " + args.annotation[0] + " annotation" 
-				if ntf == 0 and ncf == 0: err += " and"
-				if ncf == 0: err += " none of the specified context annotation(s)"
-				sys.stderr.write(err + "\n")
-				write = args.write_unmodified
+				if(ntf == 0): missing_annotation.add(seqname)
+				if(ncf == 0): missing_context.add(seqname)
+				#err = "Warning, sequence " + seqname + " has"
+				#if ntf == 0: err += " no " + args.annotation[0] + " annotation" 
+				#if ntf == 0 and ncf == 0: err += " and"
+				#if ncf == 0: err += " none of the specified context annotation(s)"
+				#sys.stderr.write(err + "\n")
 		
 		elif(len(stringspec) > 0):
 			features = features[args.annotation[0]]
@@ -420,21 +421,28 @@ if __name__ == "__main__":
 					corrected_start, corrected_finish = correct_feature_by_query(feat, stringspec, seq_record, seqname, args.search_distance, args.annotation[0])
 					
 					if(corrected_start == feat.location.start and corrected_finish == feat.location.end):
-						write = args.write_unmodified
 						continue
 					else:
 						feat.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, feat.location.strand)
-						write = True
 			else:
-				err = "Warning, sequence " + seqname + " has no " + args.annotation[0] + " annotation(s)\n"
-				sys.stderr.write(err)
-				write = args.write_unmodified
+				#err = "Warning, sequence " + seqname + " has no " + args.annotation[0] + " annotation(s)\n"
+				#sys.stderr.write(err)
+				missing_annotation.add(seqname)
 		
-		if write: output_records.append(seq_record) 
+		output_records.append(seq_record) 
 	
 	if len(output_records)>0 : SeqIO.write(output_records, sys.stdout, "genbank")
 	
+	if(len(missing_annotation) > 0):
+		sys.stderr.write("\nWarning, the following sequence entries were missing one or more target annotations:\n%s\n" % (', '.join(missing_annotation)))
+	
+	if(len(missing_context) > 0):
+		sys.stderr.write("\nWarning, the following sequence entries did missing one or more context annotations:\n%s\n" % (', '.join(missing_context)))
+	
 	if(len(unrecognised_names) > 0):
-		sys.stderr.write("Warning, could not recognise some feature names - %s \n" % (', '.join(unrecognised_names)))
+		sys.stderr.write("\nWarning, could not recognise some feature names:\n%s\n" % (', '.join(unrecognised_names)))
+	
+	
+	
 	
 	exit()
