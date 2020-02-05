@@ -9,9 +9,10 @@ import sys
 import argparse
 #import os
 #import re
-
 import urllib.request
 
+
+from collections import defaultdict
 from Bio import SeqIO, SeqFeature
 from Bio import BiopythonWarning
 import warnings
@@ -20,7 +21,7 @@ with warnings.catch_warnings():
 
 # Global variables
 
-parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed. \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. The sequence will be searched for within +/- --search_distance positions (default 10). In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence or list of sequences (separated by /), the codon position of the first base (N only, use * to allow any position), and a code denoting how to select which match to use if multiple matches (F, FC, C, LC, L or N). For example \"-e N,ATT,1,F\". If F is chosen, the first match will be selected starting at the position --search_distance positions before the current position and moving downstream. If FC is chosen, the first match will be selected starting at the current position and moving upstream. If C is chosen, the first match will be selected starting at the current position and moving upstream and downstream simultaneously - ties will result in no position being selected. If LC is chosen, the first match will be selected starting at the current position and moving downstream. If L is selected, the first match will be selected starting at --search_distance positions after the current position and moving upstream. Finally, if N is given, no match will be selected and the sequence output unchanged. Note: use * to represent a stop codon in AA sequences; codon position 1 is in the reading frame of the existing annotation")
+parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument to --annotation and two arguments to --context are allowed. \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. The sequence will be searched for within +/- --search_distance positions (default 10). In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence or list of sequences (separated by /), the codon position of the first base (N only, use * to allow any position), and a code denoting how to select which match to use if multiple matches (F, FC, C, LC, L or N). For example \"-e N,ATT,1,F\". If F is chosen, the first match will be selected starting at the position --search_distance positions before the current position and moving downstream. If FC is chosen, the first match will be selected starting at the current position and moving upstream. If C is chosen, the first match will be selected starting at the current position and moving upstream and downstream simultaneously - ties will result in no position being selected. If LC is chosen, the first match will be selected starting at the current position and moving downstream. If L is selected, the first match will be selected starting at --search_distance positions after the current position and moving upstream. Finally, if N is given, no match will be selected and the sequence output unchanged. Note: use * to represent a stop codon in AA sequences; codon position 1 is in the reading frame of the existing annotation\nSYNCRONISE\nChange the location of annotations of the type supplied to --syncronise to match the locations of any other annotations with the same name")
 
 
 parser.add_argument("-i", "--input", help = "a genbank file containing one or more entries to correct", type = str, metavar = "GENBANK", required = True)
@@ -34,8 +35,9 @@ parser.add_argument("-m", "--overlap_maxdist", help = "threshold maximum existin
 parser.add_argument("-s", "--startstring", help = "specification of the sequence that --annotation should start with", type = str, metavar = "X,XXX,N,X")
 parser.add_argument("-f", "--finishstring", help = "specification of the sequence that --annotation should finish with", type = str, metavar = "X,XXX,N,X")
 parser.add_argument("-d", "--search_distance", help = "threshold maximum distance in base pairs to search for corrected start/finish", type = int, metavar = "N", default = 6)
-
 parser.add_argument("-t", "--translation_table", help = "the amino acid translation table to use, where relevant", type = int, metavar = "N")
+
+parser.add_argument("-y", "--syncronise", help = "the type of annotation to syncronise", type = str, metavar = "TYPE")
 
 # Class definitons
 
@@ -56,13 +58,17 @@ def loadnamevariants():
 	return(output)
 
 def get_features_from_names(seqrecord, names, namevariants):
+	#names = args.annotation
+	#seqrecord = seq_record
 	names = [names] if isinstance(names, str) else names
 	
-	features = { n : list() for n in names}
+	features = defaultdict(list)
 	unrecognised_names = set()
-	seqname = seqrecord.name
+	unidentifiable_features = set()
+	#seqname = seqrecord.name
 	
 	for feat in seqrecord.features:
+		#feat = seqrecord.features[8]
 		# Remove any translations
 		if('translation' in feat.qualifiers.keys()):
 			del(feat.qualifiers['translation'])
@@ -74,15 +80,16 @@ def get_features_from_names(seqrecord, names, namevariants):
 			for t in nametags:
 				if(t in feat.qualifiers.keys()):
 					featname = feat.qualifiers[t][0].upper()
-					continue
+					break
 		elif(feat.type in ['source', 'misc_feature', 'repeat_region', 'D-loop', 'rep_origin','gap']):
 			continue
 		else:
-			err = "Warning, can't identify %s %s annotation" % (seqname, feat.type)
-			if(hasattr(feat.location, 'start')):
-				err += " %s-%s" % (str(int(feat.location.start)+1), str(int(feat.location.end)))
-			err += ": no gene/product/label/standard_name tag\n"
-			sys.stderr.write(err)
+			unidentifiable_features.add((feat.type, feat.location.start, feat.location.end))
+			#err = "Warning, can't identify %s %s annotation" % (seqname, feat.type)
+			#if(hasattr(feat.location, 'start')):
+			#	err += " %s-%s" % (str(int(feat.location.start)+1), str(int(feat.location.end)))
+			#err += ": no gene/product/label/standard_name tag\n"
+			#sys.stderr.write(err)
 			continue
 		
 		if(featname in namevariants):
@@ -92,22 +99,57 @@ def get_features_from_names(seqrecord, names, namevariants):
 		else:
 			unrecognised_names.add(featname)
 	
-	return(features, unrecognised_names)
+	return(features, unrecognised_names, unidentifiable_features)
+
+def syncronise_features(features, synctype, seqname):
+	#synctype = 'gene'
+	for name, feats in features.items():
+		#name, feats = list(features.items())[2]
+		# Organise features
+		target_feats = []
+		other_feats = []
+		
+		for feat in feats:
+			if(feat.type == synctype):
+				target_feats.append(feat)
+			else:
+				other_feats.append(feat)
+		
+		warnstart = "Warning, " + seqname + " does not have any "
+		warnend = " annotations of " + name + "\n"
+		if(len(target_feats) < 1):
+			#sys.stderr.write(warnstart + synctype + warnend)
+			continue
+		if(len(other_feats) < 1):
+			#sys.stderr.write(warnstart + "non-" + synctype + warnend)
+			continue
+		
+		# Check that the other features are all the same
+		if(not all(other_feats[0].location == feat.location for feat in other_feats)):
+			sys.stderr.write("Warning, positions of " + str(len(other_feats)) + " non-" + synctype + " annotations for " + name + " in " + seqname + " do not match, this entry will not be modified\n")
+			continue
+		
+		# Correct the target features
+		for feat in target_feats:
+			feat.location = other_feats[0].location
 
 def correct_positions_by_overlap(target_features, context_features, overlap, maxoverlap, seqname):
+	
+	context_overdist = set()
 	
 	# Check context_features all match in positions
 	for name, feats in context_features.items():
 		locations = [feat.location for feat in feats]
 		if(not all(locations[0] == loc for loc in locations)):
-			err = "Warning, positions of " + str(len(locations)) + " context annotations for " + name + " in " + seqname + " do not match with one another, this entry will not be modified:\n"
+			err = "Warning, positions of " + str(len(locations)) + " annotations for " + name + " in " + seqname + " do not match, this entry will not be modified:\n"
 			for i, feat in enumerate(feats):
 				err += "\t(" + str(i+1) + ") " + feat.type +" is located at bases " + str(int(feat.location.start)+1) + " to " + str(int(feat.location.end)) + "\n"
 			sys.stderr.write(err)
-			return
+			return(context_overdist)
 	
 	# Work through combinations of target and context features
 	# TODO: throw errors if annotation or context missing
+	
 	for target in target_features:
 		tpos = [int(target.location.start), int(target.location.end)]
 		for context_name in context_features:
@@ -127,7 +169,8 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			
 			# Warn and skip this context annotation if 
 			if(distance[min_distance_i] > maxoverlap):
-				sys.stderr.write("Warning, context annotation %s in %s is more than %s bases from target for sequence %s, this annotation will be ignored\n" % (context_name, seqname, str(maxoverlap), seqname))
+				context_overdist.add(context_name)
+				#sys.stderr.write("Warning, context annotation %s in %s is more than %s bases from target, this annotation will be ignored\n" % (context_name, seqname, str(maxoverlap)))
 				continue
 			
 			# Find the orientation (+ve, context follows target)
@@ -142,6 +185,7 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 				target.location = SeqFeature.FeatureLocation(corrected_tpos, target.location.end, target.location.strand)
 			else:
 				target.location = SeqFeature.FeatureLocation(target.location.start, corrected_tpos, target.location.strand)
+	return(context_overdist)
 
 def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, featurename):
 	#query_spec = stringspec
@@ -308,6 +352,7 @@ if __name__ == "__main__":
 	# Read in arguments
 	#args = parser.parse_args(['-a', "NAD2", '-c', 'TRNM(CAU)', '-o', 0, '-i', 'source/BIOD00005.gb', '-w'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/SPSO00185.gb', '-y', 'gene'])
 	args = parser.parse_args()
 	
 	# Check arguments
@@ -358,7 +403,11 @@ if __name__ == "__main__":
 			stringspec[end] = search
 		
 		args.context = []
-		
+	elif(args.syncronise is not None):
+		if(args.annotation is not None or args.context is not None):
+			sys.exit("Error: no --annotation or --context should be supplied to --syncronise")
+		if(args.syncronise not in ['gene', 'CDS', 'tRNA']):
+			sys.exit("Erorr: value passed to --syncronise should be gene, CDS or tRNA")
 	else:
 		sys.exit("Error: please supply a value to --overlap or to --startstring and/or --endstring")
 	
@@ -368,11 +417,12 @@ if __name__ == "__main__":
 	
 	# Find universal names for inputs
 	err = "Error: unrecognised locus name supplied to"
-	if all(a.upper() in namevariants for a in args.annotation):
-		args.annotation = [namevariants[a.upper()] for a in args.annotation]
-	else:
-		err = err + " --annotation"
-		sys.exit(err)
+	if(args.annotation is not None):
+		if(all(a.upper() in namevariants for a in args.annotation)):
+			args.annotation = [namevariants[a.upper()] for a in args.annotation]
+		else:
+			err = err + " --annotation"
+			sys.exit(err)
 	
 	if(args.overlap is not None):
 		if all(c.upper() in namevariants for c in args.context):
@@ -382,18 +432,28 @@ if __name__ == "__main__":
 			err = err + " --context"
 			sys.exit(err)
 	
+	if(args.syncronise is not None):
+		args.annotation = set(namevariants.values())
+	
 	# Work through input genbank
 	
 	unrecognised_names = set()
 	missing_annotation = set()
 	missing_context = set()
 	output_records = list()
+	unidentifiable_features = dict()
+	context_overdist = dict()
 	
 	for seq_record in SeqIO.parse(args.input, "genbank"):
 		#seq_record = next(SeqIO.parse(args.input, "genbank"))
 		seqname = seq_record.name
-		features, record_unrecognised_names = get_features_from_names(seq_record, args.annotation + args.context, namevariants)
+		
+		# Get features and parse errors
+		features, record_unrecognised_names, record_unidentifiable_features = get_features_from_names(seq_record, set(args.annotation or [] + args.context or []), namevariants)
 		unrecognised_names.update(record_unrecognised_names)
+		if(len(record_unidentifiable_features) > 0):
+			unidentifiable_features[seqname] = record_unidentifiable_features
+		
 		
 		if(args.overlap is not None):
 			target_features = features.pop(args.annotation[0])
@@ -402,7 +462,9 @@ if __name__ == "__main__":
 			ntf = len(target_features)
 			ncf = sum([len(cfl) for gene, cfl in context_features.items()])
 			if(ntf > 0 and ncf > 0):
-				correct_positions_by_overlap(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
+				record_context_overdist = correct_positions_by_overlap(target_features, context_features, args.overlap, args.overlap_maxdist, seqname)
+				if(len(record_context_overdist) > 0):
+					context_overdist[seqname] = record_context_overdist
 			else:
 				if(ntf == 0): missing_annotation.add(seqname)
 				if(ncf == 0): missing_context.add(seqname)
@@ -433,6 +495,9 @@ if __name__ == "__main__":
 				#sys.stderr.write(err)
 				missing_annotation.add(seqname)
 		
+		elif(args.syncronise is not None):
+			syncronise_features(features, args.syncronise, seqname)
+		
 		output_records.append(seq_record) 
 	
 	if len(output_records)>0 : SeqIO.write(output_records, sys.stdout, "genbank")
@@ -441,10 +506,21 @@ if __name__ == "__main__":
 		sys.stderr.write("\nWarning, the following sequence entries were missing one or more target annotations:\n%s\n" % (', '.join(missing_annotation)))
 	
 	if(len(missing_context) > 0):
-		sys.stderr.write("\nWarning, the following sequence entries did missing one or more context annotations:\n%s\n" % (', '.join(missing_context)))
+		sys.stderr.write("\nWarning, the following sequence entries were missing one or more context annotations:\n%s\n" % (', '.join(missing_context)))
+	
+	if(len(context_overdist) > 0):
+		sys.stderr.write("\nWarning, the following sequence entries had context annotations that were more than " + str(args.overlap_maxdist) + " bases from target:\n")
+		for seqname, cofeats in context_overdist.items():
+			sys.stderr.write(seqname + ": " + ', '.join(cofeats) + "\n")
+	
+	if(len(unidentifiable_features) > 0):
+		sys.stderr.write("\nWarning, the following sequence entries had unidentifiable annotations:\n")
+		for seqname, unidfeats in unidentifiable_features.items():
+			sys.stderr.write(seqname + ": " + ', '.join([f + " " + str(s) + "-" + str(e) for f, s, e in unidfeats]) + "\n")
 	
 	if(len(unrecognised_names) > 0):
 		sys.stderr.write("\nWarning, could not recognise some feature names:\n%s\n" % (', '.join(unrecognised_names)))
+	
 	
 	
 	
