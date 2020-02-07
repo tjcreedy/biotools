@@ -39,6 +39,8 @@ parser.add_argument("-t", "--translation_table", help = "the amino acid translat
 
 parser.add_argument("-y", "--syncronise", help = "the type of annotation to syncronise", type = str, metavar = "TYPE")
 
+parser.add_argument("-w", "--show_warnings", help = "print warnings about missing or unidentifiable annotations, or annotation names that can't be recognised", action = 'store_true')
+
 # Class definitons
 
 # Function definitions
@@ -58,7 +60,7 @@ def loadnamevariants():
 	return(output)
 
 def get_features_from_names(seqrecord, names, namevariants):
-	#names = args.annotation
+	#names = args.annotation + args.context or []
 	#seqrecord = seq_record
 	names = [names] if isinstance(names, str) else names
 	
@@ -68,7 +70,7 @@ def get_features_from_names(seqrecord, names, namevariants):
 	#seqname = seqrecord.name
 	
 	for feat in seqrecord.features:
-		#feat = seqrecord.features[8]
+		#feat = seqrecord.features[0]
 		# Remove any translations
 		if('translation' in feat.qualifiers.keys()):
 			del(feat.qualifiers['translation'])
@@ -202,38 +204,43 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		code, query, out_rf, selector = search if len(search) == 4 else search + tuple("X")
 		selector = out_rf if code == 'A' else selector
 		
-		# Check if already ends with the searched sequence
-		if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf)):
-			continue
+		# Check if already ends with the searched sequence - REMOVED AS EXISTING SEQUENCE MAY BE SHORTER SUBSET OF DESIRED SEQUENCE e.g. TA TAA
+		#if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf)):
+		#	continue
 		
 		# Generate sequence for searching
 		subject_sequence, subject_start = extract_subject_region(seq_record, feat, end, code, distance)
 		
+		
 		# Find locations of query
-		locations = []
+		results = dict()
 		for q in query.split("/"):
-			locations.extend(list(find_all(str(subject_sequence), q)))
+			# Work through locations of hits
+			for i in list(find_all(str(subject_sequence), q)):
+				# If the current hit location exists and is longer than the current hit, do not change, else add current hit length
+				results[i] = results[i] if i in results.keys() and len(q) < results[i] else len(q)
 		
 		# Retain only locations in the specified reading frame
 		if(code == 'N' and out_rf != "*"):
 			if(end == "start"):
-				locations = [l for l in locations if (l + distance) % 3 + 1 == int(out_rf)]
+				results = {i:l for i, l in results.items() if (i + distance) % 3 + 1 == int(out_rf)}
 				# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
 			else:
-				locations = [l for l in locations if (len(feat)-distance + l - 1) % 3 + 1 == int(search[2])]
+				results = {i:l for i, l in results.items() if (len(feat)-distance + i - 1) % 3 + 1 == int(search[2])}
 		
 		# Parse location results
 		errend = query  + " at the " + end + " of " + featurename + "\n"
 		
-		if(len(locations) > 0):
+		if(len(results) > 0):
 			# Select the first location by default
+			locations = sorted(results.keys())
 			location = locations[0]
 			
 			if(len(locations) > 1):
 				if(selector == 'N'):
 					# If more than 1 locations but the user wishes none to be selected
 					sys.stderr.write(errstart + " has multiple matches of " + errend)
-					location = distance
+					location = None
 				elif(selector == 'L'):
 					# If more than 1 locations but the user wants the last selected
 					location = locations[-1]
@@ -243,29 +250,34 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 						location = locations[loc_dist.index(min(loc_dist))]
 					else:
 						sys.stderr.write(errstart + "has multiple closest matches of " + errend)
-						location = distance
+						location = None
 				elif(selector == "FC"):
 					locations = [l for l in locations if l < distance]
 					if(len(locations) > 0):
 						location = locations[-1]
 					else:
 						sys.stderr.write(errstart + "has no first closest matches of " + errend)
-						location = distance
+						location = None
 				elif(selector == "LC"):
 					locations = [l for l in locations if l > distance]
 					if(len(locations) > 0):
 						location = locations[0]
 					else:
 						sys.stderr.write(errstart + "has no last closest matches of " + errend)
-						location = distance
+						location = None
 			
-			# Convert locations if on reverse strand
-			if(feat.location.strand == -1):
-				locations = [abs(l - (len(subject_sequence))) for l in locations]
+			# Extract length of chosen match
+			length = results[location] if location is not None else 1
+			
+			# Return to input if no match chosen
+			location = distance if location is None else location
+			
+			# Convert location if on reverse strand
+			location = location if feat.location.strand == 1 else abs(location - len(subject_sequence))
 			
 			# Generate the new end position
-				# Correct by one base if at the finish end
-			change = location + feat.location.strand if end == "finish" else location
+				# Correct by length of the match if at the finish end
+			change = location + feat.location.strand * length if end == "finish" else location
 				# Multiply by 3 if AA
 			change = change * 3 if code == 'A' else change
 				# Calculate
@@ -284,7 +296,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 
 def extract_subject_region(seqrecord, feat, end, code, distance):
 	'''For a given feature and end ("start" or "finish"), extract a sequence of either nucleotides (code = 'N') or amino acids (code = 'A'), consisting of the first or last position plus or minus positions equal to distance in the reading direction of the feature'''
-	
+	#seqrecord = seq_record
 	
 	# Find the centre point and distances for the subject region
 	central_position = feat.location.start
@@ -309,10 +321,15 @@ def extract_subject_region(seqrecord, feat, end, code, distance):
 	
 	# Delimit the region and create feature
 	end_positions = (central_position - distances[0], central_position + distances[1])
-	subject_feat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(end_positions[0],end_positions[1]), strand = feat.location.strand, type = "CDS")
-	
+	start_position = 0 if end_positions[0] < 0 else end_positions[0]
+	finish_position = len(seqrecord) if end_positions[1] > len(seqrecord) else end_positions[1]
+	subject_feat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(start_position, finish_position), strand = feat.location.strand)
+
 	# Extract the sequence
 	sequence = subject_feat.extract(seqrecord.seq)
+	correction = [start_position - end_positions[0], finish_position - end_positions[1]]
+	correction = correction[::-1] if feat.location.strand == -1 else correction
+	sequence = correction[0] * "N" + sequence + correction[1] * "N"
 	
 	sequence = sequence.translate(table = 5) if(code == 'A') else sequence
 	
@@ -350,8 +367,9 @@ def end_already_correct(nuc_seq, query_seq, end, code, frame):
 if __name__ == "__main__":
 	
 	# Read in arguments
-	#args = parser.parse_args(['-a', "NAD2", '-c', 'TRNM(CAU)', '-o', 0, '-i', 'source/BIOD00005.gb', '-w'])
+	#args = parser.parse_args(['-a', "ATP6", '-c', 'ATP8', '-o', '7', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/SPSO00168.gb', '-m', '50'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/reprocess_2019-12-18/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/BIOD00074.gb', '-a', 'ATP6', '-f', 'N,TAG/TAA/TA,1,F', '-d', '15'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/SPSO00185.gb', '-y', 'gene'])
 	args = parser.parse_args()
 	
@@ -417,23 +435,26 @@ if __name__ == "__main__":
 	
 	# Find universal names for inputs
 	err = "Error: unrecognised locus name supplied to"
-	if(args.annotation is not None):
-		if(all(a.upper() in namevariants for a in args.annotation)):
-			args.annotation = [namevariants[a.upper()] for a in args.annotation]
-		else:
-			err = err + " --annotation"
-			sys.exit(err)
-	
-	if(args.overlap is not None):
-		if all(c.upper() in namevariants for c in args.context):
-			args.context = [namevariants[c.upper()] for c in args.context]
-		else:
-			#die with error
-			err = err + " --context"
-			sys.exit(err)
 	
 	if(args.syncronise is not None):
-		args.annotation = set(namevariants.values())
+		args.annotation = list(set(namevariants.values()))
+	else:
+		if(args.annotation is not None):
+			if(all(a.upper() in namevariants for a in args.annotation)):
+				args.annotation = [namevariants[a.upper()] for a in args.annotation]
+			else:
+				err = err + " --annotation"
+				sys.exit(err)
+		
+		if(args.context is not None):
+			if all(c.upper() in namevariants for c in args.context):
+				args.context = [namevariants[c.upper()] for c in args.context]
+			else:
+				#die with error
+				err = err + " --context"
+				sys.exit(err)
+	
+	
 	
 	# Work through input genbank
 	
@@ -449,14 +470,17 @@ if __name__ == "__main__":
 		seqname = seq_record.name
 		
 		# Get features and parse errors
-		features, record_unrecognised_names, record_unidentifiable_features = get_features_from_names(seq_record, set(args.annotation or [] + args.context or []), namevariants)
+		feature_names = args.annotation
+		feature_names += args.context if args.context is not None else []
+		
+		features, record_unrecognised_names, record_unidentifiable_features = get_features_from_names(seq_record, feature_names, namevariants)
 		unrecognised_names.update(record_unrecognised_names)
+		
 		if(len(record_unidentifiable_features) > 0):
 			unidentifiable_features[seqname] = record_unidentifiable_features
 		
-		
 		if(args.overlap is not None):
-			target_features = features.pop(args.annotation[0])
+			target_features = features.pop(args.annotation[0]) if args.annotation[0] in features.keys() else []
 			context_features = features
 			
 			ntf = len(target_features)
@@ -482,9 +506,11 @@ if __name__ == "__main__":
 			if(nf > 0):
 				for feat in features:
 					#feat = features[0]
+					#feat.extract(seq_record.seq)
 					
 					# Get new start and finish positions
 					corrected_start, corrected_finish = correct_feature_by_query(feat, stringspec, seq_record, seqname, args.search_distance, args.annotation[0])
+					#sys.stderr.write("Before: %i , %i; After: %i, %i\n" % (int(feat.location.start), int(feat.location.end), corrected_start, corrected_finish))
 					
 					if(corrected_start == feat.location.start and corrected_finish == feat.location.end):
 						continue
@@ -502,24 +528,25 @@ if __name__ == "__main__":
 	
 	if len(output_records)>0 : SeqIO.write(output_records, sys.stdout, "genbank")
 	
-	if(len(missing_annotation) > 0):
-		sys.stderr.write("\nWarning, the following sequence entries were missing one or more target annotations:\n%s\n" % (', '.join(missing_annotation)))
-	
-	if(len(missing_context) > 0):
-		sys.stderr.write("\nWarning, the following sequence entries were missing one or more context annotations:\n%s\n" % (', '.join(missing_context)))
-	
-	if(len(context_overdist) > 0):
-		sys.stderr.write("\nWarning, the following sequence entries had context annotations that were more than " + str(args.overlap_maxdist) + " bases from target:\n")
-		for seqname, cofeats in context_overdist.items():
-			sys.stderr.write(seqname + ": " + ', '.join(cofeats) + "\n")
-	
-	if(len(unidentifiable_features) > 0):
-		sys.stderr.write("\nWarning, the following sequence entries had unidentifiable annotations:\n")
-		for seqname, unidfeats in unidentifiable_features.items():
-			sys.stderr.write(seqname + ": " + ', '.join([f + " " + str(s) + "-" + str(e) for f, s, e in unidfeats]) + "\n")
-	
-	if(len(unrecognised_names) > 0):
-		sys.stderr.write("\nWarning, could not recognise some feature names:\n%s\n" % (', '.join(unrecognised_names)))
+	if(args.show_warnings):
+		if(len(missing_annotation) > 0):
+			sys.stderr.write("\nWarning, the following sequence entries were missing one or more target annotations:\n%s\n" % (', '.join(missing_annotation)))
+		
+		if(len(missing_context) > 0):
+			sys.stderr.write("\nWarning, the following sequence entries were missing one or more context annotations:\n%s\n" % (', '.join(missing_context)))
+		
+		if(len(context_overdist) > 0):
+			sys.stderr.write("\nWarning, the following sequence entries had context annotations that were more than " + str(args.overlap_maxdist) + " bases from target:\n")
+			for seqname, cofeats in context_overdist.items():
+				sys.stderr.write(seqname + ": " + ', '.join(cofeats) + "\n")
+		
+		if(len(unidentifiable_features) > 0):
+			sys.stderr.write("\nWarning, the following sequence entries had unidentifiable annotations:\n")
+			for seqname, unidfeats in unidentifiable_features.items():
+				sys.stderr.write(seqname + ": " + ', '.join([f + " " + str(s) + "-" + str(e) for f, s, e in unidfeats]) + "\n")
+		
+		if(len(unrecognised_names) > 0):
+			sys.stderr.write("\nWarning, could not recognise some feature names:\n%s\n" % (', '.join(unrecognised_names)))
 	
 	
 	
