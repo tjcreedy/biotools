@@ -455,7 +455,7 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00295.gb', '-a', 'COX1', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC/AAA,*,LC', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/BIOD00622.gb', '-a', 'ATP6', '-f', 'N,TAG/TAA/TA,1,F', '-d', '15'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/SPSO00185.gb', '-y', 'gene'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00017.gb', '-y', 'gene'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-a', 'ND6', '-s', 'N,ATT/ATA/ATC/TTG/TTT,*,FC', '-d', '6', '-t', '5'])
 	
 	args = parser.parse_args()
@@ -523,7 +523,7 @@ if __name__ == "__main__":
 			sys.exit("Error: no --annotation or --overlap should be supplied to --syncronise")
 		if(args.syncronise not in ['gene', 'CDS', 'tRNA']):
 			sys.exit("Erorr: value passed to --syncronise should be gene, CDS or tRNA")
-		sys.stdout.write("Running position syncronisation on %s annotations" % (args.syncronise))
+		sys.stdout.write("Running position syncronisation on %s annotations\n" % (args.syncronise))
 	else:
 		sys.exit("Error: please supply a value to --overlap, to --startstring and/or --endstring, or to --syncronise")
 	
