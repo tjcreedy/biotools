@@ -21,15 +21,13 @@ with warnings.catch_warnings():
 
 # Global variables
 
-parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified context annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. --overlap can be set to any integer: positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation, the context annotation (never changed) is given to --context. For --overlap, only one argument each to --annotation and --context is allowed, however multiple possible context annotations can be supplied in a comma-separated list, noting that each will be applied independently so suppling multiple annotations within --overlap_maxdist that are intended to affect the same end of the --annotation may cause idiosyncratic results \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. The sequence will be searched for within +/- --search_distance positions (default 10). In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence or list of sequences (separated by /), the codon position of the first base (N only, use * to allow any position), and a code denoting how to select which match to use if multiple matches (F, FC, C, LC, L or N). For example \"-e N,ATT,1,F\". If F is chosen, the first match will be selected starting at the position --search_distance positions before the current position and moving downstream. If FC is chosen, the first match will be selected starting at the current position and moving upstream. If C is chosen, the first match will be selected starting at the current position and moving upstream and downstream simultaneously - ties will result in no position being selected. If LC is chosen, the first match will be selected starting at the current position and moving downstream. If L is selected, the first match will be selected starting at --search_distance positions after the current position and moving upstream. Finally, if N is given, no match will be selected and the sequence output unchanged. Note: use * to represent a stop codon in AA sequences; codon position 1 is in the reading frame of the existing annotation\nSYNCRONISE\nChange the location of annotations of the type supplied to --syncronise to match the locations of any other annotations with the same name")
+parser = argparse.ArgumentParser(description = "Tool for autocorrecting the annotations in a genbank file. \nOVERLAP\nUse this option to shorten or lengthen each instance of a specified annotation according to a specified overlap with a specified 'context' annotation on a per-sequence basis. For example, ensuring that the end of annotation A is always overlapping with annotation B by 1 base. Arguments to --overlap should consist of two values, separated by a comma: the name of the annotation to overlap with, and an integer denoting the overlap desired. Positive integers imply overlap by this number of bases, a value of 0 implies exactly consecutive annotations, and negative integers imply that there are always this number of bases between the annotations. The annotation to edit is given to --annotation. Only one argument to --annotation is allowed, however multiple possible context annotations can be supplied with multiple uses of --overlap. Note that each will be applied independently so suppling multiple annotations within --overlap_maxdist that are intended to affect the same end of the --annotation may cause idiosyncratic results \nSTART/END STRING\nUse one or both of these options to shorten or lengthen each instance of a specified annotation to start or finish with a specified nucleotide or amino acid sequence. The sequence will be searched for within +/- --search_distance positions (default 10). In a comma-separated string to --startstring or --finishstring, specify the sequence type (A: Amino acid or N: Nucleotide), the sequence or list of sequences (separated by /), the codon position of the first base (N only, use * to allow any position), and a code denoting how to select which match to use if multiple matches (F, FC, C, LC, L or N). For example \"-e N,ATT,1,F\". If F is chosen, the first match will be selected starting at the position --search_distance positions before the current position and moving downstream. If FC is chosen, the first match will be selected starting at the current position and moving upstream. If C is chosen, the first match will be selected starting at the current position and moving upstream and downstream simultaneously - ties will result in no position being selected. If LC is chosen, the first match will be selected starting at the current position and moving downstream. If L is selected, the first match will be selected starting at --search_distance positions after the current position and moving upstream. Finally, if N is given, no match will be selected and the sequence output unchanged. Note: use * to represent a stop codon in AA sequences; codon position 1 is in the reading frame of the existing annotation\nSYNCRONISE\nChange the location of annotations of the type supplied to --syncronise to match the locations of any other annotations with the same name")
 
 
 parser.add_argument("-i", "--input", help = "a genbank file containing one or more entries to correct", type = str, metavar = "GENBANK", required = True)
 
-parser.add_argument("-a", "--annotation", help = "the name(s) of the annotations to autocorrect", type = str, metavar = "ANNOT", nargs = '*')
-parser.add_argument("-c", "--context", help = "the name(s) of annotations to give context to autocorrection", type = str, metavar = "CONTEXT", narg = "*")
-
-parser.add_argument("-o", "--overlap", help = "the number of bases of overlap to use for correction of --annotation", type = int, metavar = "N")
+parser.add_argument("-a", "--annotation", help = "the name(s) of the annotations to autocorrect", type = str, metavar = "ANNOT", action = 'append')
+parser.add_argument("-o", "--overlap", help = "the context annotation and number of bases of overlap to use for correction of --annotation", type = str, metavar = "XXX,N", action = 'append')
 parser.add_argument("-m", "--overlap_maxdist", help = "threshold maximum existing spacing/overlap of context/target annotations for overlap (default 50)", type = int, metavar = "N", default = 50)
 
 parser.add_argument("-s", "--startstring", help = "specification of the sequence that --annotation should start with", type = str, metavar = "X,XXX,N,X")
@@ -144,14 +142,12 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 	for name, feats in context_features.items():
 		locations = [feat.location for feat in feats]
 		if(not all(locations[0] == loc for loc in locations)):
-			err = "Warning, positions of " + str(len(locations)) + " annotations for " + name + " in " + seqname + " do not match, this entry will not be modified:\n"
+			err = "Warning, positions of " + str(len(locations)) + " annotations for " + name + " in " + seqname + " do not match. If these are multiple distinct loci, this should be fine, but if these should cover the same locus, you may get incorrect results.\n"
 			for i, feat in enumerate(feats):
 				err += "\t(" + str(i+1) + ") " + feat.type +" is located at bases " + str(int(feat.location.start)+1) + " to " + str(int(feat.location.end)) + "\n"
 			sys.stderr.write(err)
-			return(context_overdist)
 	
 	# Work through combinations of target and context features
-	# TODO: throw errors if annotation or context missing
 	
 	for target in target_features:
 		#target = target_features[0]
@@ -163,7 +159,6 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			
 			#tpos, cpos,overlap = [[1,6],[3,4],-1]
 			
-			
 			# Set orientation (+ve, context follows target)
 			orientation = 0
 			# Set current distance between selected positions
@@ -171,12 +166,11 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			# Set the index of the target position to change
 			target_tpos_i = None
 			
-			
 			# Find the structure of the overlap
 			if(min(cpos)-min(tpos) == max(tpos)-max(cpos)):
 				# Current positions are completely even, can't figure it out!
 				print("error")
-				#continue
+				continue
 			elif(min(tpos) < min(cpos)):
 				# Target is before context, overlap should be latter position of target and first position of context
 				orientation = 1
@@ -190,14 +184,14 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			else:
 				# Target is completely within context, can't figure it out!
 				print("error")
-				#continue
+				continue
 			
-			if(abs(distance) > maxoverlap):
+			if(abs(distance) > maxoverlap + overlap[context_name]):
 				context_overdist.add(context_name)
-				#continue
+				continue
 			
 			# Calculate the exact new position
-			corrected_tpos = tpos[target_tpos_i] + distance + orientation * (overlap)
+			corrected_tpos = tpos[target_tpos_i] + distance + orientation * (overlap[context_name])
 			corrected_tpos
 			# Ensure the position is not outside the contig
 			corrected_tpos = 0 if corrected_tpos < 0 else corrected_tpos
@@ -453,10 +447,10 @@ def end_already_correct(nuc_seq, query_seq, end, code, frame):
 if __name__ == "__main__":
 	
 	# Read in arguments
-	#cytb	finish	trnS(uga)	2	50
+	
 	#args = parser.parse_args(['-a', "ATP6", '-c', 'ATP8', '-o', '7', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/SPSO00168.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "CYTB", '-c', 'TRNS(UGA)', '-o', '2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-m', '50'])
-	#args = parser.parse_args(['-a', "NAD6", '-c', 'TRNT(UGA),TRNP(UGG)', '-o', '2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/GBDL01298.gb', '-m', '50'])
+	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,-20', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD5", '-c', 'TRNH(GUG)', '-o', '0', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00409.gb', '-m', '50'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00295.gb', '-a', 'COX1', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC/AAA,*,LC', '-t', '5'])
@@ -469,20 +463,26 @@ if __name__ == "__main__":
 	# Check arguments
 	
 	stringspec = dict()
-	
+	overlap = {}
 	if(args.overlap is not None):
 		if(len(args.annotation) != 1):
 			sys.exit("Error: please supply one and only one annotation name to --annotation if using --overlap")
-		if(len(args.context) != 1):
-			sys.exit("Error: please supply one or a comma-separated list of context annotation names to --context if using --overlap")
 		if(args.startstring or args.finishstring):
 			sys.exit("Error: --startstring or --finishstring not compatible with --overlap. Run consecutive iterations to perform both options")
-		sys.stderr.write("Running overlap autocorrection for %s based on %s\n" % (args.annotation[0], ", ".join(args.context)))
+		sys.stderr.write("Running overlap autocorrection for %s based on:\n"  % (args.annotation[0]))
+		for overlapstring in args.overlap:
+			#overlapstring = args.overlap[0]
+			overlap_list = overlapstring.split(",")
+			err = "Error: overlap string " + overlapstring
+			if(len(overlap_list) != 2):
+				sys.exit(err + " does not contain exactly two comma-separated elements")
+			elif(not str_is_int(overlap_list[1])):
+				sys.exit(err + " does not have an integer as the second item")
+			sys.stderr.write("\toverlap of %s bp with %s\n" % tuple(reversed(overlap_list)))
+			overlap[overlap_list[0]] = int(overlap_list[1])
 	elif(args.startstring is not None or args.finishstring is not None):
 		if(args.annotation is None or len(args.annotation) != 1):
 			sys.exit("Error: please supply one and only one annotation name to --annotation if using --*string")
-		if(args.context is not None):
-			sys.exit("Error: no context annotation(s) are used in --*string")
 		
 		sys.stderr.write("Running string searching for %s using:\n" % (args.annotation[0]))
 		for end, searchstring in zip(['start','finish'], [args.startstring, args.finishstring]):
@@ -518,10 +518,9 @@ if __name__ == "__main__":
 			
 			stringspec[end] = search
 		
-		args.context = []
 	elif(args.syncronise is not None):
-		if(args.annotation is not None or args.context is not None):
-			sys.exit("Error: no --annotation or --context should be supplied to --syncronise")
+		if(args.annotation is not None or args.overlap is not None):
+			sys.exit("Error: no --annotation or --overlap should be supplied to --syncronise")
 		if(args.syncronise not in ['gene', 'CDS', 'tRNA']):
 			sys.exit("Erorr: value passed to --syncronise should be gene, CDS or tRNA")
 		sys.stdout.write("Running position syncronisation on %s annotations" % (args.syncronise))
@@ -545,13 +544,12 @@ if __name__ == "__main__":
 				err = err + " --annotation"
 				sys.exit(err)
 		
-		if(args.context is not None):
-			args.context = args.context.split(",")
-			if all(c.upper() in namevariants for c in args.context):
-				args.context = [namevariants[c.upper()] for c in args.context]
+		if(overlap is not None):
+			if all(c.upper() in namevariants for c in overlap.keys()):
+				overlap = { namevariants[c.upper()]:o for c,o in overlap.items() }
 			else:
 				#die with error
-				err = err + " --context"
+				err = err + " --overlap"
 				sys.exit(err)
 	
 	
@@ -571,7 +569,7 @@ if __name__ == "__main__":
 		
 		# Get features and parse errors
 		feature_names = args.annotation
-		feature_names += args.context if args.context is not None else []
+		feature_names += overlap.keys() if overlap is not None else []
 		
 		features, record_unrecognised_names, record_unidentifiable_features = get_features_from_names(seq_record, feature_names, namevariants)
 		unrecognised_names.update(record_unrecognised_names)
@@ -586,7 +584,7 @@ if __name__ == "__main__":
 			ntf = len(target_features)
 			ncf = sum([len(cfl) for gene, cfl in context_features.items()])
 			if(ntf > 0 and ncf > 0):
-				record_context_overdist = correct_positions_by_overlap(target_features, context_features, args.overlap, args.overlap_maxdist, len(seq_record.seq), seqname)
+				record_context_overdist = correct_positions_by_overlap(target_features, context_features, overlap, args.overlap_maxdist, len(seq_record.seq), seqname)
 				if(len(record_context_overdist) > 0):
 					context_overdist[seqname] = record_context_overdist
 			else:
