@@ -306,14 +306,14 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 					if(loc_dist.count(min(loc_dist)) == 1):
 						location = locations[loc_dist.index(min(loc_dist))]
 					else:
-						sys.stderr.write(errstart + "has multiple closest matches of " + errend)
+						sys.stderr.write(errstart + " has multiple closest matches of " + errend)
 						location = None
 				elif(selector == "FC"):
 					locations = [l for l in locations if l < distance]
 					if(len(locations) > 0):
 						location = locations[-1]
 					else:
-						sys.stderr.write(errstart + "has no first closest matches of " + errend)
+						sys.stderr.write(errstart + " has no first closest matches of " + errend)
 						location = None
 				elif(selector == "LC"):
 					locations = [l for l in locations if l > distance]
