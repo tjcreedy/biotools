@@ -29,12 +29,19 @@ if __name__ == "__main__":
 	# Read nucleotides
 	nuc_records = SeqIO.parse(sys.stdin, "fasta")
 	
-	
 	# Translate nucleotides
 	aa_records = list()
 	for nuc_rec in nuc_records:
 		aa_rec = nuc_rec
-		aa_rec.seq = nuc_rec.seq[(args.reading_frame-1):].translate(table = args.table)
+		new_seq = nuc_rec.seq[(args.reading_frame-1):]
+		remainder = len(nuc_rec.seq) % 3
+		if(remainder != 0):
+			add = 'N'
+			if(nuc_rec.seq[-remainder:] in ['T', 'TA']):
+				add = 'A'
+			new_seq = nuc_rec.seq + add*(3-remainder)
+		
+		aa_rec.seq = new_seq.translate(table = args.table)
 		aa_records.append(aa_rec)
 	
 	# Write amino acids
