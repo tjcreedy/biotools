@@ -251,7 +251,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		
 		# Generate sequence for searching
 		subject_sequence, subject_start = extract_subject_region(seq_record, feat, end, code, distance)
-				
+		
 		# Find locations of query
 		results = dict()
 		for q in query.split("/"):
@@ -309,14 +309,14 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 						sys.stderr.write(errstart + " has multiple closest matches of " + errend)
 						location = None
 				elif(selector == "FC"):
-					locations = [l for l in locations if l < distance]
+					locations = [l for l in locations if l <= distance]
 					if(len(locations) > 0):
 						location = locations[-1]
 					else:
 						sys.stderr.write(errstart + " has no first closest matches of " + errend)
 						location = None
 				elif(selector == "LC"):
-					locations = [l for l in locations if l > distance]
+					locations = [l for l in locations if l >= distance]
 					if(len(locations) > 0):
 						location = locations[0]
 					else:
@@ -379,9 +379,11 @@ def extract_subject_region(seqrecord, feat, end, code, distance):
 	#seqrecord = seq_record
 	
 	# Find the centre point and distances for the subject region
+	featend = "featstart"
 	central_position = feat.location.start
 	distances = (distance, distance + 1)
 	if((end == "start" and feat.location.strand == -1) or (end == "finish" and feat.location.strand == 1)):
+		featend = "featfinish"
 		central_position = feat.location.end
 		distances = (distance + 1, distance)
 	
@@ -399,15 +401,25 @@ def extract_subject_region(seqrecord, feat, end, code, distance):
 			# Correct distances to ensure in-frame translation for out-of-frame trailing bases and for strand direction
 			distances = (distances[0] + (-1 * feat.location.strand * modifier), distances[1] + (feat.location.strand * modifier))
 	
-	# Delimit the region and create feature
+	# Delimit the region
 	end_positions = (central_position - distances[0], central_position + distances[1])
+	
+	# Truncate the region if it exceeds the contig
 	start_position = 0 if end_positions[0] < 0 else end_positions[0]
 	finish_position = len(seqrecord) if end_positions[1] > len(seqrecord) else end_positions[1]
+	
+	# Truncate the region if it exceeds the other end of the annotation
+	if(featend == "featstart"):
+		finish_position = feat.location.end if finish_position > feat.location.end else finish_position
+	else:
+		start_position = feat.location.start if start_position < feat.location.start else start_position
+	
+	# Generate the feature	
 	subject_feat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(start_position, finish_position), strand = feat.location.strand)
 
 	# Extract the sequence
 	sequence = subject_feat.extract(seqrecord.seq)
-	correction = [start_position - end_positions[0], finish_position - end_positions[1]]
+	correction = [start_position - end_positions[0], end_positions[1] - finish_position]
 	correction = correction[::-1] if feat.location.strand == -1 else correction
 	sequence = correction[0] * "N" + sequence + correction[1] * "N"
 	
@@ -451,10 +463,11 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-a', "ATP6", '-c', 'ATP8', '-o', '7', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/SPSO00168.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "CYTB", '-c', 'TRNS(UGA)', '-o', '2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,-20', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-m', '50'])
-	#args = parser.parse_args(['-a', "NAD5", '-c', 'TRNH(GUG)', '-o', '0', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00409.gb', '-m', '50'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-a', 'ND5', '-s', 'A,M,F', '-f', 'N,TAG,1,C', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00295.gb', '-a', 'COX1', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC/AAA,*,LC', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/BIOD00622.gb', '-a', 'ATP6', '-f', 'N,TAG/TAA/TA,1,F', '-d', '15'])
+	#args = parser.parse_args(['-a', "NAD", '-c', 'TRNH(GUG)', '-o', '0', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00409.gb', '-m', '50'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD00456.gb', '-a', 'ND1', '-s', 'N,TTG/ATG/ATT,*,FC', '-d', '18', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00094.gb', '-a', 'NAD1', '-f', 'N,TAA/TAG,1,F', '-d', '220', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/BIOD00622.gb', '-a', 'ATP6', '-f', 'N,TAG/TAA/TA,1,F', '-d', '15', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00010.gb', '-a', 'NAD4', '-s', 'N,ATG/ATA,1,F', '-d', '6', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00017.gb', '-y', 'gene'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-a', 'ND6', '-s', 'N,ATT/ATA/ATC/TTG/TTT,*,FC', '-d', '6', '-t', '5'])
 	
@@ -608,6 +621,7 @@ if __name__ == "__main__":
 					
 					# Get new start and finish positions
 					corrected_start, corrected_finish = correct_feature_by_query(feat, stringspec, seq_record, seqname, args.search_distance, args.annotation[0])
+					
 					#sys.stderr.write("Before: %i , %i; After: %i, %i\n" % (int(feat.location.start), int(feat.location.end), corrected_start, corrected_finish))
 					
 					if(corrected_start == feat.location.start and corrected_finish == feat.location.end):
