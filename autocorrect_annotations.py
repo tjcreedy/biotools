@@ -253,6 +253,20 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				results = {i:l for i, l in results.items() if is_inframe(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, args.translation_table)}
 		
 		
+		# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
+		if(end == "finish"):
+			# Find the distance to the finish of the contig from the current position (strand-dependent)
+			finish_distance = feat.location.start if feat.location.strand == -1 else len(seq_record) - feat.location.end
+			
+			# Remove partial stops if annotation likely truncated
+			if(finish_distance < distance):
+				results = {i:l for i,l in results.items() if l > 2}
+			
+			# If no results remain, set result to be the end of the contig
+			if(len(results) < 1):
+				results = {str(subject_sequence).find('N')-1 : 1}
+		
+		
 		# Parse location results
 		errend = query  + " at the " + end + " of " + featurename + "\n"
 		
@@ -370,6 +384,7 @@ def extract_subject_region(seqrecord, feat, end, code, distance):
 		central_position = feat.location.end
 		distances = (distance + 1, distance)
 	
+	# Convert for amino acids
 	if(code == 'A'):
 		# Multiply by 3
 		distances = tuple(3*d for d in distances)
