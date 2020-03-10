@@ -197,34 +197,6 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			corrected_tpos = 0 if corrected_tpos < 0 else corrected_tpos
 			corrected_tpos = seqlength if corrected_tpos > seqlength else corrected_tpos
 			
-			
-			
-			
-			# Find all distances from the context start/end to the target start/end
-#			distance = list()
-#			for t in [0,1]:
-#				for c in [0,1]:
-#					distance.append(cpos[c]-tpos[t])
-#			abs_distance = [abs(d) for d in distance]
-#			
-#			# Find the meeting positions, extract the indices of the current distance and which target end this is
-#			min_distance_i = abs_distance.index(min(abs_distance))
-#			target_tpos_i = int(min_distance_i/2)
-			
-			# Warn and skip this context annotation if 
-#			if(abs_distance[min_distance_i] > maxoverlap):
-#				context_overdist.add(context_name)
-#				#sys.stderr.write("Warning, context annotation %s in %s is more than %s bases from target, this annotation will be ignored\n" % (context_name, seqname, str(maxoverlap)))
-#				continue
-#			# Find the orientation (+ve, context follows target)
-#			max_distance_i = abs_distance.index(max(abs_distance))
-#			orientation = int(distance[max_distance_i]/abs_distance[max_distance_i])
-#			
-			# Calculate the corrected position for the target end, from the current position plus the distance to an overlap of +1 plus the correctly-oriented overlap
-#			corrected_tpos = tpos[target_tpos_i] + distance[min_distance_i] + orientation * (overlap)
-#			corrected_tpos = 0 if corrected_tpos < 0 else corrected_tpos
-#			corrected_tpos = seqlength if corrected_tpos > seqlength else corrected_tpos
-#			
 			# Overwrite the relevant target end position
 			if(target_tpos_i == 0):
 				target.location = SeqFeature.FeatureLocation(corrected_tpos, target.location.end, target.location.strand)
@@ -269,26 +241,23 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				results = {i:l for i, l in results.items() if (abs(feat.location.end - feat.location.start) - distance + i - 1) % 3 + 1 == int(search[2])}
 		
 		# Retain only start locations that generate realistic amino acid sequences
+		
 		if(end == "start"):
-			remove_i = set()
-			for i, l in results.items():
-				#i, l = list(results.items())[0]
-				# Generate the potential end position for this location
-				potstart, potfinish = get_newends(feat, i, end, results, distance, code, subject_start, feat_start, feat_finish)
-				# Build the potential new feature for this location
-				potfeat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(potstart, potfinish), strand = feat.location.strand)
-				# Extract the sequence for this potential new feature
-				potseq = SeqRecord.SeqRecord(potfeat.extract(seq_record.seq))
-				# Count the stops in this sequence and remove item if greater than 1
-				if(stopcount(potseq, args.translation_table, 1) > 1):
-					remove_i.add(i)
-			if(len(remove_i) > 0):
-				results = {i:l for i, l in results.items() if i not in remove_i}
+			results = {i:l for i, l in results.items() if is_inframe(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, args.translation_table)}
+			
+			# If no feasible results at the start position, instead find the closest in-frame position to the current position and use this
+			if(len(results) == 0):
+				results = { distance-1 : 1,
+						distance   : 1,
+						distance+1 : 1 }
+				results = {i:l for i, l in results.items() if is_inframe(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, args.translation_table)}
+		
 		
 		# Parse location results
 		errend = query  + " at the " + end + " of " + featurename + "\n"
 		
 		if(len(results) > 0):
+			
 			# Select the first location by default
 			locations = sorted(results.keys())
 			location = locations[0]
@@ -323,34 +292,33 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 						sys.stderr.write(errstart + " has no last closest matches of " + errend)
 						location = None
 			
-			feat_start, feat_finish = get_newends(feat, location, end, results, distance, code, subject_start, feat_start, feat_finish)
+			feat_start, feat_finish = get_newends(location, results[location], feat.location.strand, end, distance, code, subject_start, feat_start, feat_finish)
 			
 		else:
+			
 			sys.stderr.write(errstart + " has no matches of " + errend)
 	
 	return(feat_start, feat_finish)
 
-def get_newends(feat, location, end, results, distance, code, subject_start, feat_start, feat_finish):
-	# Extract length of chosen match
-	length = results[location] if location is not None else 1
-	
-	# Return to input if no match chosen
-	location = distance if location is None else location
+def get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish):
+	if location is None:
+		location = distance
+		length = 1
 	
 	# Convert location if on reverse strand
-	location = location if feat.location.strand == 1 else abs(location - (2*distance + 1))
+	location = location if strand == 1 else abs(location - (2*distance + 1))
 	
 	# Generate the new end position
 		# Correct by length of the match if at the finish end
-	change = location + feat.location.strand * length if end == "finish" else location
+	change = location + strand * length if end == "finish" else location
 		# Multiply by 3 if AA
 	change = change * 3 if code == 'A' else change
 		# Calculate
 	newend = subject_start + change
 	
 	# Apply new end to appropriate end
-	if((end == "start" and feat.location.strand == 1) or (
-			end == "finish" and feat.location.strand == -1)):
+	if((end == "start" and strand == 1) or (
+			end == "finish" and strand == -1)):
 		feat_start = newend
 	else:
 		feat_finish = newend
@@ -372,6 +340,21 @@ def stopcount(seq_record, table, frame = (1,2,3)):
 		return counts
 	else:
 		return counts[0]
+
+def is_inframe(location, length, strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, table):
+	
+	# Generate the potential end position for this location
+	potstart, potfinish = get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish)
+	
+	# Build the potential new feature for this location
+	potfeat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(potstart, potfinish), strand = strand)
+	
+	# Extract the sequence for this potential new feature
+	potseq = SeqRecord.SeqRecord(potfeat.extract(seq_record.seq))
+	
+	# Count the stops in this sequence and return true if less than or equal to 1
+	return(stopcount(potseq, table, 1) <= 1)
+
 
 
 def extract_subject_region(seqrecord, feat, end, code, distance):
