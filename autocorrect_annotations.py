@@ -208,7 +208,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 	#query_spec, distance, featurename = [stringspec, args.search_distance, args.annotation[0]]
 	
 	feat_start, feat_finish = feat.location.start, feat.location.end
-	errstart = "Warning: sequence " + seqname
+	errstart = "Warning: sequence " + seqname + " has "
 	
 	for end, search in query_spec.items():
 		#end, search = next(iter(query_spec.items()))
@@ -216,6 +216,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		# Unpack search tuple
 		code, query, out_rf, selector = search if len(search) == 4 else search + tuple("X")
 		selector = out_rf if code == 'A' else selector
+		
 		
 		# Check if already ends with the searched sequence - REMOVED AS EXISTING SEQUENCE MAY BE SHORTER SUBSET OF DESIRED SEQUENCE e.g. TA TAA
 		#if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf)):
@@ -232,6 +233,20 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				# If the current hit location exists and is longer than the current hit, do not change, else add current hit length
 				results[i] = results[i] if i in results.keys() and len(q) < results[i] else len(q)
 		
+		# Remove results if selector is N, FC or LC
+		errmid = ""
+		if(len(results) == 0):
+			errmid = "no matches of "
+		if(selector == "N" and len(results) > 1):
+			errmid = "multiple matches of "
+			results = {}
+		if(selector == "FC"):
+			results = {i:l for i, l in results.items() if i <= distance}
+			errmid = "no first closest matches of "
+		elif(selector == "LC"):
+			results = {i:l for i, l in results.items() if i >= distance}
+			errmid = "no last closest matches of "
+		
 		# Retain only locations in the specified reading frame
 		if(code == 'N' and out_rf != "*" and len(results) > 0):
 			if(end == "start"):
@@ -239,85 +254,88 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
 			else:
 				results = {i:l for i, l in results.items() if (abs(feat.location.end - feat.location.start) - distance + i - 1) % 3 + 1 == int(search[2])}
+			errmid = "no matches in the specified frame of " if len(results) == 0 else errmid
 		
-		# Retain only start locations that generate realistic amino acid sequences
+		truncated = False
+		codon_start = 1 if end == "start" else None
 		
 		if(end == "start"):
+			
+			# First check if truncated
+			start_distance = len(seq_record) - feat.location.end if feat.location.strand == -1 else feat.location.start
+			truncated = start_distance < distance
+			
+			# Retain only start locations that generate realistic amino acid sequences
 			results = {i:l for i, l in results.items() if is_inframe(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, args.translation_table)}
 			
-			# If no feasible results at the start position, instead find the closest in-frame position to the current position and use this
+			# If no feasible results at the start position, instead find the closest in-frame position 
 			if(len(results) == 0):
-				results = { distance-1 : 1,
-						distance   : 1,
-						distance+1 : 1 }
+				errmid = "no ORF-producing matches (will set to closest ORF) of "
+				
+				# Set the current position - if normal, this is the current start position, if truncated, this is the end of the contig
+				contig_start = list(find_all(str(subject_sequence), 'N'))[-1] + 1 
+				current_position = contig_start if truncated else distance
+				
+				# Set the correction - if normal, this is 0, if truncated, this is 1, to ensure no results outside the contig
+				correction = 1 if truncated else 0
+				
+				# Set up the three alternative results
+				results = { current_position + v + correction : 1 for v in [-1, 0, 1] }
+				
+				# Find the result with suitable ORF
 				results = {i:l for i, l in results.items() if is_inframe(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, args.translation_table)}
-		
-		
-		# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
-		if(end == "finish"):
+				
+				# If truncated, set result to contig start but note codon position
+				if(truncated):
+					codon_start = sorted(results.keys())[0] - contig_start + 1
+					results = {contig_start : 1}
+					
+			
+		else:
+			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
+			
 			# Find the distance to the finish of the contig from the current position (strand-dependent)
 			finish_distance = feat.location.start if feat.location.strand == -1 else len(seq_record) - feat.location.end
 			
 			# Remove partial stops if annotation likely truncated
 			if(finish_distance < distance):
+				truncated = True
 				results = {i:l for i,l in results.items() if l > 2}
-			
-			# If no results remain, set result to be the end of the contig
-			if(len(results) < 1):
-				results = {str(subject_sequence).find('N')-1 : 1}
-		
+				# If no results remain, set result to be the end of the contig
+				if(len(results) == 0):
+					errmid = "no >2 matches near truncated finish (will set to contig end) of "
+					results = {str(subject_sequence).find('N') - 1 : 1}
 		
 		# Parse location results
 		errend = query  + " at the " + end + " of " + featurename + "\n"
 		
 		if(len(results) > 0):
 			
-			# Select the first location by default
+			# Select the first location by default (which also is the LC location if LC set)
 			locations = sorted(results.keys())
 			location = locations[0]
 			
 			if(len(locations) > 1):
-				if(selector == 'N'):
-					# If more than 1 locations but the user wishes none to be selected
-					sys.stderr.write(errstart + " has multiple matches of " + errend)
-					location = None
-				elif(selector == 'L'):
-					# If more than 1 locations but the user wants the last selected
+				if(selector in ['L', 'FC']):
+					# If more than 1 locations but the user wants the last or first closest selected
 					location = locations[-1]
 				elif(selector == 'C'):
 					loc_dist = [abs(distance-l) for l in locations]
 					if(loc_dist.count(min(loc_dist)) == 1):
 						location = locations[loc_dist.index(min(loc_dist))]
 					else:
-						sys.stderr.write(errstart + " has multiple closest matches of " + errend)
-						location = None
-				elif(selector == "FC"):
-					locations = [l for l in locations if l <= distance]
-					if(len(locations) > 0):
-						location = locations[-1]
-					else:
-						sys.stderr.write(errstart + " has no first closest matches of " + errend)
-						location = None
-				elif(selector == "LC"):
-					locations = [l for l in locations if l >= distance]
-					if(len(locations) > 0):
-						location = locations[0]
-					else:
-						sys.stderr.write(errstart + " has no last closest matches of " + errend)
-						location = None
+						errmid = "multiple closest matches (taking first) of "
 			
-			feat_start, feat_finish = get_newends(location, results[location], feat.location.strand, end, distance, code, subject_start, feat_start, feat_finish)
-			
+			feat_start, feat_finish = get_newends(location, results[location], feat.location.strand, end, distance, code, subject_start, feat_start, feat_finish, truncated)
 		else:
-			
-			sys.stderr.write(errstart + " has no matches of " + errend)
+			errmid = "no succesful matches of " if errmid == "" else errmid
+		
+		if(errmid != ""):
+			sys.stderr.write(errstart + errmid + errend)
 	
-	return(feat_start, feat_finish)
+	return(feat_start, feat_finish, codon_start)
 
-def get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish):
-	if location is None:
-		location = distance
-		length = 1
+def get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, truncated):
 	
 	# Convert location if on reverse strand
 	location = location if strand == 1 else abs(location - (2*distance + 1))
@@ -333,9 +351,9 @@ def get_newends(location, length, strand, end, distance, code, subject_start, fe
 	# Apply new end to appropriate end
 	if((end == "start" and strand == 1) or (
 			end == "finish" and strand == -1)):
-		feat_start = newend
+		feat_start = SeqFeature.BeforePosition(newend) if truncated else SeqFeature.ExactPosition(newend)
 	else:
-		feat_finish = newend
+		feat_finish = SeqFeature.AfterPosition(newend) if truncated else SeqFeature.ExactPosition(newend)
 	
 	return(feat_start, feat_finish)
 
@@ -356,9 +374,9 @@ def stopcount(seq_record, table, frame = (1,2,3)):
 		return counts[0]
 
 def is_inframe(location, length, strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, table):
-	
+	#location, length, strand, table = [19, results[20], feat.location.strand, args.translation_table]
 	# Generate the potential end position for this location
-	potstart, potfinish = get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish)
+	potstart, potfinish = get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, False)
 	
 	# Build the potential new feature for this location
 	potfeat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(potstart, potfinish), strand = strand)
@@ -462,7 +480,7 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-a', "CYTB", '-c', 'TRNS(UGA)', '-o', '2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,-20', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD", '-c', 'TRNH(GUG)', '-o', '0', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00409.gb', '-m', '50'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD00456.gb', '-a', 'ND1', '-s', 'N,TTG/ATG/ATT,*,FC', '-d', '18', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00054.gb', '-a', 'ND2', '-s', 'N,ATA/ATG/ATC/TTG/ATT,*,LC', '-d', '20', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00094.gb', '-a', 'NAD1', '-f', 'N,TAA/TAG,1,F', '-d', '220', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/BIOD00622.gb', '-a', 'ATP6', '-f', 'N,TAG/TAA/TA,1,F', '-d', '15', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00010.gb', '-a', 'NAD4', '-s', 'N,ATG/ATA,1,F', '-d', '6', '-t', '5'])
@@ -618,7 +636,7 @@ if __name__ == "__main__":
 					#feat.extract(seq_record.seq)
 					
 					# Get new start and finish positions
-					corrected_start, corrected_finish = correct_feature_by_query(feat, stringspec, seq_record, seqname, args.search_distance, args.annotation[0])
+					corrected_start, corrected_finish, codon_start = correct_feature_by_query(feat, stringspec, seq_record, seqname, args.search_distance, args.annotation[0])
 					
 					#sys.stderr.write("Before: %i , %i; After: %i, %i\n" % (int(feat.location.start), int(feat.location.end), corrected_start, corrected_finish))
 					
@@ -626,6 +644,8 @@ if __name__ == "__main__":
 						continue
 					else:
 						feat.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, feat.location.strand)
+						if(codon_start is not None):
+							feat.qualifiers['codon_start'] = codon_start
 			else:
 				#err = "Warning, sequence " + seqname + " has no " + args.annotation[0] + " annotation(s)\n"
 				#sys.stderr.write(err)
