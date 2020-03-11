@@ -217,7 +217,6 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		code, query, out_rf, selector = search if len(search) == 4 else search + tuple("X")
 		selector = out_rf if code == 'A' else selector
 		
-		
 		# Check if already ends with the searched sequence - REMOVED AS EXISTING SEQUENCE MAY BE SHORTER SUBSET OF DESIRED SEQUENCE e.g. TA TAA
 		#if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf)):
 		#	continue
@@ -273,7 +272,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				errmid = "no ORF-producing matches (will set to closest ORF) of "
 				
 				# Set the current position - if normal, this is the current start position, if truncated, this is the end of the contig
-				contig_start = list(find_all(str(subject_sequence), 'N'))[-1] + 1 
+				contig_start = list(find_all(str(subject_sequence), 'N'))[-1] + 1 if truncated else None
 				current_position = contig_start if truncated else distance
 				
 				# Set the correction - if normal, this is 0, if truncated, this is 1, to ensure no results outside the contig
@@ -286,10 +285,10 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				results = {i:l for i, l in results.items() if is_inframe(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, args.translation_table)}
 				
 				# If truncated, set result to contig start but note codon position
-				if(truncated):
-					codon_start = sorted(results.keys())[0] - contig_start + 1
-					results = {contig_start : 1}
-					
+				if(len(results) > 0 and truncated):
+						codon_start = sorted(results.keys())[0] - contig_start + 1
+						results = {contig_start : 1}
+				
 			
 		else:
 			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
@@ -480,7 +479,8 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-a', "CYTB", '-c', 'TRNS(UGA)', '-o', '2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,-20', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD", '-c', 'TRNH(GUG)', '-o', '0', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00409.gb', '-m', '50'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00054.gb', '-a', 'ND2', '-s', 'N,ATA/ATG/ATC/TTG/ATT,*,LC', '-d', '20', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/QINL005.gb', '-a', 'ND5', '-s', 'N,ATT/ATA/ATG/ATC,1,L', '-d', '3', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/BIOD00550.gb', '-a', 'ND2', '-s', 'N,ATA/ATG/ATC/TTG/ATT,*,LC', '-d', '20', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00094.gb', '-a', 'NAD1', '-f', 'N,TAA/TAG,1,F', '-d', '220', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/BIOD00622.gb', '-a', 'ATP6', '-f', 'N,TAG/TAA/TA,1,F', '-d', '15', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00010.gb', '-a', 'NAD4', '-s', 'N,ATG/ATA,1,F', '-d', '6', '-t', '5'])
