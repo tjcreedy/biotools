@@ -49,7 +49,7 @@ if __name__ == "__main__":
 	for aaa_rec, nuc_rec in zip(aaa_records, nuc_records):
 		#nuc_rec, aaa_rec = list(zip(aaa_records, nuc_records))[0]
 		
-		sys.stderr.write("Comparing AA %s %s with NT %s %s\n" % (aaa_rec.id, aaa_rec.seq, nuc_rec.id, nuc_rec.seq))
+		#sys.stderr.write("Comparing AA %s %s with NT %s %s\n" % (aaa_rec.id, aaa_rec.seq, nuc_rec.id, nuc_rec.seq))
 		
 		n += 1
 		
