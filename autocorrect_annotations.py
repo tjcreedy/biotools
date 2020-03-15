@@ -134,7 +134,7 @@ def syncronise_features(features, synctype, seqname):
 			feat.location = other_feats[0].location
 
 def correct_positions_by_overlap(target_features, context_features, overlap, maxoverlap, seqlength, seqname):
-	#overlap, maxoverlap, seqlength = [args.overlap, args.overlap_maxdist, len(seq_record.seq)]
+	#maxoverlap, seqlength = [args.overlap_maxdist, len(seq_record.seq)]
 	
 	context_overdist = set()
 	
@@ -157,7 +157,14 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			context = context_features[context_name][0]
 			cpos = [int(context.location.start), int(context.location.end)]
 			
-			#tpos, cpos,overlap = [[1,6],[3,4],-1]
+			# Find gap between context and target
+			gap = [min(cpos)-max(tpos), min(tpos)-max(cpos)]
+			gap = [g for g in gap if g > 0]
+			
+			# Check gap is permissible
+			if(len(gap) > 0 and gap[0] > maxoverlap + overlap[context_name]):
+				context_overdist.add(context_name)
+				continue
 			
 			# Set orientation (+ve, context follows target)
 			orientation = 0
@@ -166,33 +173,29 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			# Set the index of the target position to change
 			target_tpos_i = None
 			
+			
+			# Find cross-wise distances
+			crossdist = [max(cpos) - min(tpos), min(cpos) - max(tpos)]
+			
 			# Find the structure of the overlap
-			if(min(cpos)-min(tpos) == max(tpos)-max(cpos)):
-				# Current positions are completely even, can't figure it out!
-				print("error")
+			if(abs(crossdist[0]) == abs(crossdist[1])):
+				sys.stderr.write("Warning: orientation of " + context_name + " and " + "target annotations completely match, cannot perform overlap correction\n")
 				continue
-			elif(min(tpos) < min(cpos)):
+			elif(abs(crossdist[1]) < abs(crossdist[0])):
 				# Target is before context, overlap should be latter position of target and first position of context
 				orientation = 1
-				distance = min(cpos)-max(tpos)
+				distance = crossdist[1]
 				target_tpos_i = tpos.index(max(tpos))
-			elif(max(tpos) > max(cpos)):
+			else:
 				# Target is after context, overlap should be first position of target and latter position of context
 				orientation = -1
-				distance = max(cpos)-min(tpos)
+				distance = crossdist[0]
 				target_tpos_i = tpos.index(min(tpos))
-			else:
-				# Target is completely within context, can't figure it out!
-				print("error")
-				continue
-			
-			if(abs(distance) > maxoverlap + overlap[context_name]):
-				context_overdist.add(context_name)
-				continue
 			
 			# Calculate the exact new position
 			corrected_tpos = tpos[target_tpos_i] + distance + orientation * (overlap[context_name])
 			corrected_tpos
+			
 			# Ensure the position is not outside the contig
 			corrected_tpos = 0 if corrected_tpos < 0 else corrected_tpos
 			corrected_tpos = seqlength if corrected_tpos > seqlength else corrected_tpos
@@ -483,6 +486,7 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-a', "CYTB", '-c', 'TRNS(UGA)', '-o', '2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,-20', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-m', '50'])
 	#args = parser.parse_args(['-a', "NAD", '-c', 'TRNH(GUG)', '-o', '0', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00409.gb', '-m', '50'])
+	#args = parser.parse_args(['-a', "NAD5", '-o', 'TRNF,1', '-m', '100', '-t', '5', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00471.gb'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/QINL005.gb', '-a', 'ND5', '-s', 'N,ATT/ATA/ATG/ATC,1,L', '-d', '3', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/BIOD00550.gb', '-a', 'ND2', '-s', 'N,ATA/ATG/ATC/TTG/ATT,*,LC', '-d', '20', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00094.gb', '-a', 'NAD1', '-f', 'N,TAA/TAG,1,F', '-d', '220', '-t', '5'])
@@ -490,6 +494,7 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00010.gb', '-a', 'NAD4', '-s', 'N,ATG/ATA,1,F', '-d', '6', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00017.gb', '-y', 'gene'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-a', 'ND6', '-s', 'N,ATT/ATA/ATC/TTG/TTT,*,FC', '-d', '6', '-t', '5'])
+	
 	
 	args = parser.parse_args()
 	
