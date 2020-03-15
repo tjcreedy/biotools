@@ -291,6 +291,10 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				
 			
 		else:
+			# Prioritise longer matches by removing any matches shorter than the longest match
+			max_length = max(results.values())
+			results = {i:l for i, l in results.items() if l == max_length}
+			
 			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
 			
 			# Find the distance to the finish of the contig from the current position (strand-dependent)
