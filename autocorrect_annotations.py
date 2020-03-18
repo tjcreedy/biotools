@@ -194,11 +194,14 @@ def correct_positions_by_overlap(target_features, context_features, overlap, max
 			
 			# Calculate the exact new position
 			corrected_tpos = tpos[target_tpos_i] + distance + orientation * (overlap[context_name])
-			corrected_tpos
 			
 			# Ensure the position is not outside the contig
 			corrected_tpos = 0 if corrected_tpos < 0 else corrected_tpos
 			corrected_tpos = seqlength if corrected_tpos > seqlength else corrected_tpos
+			
+			# Check that the orientation hasn't been flipped
+			if((target_tpos_i == 0 and corrected_tpos >= int(target.location.end)) or (target_tpos_i == 1 and corrected_tpos <= int(target.location.end))):
+				continue
 			
 			# Overwrite the relevant target end position
 			if(target_tpos_i == 0):
@@ -295,8 +298,10 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 			
 		else:
 			# Prioritise longer matches by removing any matches shorter than the longest match
-			max_length = max(results.values())
-			results = {i:l for i, l in results.items() if l == max_length}
+			if(len(results) > 0):
+				max_length = max(results.values())
+				results = {i:l for i, l in results.items() if l == max_length}
+			
 			
 			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
 			
@@ -494,6 +499,13 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00010.gb', '-a', 'NAD4', '-s', 'N,ATG/ATA,1,F', '-d', '6', '-t', '5'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00017.gb', '-y', 'gene'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-a', 'ND6', '-s', 'N,ATT/ATA/ATC/TTG/TTT,*,FC', '-d', '6', '-t', '5'])
+	
+	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNM,3', '-o', 'TRNI,-18', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01170.gb', '-m', '50', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01170.gb', '-a', 'NAD2', '-s', 'N,ATA/ATG/ATC/TTG/ATT,*,LC', '-d', '20', '-t', '5'])
+	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01170.gb', '-m', '50', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01170.gb', '-a', 'NAD2', '-f', 'N,TAA/TA,1,F, '-d', '21', '-t', '5'])
+	
+	
 	
 	
 	args = parser.parse_args()
