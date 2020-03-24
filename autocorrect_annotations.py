@@ -7,6 +7,7 @@
 
 import sys
 import argparse
+import copy
 #import os
 #import re
 
@@ -222,7 +223,7 @@ if __name__ == "__main__":
 						elif(args.match_alignment):
 							
 							# set the current feature to the correct place according to the alignment
-							currfeat = autocorrect_modules.correct_feature_by_alignment(feat, stringspec, alignment_distances[seqname]))
+							currfeat = autocorrect_modules.correct_feature_by_alignment(feat, stringspec, alignment_distances[seqname])
 							
 						
 						# Run string searching based adjustments
