@@ -163,7 +163,7 @@ if __name__ == "__main__":
 			continue
 		
 		# Get features and parse errors
-		feature_names = args.annotation
+		feature_names = [args.annotation]
 		feature_names += overlap.keys() if overlap is not None else []
 		
 		features, record_unrecognised_names, record_unidentifiable_features = autocorrect_modules.get_features_from_names(seq_record, feature_names, namevariants)
