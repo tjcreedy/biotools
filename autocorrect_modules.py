@@ -489,8 +489,10 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 			sys.stderr.write(errstart + errmid + errend)
 	
 	outfeat = copy.deepcopy(feat)
-	outfeat.location = SeqFeature.FeatureLocation(feat_start, feat_finish, feat.location.strand)
-	
+	if(feat_start < feat_finish):
+		outfeat.location = SeqFeature.FeatureLocation(feat_start, feat_finish, feat.location.strand)
+	else:
+		codon_start = None
 	return(outfeat, codon_start)
 
 def get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, truncated):

@@ -37,8 +37,6 @@ parser.add_argument("-t", "--translation_table", help = "the amino acid translat
 
 parser.add_argument("-y", "--syncronise", help = "the type of annotation to syncronise", type = str, metavar = "TYPE")
 
-parser.add_argument("-c", "--correct_truncated", help = "ensure annotations truncated by the end of a contig are correctly marked as partial", action = "store_true", default = False)
-
 parser.add_argument("-m", "--match_alignment", help = "an alignment to match to when searching for a start or finish string", type = str, metavar = "ALIGN")
 parser.add_argument("-e", "--force_alignment_frame", help = "force alignment matching to be guided by the supplied reading frame of the alignment", type = int, metavar = "N", choices = [1,2,3])
 parser.add_argument("-w", "--show_warnings", help = "print warnings about missing or unidentifiable annotations, or annotation names that can't be recognised", action = 'store_true')
@@ -92,7 +90,7 @@ if __name__ == "__main__":
 			sys.exit("Error: --syncronise is not compatible with --startstring, --finishstring, --annotation, --overlap or --match_alignment")
 		
 		if(args.syncronise not in ['gene', 'CDS', 'tRNA']):
-			sys.exit("Erorr: value passed to --syncronise should be gene, CDS or tRNA")
+			sys.exit("Error: value passed to --syncronise should be gene, CDS or tRNA")
 			sys.stdout.write("Running position syncronisation on %s annotations\n" % (args.syncronise))
 		
 	elif(args.annotation is not None):
@@ -123,7 +121,7 @@ if __name__ == "__main__":
 	# Find universal names for inputs
 	err = "Error: unrecognised locus name supplied to"
 	
-	if(args.syncronise is not None or args.correct_truncated):
+	if(args.syncronise is not None):
 		args.annotation = list(set(namevariants.values()))
 	else:
 		if(args.annotation is not None):
@@ -163,7 +161,7 @@ if __name__ == "__main__":
 			continue
 		
 		# Get features and parse errors
-		feature_names = [args.annotation]
+		feature_names = args.annotation if args.syncronise is not None else [args.annotation]
 		feature_names += overlap.keys() if overlap is not None else []
 		
 		features, record_unrecognised_names, record_unidentifiable_features = autocorrect_modules.get_features_from_names(seq_record, feature_names, namevariants)
@@ -182,7 +180,7 @@ if __name__ == "__main__":
 			
 			if(args.overlap is not None):
 				context_features = {n:f for n, f in features.items() if n in overlap.keys()}
-				autocorrect_modules.check_context_features(context_features, args.translation_table)
+				autocorrect_modules.check_context_features(context_features, seqname)
 		
 		
 		# Check if have all the features needed
