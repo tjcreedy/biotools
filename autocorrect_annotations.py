@@ -84,22 +84,18 @@ if __name__ == "__main__":
 	stringspec = dict()
 	overlap = {}
 	
-	if(args.annotation is None):
-		if(args.syncronise is None):
-			sys.exit("Error: --annotation is required")
-		elif(	args.startstring is not None or
+	if(args.syncronise is not None):
+		if(args.startstring is not None or
 			args.finishstring is not None or
 			args.overlap is not None or 
 			args.match_alignment is not None):
 			sys.exit("Error: --syncronise is not compatible with --startstring, --finishstring, --annotation, --overlap or --match_alignment")
-		else:
-			sys.exit("Error: insufficient arguments given")
 		
 		if(args.syncronise not in ['gene', 'CDS', 'tRNA']):
 			sys.exit("Erorr: value passed to --syncronise should be gene, CDS or tRNA")
 			sys.stdout.write("Running position syncronisation on %s annotations\n" % (args.syncronise))
 		
-	else:
+	elif(args.annotation is not None):
 		
 		if(args.overlap is not None and args.match_alignment is None):
 			
@@ -112,12 +108,12 @@ if __name__ == "__main__":
 			sys.stderr.write("Completed loading and parsing "+ args.match_alignment + "\n")
 			
 		else:
-			
 			sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
 		
 		if(args.startstring is not None or args.finishstring is not None):
 			stringspec = autocorrect_modules.parse_stringsearch(args.annotation, args.startstring, args.finishstring, args.translation_table, args.match_alignment is not None)
-		
+	else:
+		sys.exit("Error: insufficient arguments - are you missing --annotation?")
 	
 	
 	# Read and parse gene name variants
