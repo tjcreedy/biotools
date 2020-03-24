@@ -322,7 +322,7 @@ def correct_positions_by_overlap(target, context_features, overlap, maxoverlap, 
 	
 	return(outfeat, context_overdist)
 
-def correct_feature_by_alignment(feat, query_spec, distances):
+def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname):
 	#query_spec, distances = [stringspec, alignment_distances[seqname]]
 	
 	outfeat = copy.deepcopy(feat)
@@ -335,16 +335,25 @@ def correct_feature_by_alignment(feat, query_spec, distances):
 		if(end not in query_spec.keys() or distances[end] == 0):
 			continue
 		
+		
+		locations = [outfeat.location.start, outfeat.location.end]
+		
 		if((end == 'start' and feat.location.strand == 1) or 
 		   (end == "finish" and feat.location.strand == -1)):
 			
 			if(str_is_int(str(feat.location.start))): # Check if exact position, if not skip
-				outfeat.location = SeqFeature.FeatureLocation(outfeat.location.start + distances[end], outfeat.location.end, outfeat.location.strand)
+				locations[0] = locations[0] + distances[end]
 			
 		else:
 			
 			if(str_is_int(str(feat.location.end))):
-				outfeat.location = SeqFeature.FeatureLocation(outfeat.location.start, outfeat.location.end + distances[end], outfeat.location.strand)
+				locations[1] = locations[1] + distances[end]
+			
+		
+		if( locations[0] > locations[1] ):
+			sys.stderr.write("Warning, correction of " + featname + " in " + seqname + " by alignment failed due to generation of a flipped annotation\n")
+		else:
+			outfeat.location = SeqFeature.FeatureLocation(locations[0], locations[1], outfeat.location.strand)
 	
 	return(outfeat)
 
