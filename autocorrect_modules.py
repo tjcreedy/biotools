@@ -255,6 +255,7 @@ def correct_positions_by_overlap(target, context_features, overlap, maxoverlap, 
 	#target, maxoverlap, seqlength = [feat, args.overlap_maxdist, len(seq_record.seq)]
 	
 	context_overdist = set()
+	outfeat = copy.deepcopy(target)
 	corrected_start, corrected_finish = [target.location.start, target.location.end]
 	
 	# Work through combinations of target and context features
@@ -317,7 +318,9 @@ def correct_positions_by_overlap(target, context_features, overlap, maxoverlap, 
 		else:
 			corrected_finish = corrected_tpos
 	
-	return(corrected_start, corrected_finish, context_overdist)
+	outfeat.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, outfeat.location.strand)
+	
+	return(outfeat, context_overdist)
 
 def correct_feature_by_alignment(feat, query_spec, distances):
 	#query_spec, distances = [stringspec, alignment_distances[seqname]]
@@ -485,7 +488,10 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		if(errmid != ""):
 			sys.stderr.write(errstart + errmid + errend)
 	
-	return(feat_start, feat_finish, codon_start)
+	outfeat = copy.deepcopy(feat)
+	outfeat.location = SeqFeature.FeatureLocation(feat_start, feat_finish, feat.location.strand)
+	
+	return(outfeat, codon_start)
 
 def get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, truncated):
 	
@@ -606,7 +612,8 @@ def correct_truncated_features(feature, contiglength):
 	if(int(feature.location.end) == contiglength):
 		corrected_finish = SeqFeature.AfterPosition(corrected_finish)
 	
-	return(corrected_start, corrected_finish)
+	feature.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, feature.location.strand)
+	
 
 def end_already_correct(nuc_seq, query_seq, end, code, frame, translation_table):
 	#nuc_seq = feat.extract(seq_record.seq)
