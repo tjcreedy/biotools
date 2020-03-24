@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser(description = "")
 
 parser.add_argument("-i", "--input", help = "a genbank file containing one or more entries to correct", type = str, metavar = "GENBANK", required = True)
 
-parser.add_argument("-a", "--annotation", help = "the name(s) of the annotations to autocorrect", type = str, metavar = "ANNOT")
+parser.add_argument("-a", "--annotation", help = "the name of the annotations to autocorrect", type = str, metavar = "ANNOT")
 parser.add_argument("-o", "--overlap", help = "the context annotation and number of bases of overlap to use for correction of --annotation", type = str, metavar = "XXX,N", action = 'append')
 parser.add_argument("-x", "--maxdist", help = "threshold maximum existing spacing/overlap of context/target annotations for overlap, or ungapped positions for match_alignment (default 50)", type = int, metavar = "N", default = 50)
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-a', "ATP6", '-o', 'ATP8,7', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01796.gb', '-m', '50'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01796.gb', '-a', 'ATP6', '-s', 'N,TTG/ATG/ATA,*,C', '-d', '53', '-t', '5'])
 	
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/GBDL01179.gb', '-a', 'ATP6', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC,*', '-m', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/nlignments_2020-03-24/ATP6.fa', '-t', '5', '-e', '1', '-d', '9'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/GBDL01179.gb', '-a', 'COX3', '-o', 'ATP6,1', '-x', '50', '-s', 'N,ATG/ATA,*,C', '-d', '28', '-t', '5'])
 	
 	args = parser.parse_args()
 	
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 		
 		if(args.overlap is not None and args.match_alignment is None):
 			
-			overlap = autocorrect_modules.parse_overlap(args.overlap, args.annotation[0])
+			overlap = autocorrect_modules.parse_overlap(args.overlap, args.annotation)
 			
 		elif(args.match_alignment is not None and args.overlap is None):
 			
@@ -116,9 +116,9 @@ if __name__ == "__main__":
 			sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
 		
 		if(args.startstring is not None or args.finishstring is not None):
-			stringspec = autocorrect_modules.parse_stringsearch(args.annotation[0], args.startstring, args.finishstring, args.translation_table, args.match_alignment is not None)
+			stringspec = autocorrect_modules.parse_stringsearch(args.annotation, args.startstring, args.finishstring, args.translation_table, args.match_alignment is not None)
 		
-		
+	
 	
 	# Read and parse gene name variants
 	
@@ -179,10 +179,10 @@ if __name__ == "__main__":
 		# Assign features to categories
 		target_features, context_features = [None, None]
 		
-		if(args.syncronise is not None or args.correct_truncated):
+		if(args.syncronise is not None):
 			target_features = features
 		else:
-			target_features = {n:f for n, f in features.items() if n == args.annotation[0]}
+			target_features = {n:f for n, f in features.items() if n == args.annotation}
 			
 			if(args.overlap is not None):
 				context_features = {n:f for n, f in features.items() if n in overlap.keys()}
