@@ -211,7 +211,7 @@ if __name__ == "__main__":
 						
 						if(args.overlap is not None):
 							
-							currfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(feat, context_features, overlap, args.overlap_maxdist, len(seq_record.seq), seqname)
+							currfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(feat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
 							
 							if(len(record_context_overdist) > 0):
 								context_overdist[seqname] = record_context_overdist
@@ -280,7 +280,7 @@ if __name__ == "__main__":
 			sys.stderr.write("\nWarning, the following sequence entries were missing one or more context annotations:\n%s\n" % (', '.join(missing_context)))
 		
 		if(len(context_overdist) > 0):
-			sys.stderr.write("\nWarning, the following sequence entries had context annotations that were more than " + str(args.overlap_maxdist) + " bases from target:\n")
+			sys.stderr.write("\nWarning, the following sequence entries had context annotations that were more than " + str(args.maxdist) + " bases from target:\n")
 			for seqname, cofeats in context_overdist.items():
 				sys.stderr.write(seqname + ": " + ', '.join(cofeats) + "\n")
 		
