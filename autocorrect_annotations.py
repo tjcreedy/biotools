@@ -137,7 +137,7 @@ if __name__ == "__main__":
 	# Load in and process the alignment if doing matching
 	if(args.match_alignment):
 		alignment_distances, alignment_stddevs = autocorrect_modules.parse_alignment(args.match_alignment, args.force_alignment_frame)
-	sys.stderr.write("Completed loading and parsing "+ args.match_alignment + "\n")
+		sys.stderr.write("Completed loading and parsing "+ args.match_alignment + "\n")
 	
 	# Work through input genbank
 	
