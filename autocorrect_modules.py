@@ -328,14 +328,20 @@ def correct_feature_by_alignment(feat, query_spec, distances):
 		#end = 'start'
 		#end = 'finish'
 		
+		# Skip if not processing this end or if the end is already correct
 		if(end not in query_spec.keys() or distances[end] == 0):
 			continue
 		
 		if((end == 'start' and feat.location.strand == 1) or 
 		   (end == "finish" and feat.location.strand == -1)):
-			outfeat.location = SeqFeature.FeatureLocation(outfeat.location.start + distances[end], outfeat.location.end, outfeat.location.strand)
+			
+			if(str_is_int(str(feat.location.start))): # Check if exact position, if not skip
+				outfeat.location = SeqFeature.FeatureLocation(outfeat.location.start + distances[end], outfeat.location.end, outfeat.location.strand)
+			
 		else:
-			outfeat.location = SeqFeature.FeatureLocation(outfeat.location.start, outfeat.location.end + distances[end], outfeat.location.strand)
+			
+			if(str_is_int(str(feat.location.end))):
+				outfeat.location = SeqFeature.FeatureLocation(outfeat.location.start, outfeat.location.end + distances[end], outfeat.location.strand)
 	
 	return(outfeat)
 

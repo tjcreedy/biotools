@@ -27,7 +27,7 @@ parser.add_argument("-i", "--input", help = "a genbank file containing one or mo
 
 parser.add_argument("-a", "--annotation", help = "the name(s) of the annotations to autocorrect", type = str, metavar = "ANNOT", action = 'append')
 parser.add_argument("-o", "--overlap", help = "the context annotation and number of bases of overlap to use for correction of --annotation", type = str, metavar = "XXX,N", action = 'append')
-parser.add_argument("-x", "--overlap_maxdist", help = "threshold maximum existing spacing/overlap of context/target annotations for overlap (default 50)", type = int, metavar = "N", default = 50)
+parser.add_argument("-x", "--maxdist", help = "threshold maximum existing spacing/overlap of context/target annotations for overlap, or ungapped positions for match_alignment (default 50)", type = int, metavar = "N", default = 50)
 
 parser.add_argument("-s", "--startstring", help = "specification of the sequence that --annotation should start with", type = str, metavar = "X,XXX[,N,X]")
 parser.add_argument("-f", "--finishstring", help = "specification of the sequence that --annotation should finish with", type = str, metavar = "X,XXX[,N,X]")
@@ -74,7 +74,7 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-a', "ATP6", '-o', 'ATP8,7', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01796.gb', '-m', '50'])
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01796.gb', '-a', 'ATP6', '-s', 'N,TTG/ATG/ATA,*,C', '-d', '53', '-t', '5'])
 	
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-24_autocorrect1/BIOD00024.gb', '-a', 'COX1', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC,*', '-m', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/nlignments_2020-03-24/COX1.fa', '-t', '5', '-e', '1', '-d', '9'])
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/GBDL01179.gb', '-a', 'ATP6', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC,*', '-m', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/nlignments_2020-03-24/ATP6.fa', '-t', '5', '-e', '1', '-d', '9'])
 	
 	args = parser.parse_args()
 	
@@ -220,6 +220,11 @@ if __name__ == "__main__":
 								
 								# set the current feature to the correct place according to the alignment
 								currfeat = autocorrect_modules.correct_feature_by_alignment(feat, stringspec, alignment_distances[seqname])
+								# Check to see if any changes have been made
+								if currfeat == feat:
+									continue
+								
+								
 								# run correct_feature_by_query
 								corrected_start, corrected_finish, codon_start = autocorrect_modules.correct_feature_by_query(currfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, False)
 							else:
