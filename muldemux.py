@@ -206,7 +206,7 @@ class MultilineFormatter(argparse.HelpFormatter):
 
 # Global variables
 
-wellregex = '([A-Ha-h])([1-9]|0[1-9]|1[0-2])'
+wellregex = '([A-H])([1-9]|0[1-9]|1[0-2])'
 directregex = '(R)([12])'
 
 
@@ -229,7 +229,6 @@ parser.add_argument("-c", "--conversion", help = "path to a conversion table", t
 parser.add_argument("-a", "--arguments", help = "further arguments to pass to cutadapt, in a single quoted list", type = str, metavar = "'-v W -x Y'")
 parser.add_argument("-o", "--output", help = "path to a directory to store output files", type = str, metavar = "X", required = False, default = "./")
 parser.add_argument("-s", "--statistics", help = "path to a file to store demultiplexing statistics", type = str, metavar = "X", required = False)
-parser.add_argument("-j", "--cores", help = "the number of cores for cutadapt to run on, default 1, passed directly to cutadapt", type = int, metavar = "N", default = 1)
 parser.add_argument("-w", "--warnmissing", help = "print warnings for lines in demultiplexing tables that do not match to files", action = 'store_true')
 
 
@@ -237,7 +236,7 @@ parser.add_argument("-w", "--warnmissing", help = "print warnings for lines in d
 
 if __name__ == "__main__":
 	
-	args = parser.parse_args(['-i', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib1_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib1_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib2_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib2_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib3_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib3_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib4_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib4_R2.fastq', '-d', 'TEMP/demux.txt', '-c', 'TEMP/convert.txt', '-o', 'TEMP/out/', '-s', 'TEMP/stats.txt', '-w', '-j', '20'])
+	#args = parser.parse_args(['-i', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib1_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib1_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib2_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib2_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib3_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib3_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib4_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib4_R2.fastq', '-d', 'TEMP/demux.txt', '-c', 'TEMP/convert.txt', '-o', 'TEMP/out/', '-s', 'TEMP/stats.txt', '-w', '-j', '20'])
 	
 	args = parser.parse_args()
 	
