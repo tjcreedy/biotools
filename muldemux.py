@@ -237,7 +237,8 @@ parser.add_argument("-^", "--anchored", help = "anchor the indices to the start 
 parser.add_argument("-o", "--output", help = "path to a directory to store output files", type = str, metavar = "X", required = False, default = "./")
 parser.add_argument("-s", "--statistics", help = "path to a file to store demultiplexing statistics", type = str, metavar = "X", required = False)
 parser.add_argument("-w", "--warnmissing", help = "print warnings for lines in demultiplexing tables that do not match to files", action = 'store_true')
-
+parser.add_argument("-k", "--keeperrors", help = "don't delete files for incorrect index combinations", action = 'store_true')
+parser.add_argument("-p", "--printcutadapt", help = "print cutadapt stdout/stderr to the terminal", action = 'store_true')
 
 # Main
 
@@ -249,13 +250,19 @@ if __name__ == "__main__":
 	
 	# Sort input files
 	
+	sys.stdout.write("Checking input files...")
+	
 	data, conversion_needed, ext = parse_input_files(args.input)
+	
+	sys.stdout.write("%s file pairs parsed\n" % (str(len(data))))
 	
 	# Parse conversion table and rename files dict
 	
 	if(conversion_needed):
 		if(args.conversion):
+			sys.stdout.write("Parsing conversion table...")
 			data = parse_conversion(args.conversion, data)
+			sys.stdout.write("done\n")
 		else:
 			sys.stderr.write("Error: well numbers cannot be ascertained from file names, a conversion table is required\n")
 	else:
@@ -263,11 +270,16 @@ if __name__ == "__main__":
 			sys.stderr.write("Warning: supplied conversion table not needed\n")
 	
 	# Parse demultiplexing tables
+	sys.stdout.write("Parsing conversion table(s)...")
 	
 	data, missing_files = parse_demuxtables(args.demuxtable, data)
 	
+	sys.stdout.write("done\n")
+	
 	if(args.warnmissing):
 		sys.stderr.write("Warning: the following demultiplexing table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(missing_files) + "\n")
+	
+	
 	
 	# Set up output directory
 	
@@ -277,7 +289,11 @@ if __name__ == "__main__":
 	
 	# Loop through input file pairs
 	
+	
+	
 	for well, specs in data.items():
+		sys.stdout.write("Running cutadapt on well %s ..." % (well))
+		
 		#well, specs = list(data.items())[0]
 		
 		# Generate and run cutadapt command
@@ -296,6 +312,13 @@ if __name__ == "__main__":
 		
 		cutstderr = cutcmd.stderr.decode("utf-8")
 		cutstdout = cutcmd.stdout.decode("utf-8")
+		
+		sys.stdout.write("done\n")
+		
+		if(args.printcutadapt):
+			sys.stdout.write(cutstdout)
+			sys.stderr.write(cutstderr)
+		
 	
 	
 	# Set up writing to statistics file
@@ -307,6 +330,9 @@ if __name__ == "__main__":
 	
 	for well, specs in data.items():
 		#well,specs = list(data.items())[0]
+		
+		sys.stdout.write("Processing cutadapt outputs %s for well %s..." % ("and generating statistics" if args.statistics else "", well))
+		
 		# Find all indices
 		forindex, revindex = specs['demux']['indices']
 		
@@ -334,15 +360,16 @@ if __name__ == "__main__":
 					for file, d in zip(files, ['R1', 'R2']):
 						os.rename(file, os.path.join(args.output, name + '_' + d + fileformat))
 				else:
-					for file in files: os.remove(file)
+					if(not args.keeperrors):
+						for file in files: os.remove(file)
 				
 				# Output the statistics if reporting is on
 				
 				if(args.statistics):
 					stats_write.writerow([well, specs['name'], f, r, nseqs, name if name else ''])
-				
+		sys.stdout.write("done\n")
 	
-	stats.close()
+	if args.statistics : stats.close()
 	
 	
 	exit()
