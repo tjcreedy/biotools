@@ -307,8 +307,6 @@ if __name__ == "__main__":
 		cutargs.extend([o for a, d in zip(['-g', '-G'], specs['demux']['indices']) for i in d for o in [a, i + eq + i]])
 		cutargs.extend(specs['files'])
 		
-		' '.join(cutargs)
-		
 		cutcmd = subprocess.run(cutargs, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
 		
 		cutstderr = cutcmd.stderr.decode("utf-8")
@@ -317,6 +315,7 @@ if __name__ == "__main__":
 		sys.stdout.write("done\n")
 		
 		if(args.printcutadapt):
+			sys.stdout.write("Cutadapt command: %s \n" % (' '.join(cutargs)))
 			sys.stdout.write(cutstdout)
 			sys.stderr.write(cutstderr)
 		
