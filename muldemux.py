@@ -130,7 +130,7 @@ def parse_conversion(path, datadict):
 				if(len(namematches) > 1):
 					sys.exit("Error: found multiple" + e + ":\n\t" + "\n\t".join(namematches) + "\n")
 				elif(len(namematches) == 0):
-					sys.stderr.write("Warning: found no" + "\n")
+					sys.stderr.write("Warning: found no" + e + "\n")
 					continue
 				
 				[name] = namematches
@@ -254,7 +254,7 @@ if __name__ == "__main__":
 	sys.stdout.write("Checking input files...")
 	
 	data, conversion_needed, ext = parse_input_files(args.input)
-	fileformat = "fasta" if re.match('a$|a\.', ext) else "fastq"
+	ffmt = "fasta" if re.match('a$|a\.', ext) else "fastq"
 	
 	sys.stdout.write("%s file pairs parsed\n" % (str(len(data))))
 	
@@ -294,7 +294,7 @@ if __name__ == "__main__":
 	
 	
 	for well, specs in data.items():
-		sys.stdout.write("Running cutadapt on well %s ..." % (well))
+		sys.stdout.write("Running cutadapt on well %s..." % (well))
 		
 		#well, specs = list(data.items())[0]
 		
@@ -303,7 +303,7 @@ if __name__ == "__main__":
 		cutargs = ['cutadapt']
 		if(args.arguments): cutargs.extend(re.split(' +', args.arguments))
 		
-		cutargs.extend([o for a, d in zip(['-o', '-p'],['R1', 'R2']) for o in [a, os.path.join(args.output + '/{name1}-{name2}_' + d + fileformat)]])
+		cutargs.extend([o for a, d in zip(['-o', '-p'],['R1', 'R2']) for o in [a, os.path.join(args.output, well + '_{name1}-{name2}_' + d + '.' + ffmt)]])
 		eq = '=^' if args.anchored else '='
 		cutargs.extend([o for a, d in zip(['-g', '-G'], specs['demux']['indices']) for i in d for o in [a, i + eq + i]])
 		cutargs.extend(specs['files'])
@@ -352,13 +352,13 @@ if __name__ == "__main__":
 				
 				# Find the files for this combination
 				
-				files = [os.path.join(args.output, f + '-' + r + '_' + d + fileformat) for d in ['R1', 'R2']]
-				nseqs = len(list(SeqIO.parse(files[0], fileformat))) if args.statistics else None
+				files = [os.path.join(args.output, well + '_' + f + '-' + r + '_' + d + '.' + ffmt) for d in ['R1', 'R2']]
+				nseqs = len(list(SeqIO.parse(files[0], ffmt))) if args.statistics else None
 				
 				# Rename the files if they are a target, otherwise delete them
 				if(name):
 					for file, d in zip(files, ['R1', 'R2']):
-						os.rename(file, os.path.join(args.output, name + '_' + d + fileformat))
+						os.rename(file, os.path.join(args.output, name + '_' + d + '.' + ffmt))
 				else:
 					if(not args.keeperrors):
 						for file in files: os.remove(file)
