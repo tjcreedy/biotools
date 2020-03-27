@@ -9,7 +9,6 @@ import sys
 import argparse
 import csv
 
-#import copy
 import os
 import re
 import subprocess
@@ -66,13 +65,18 @@ def parse_input_files(inputfiles):
 	data = {}
 	conversion_needed = False
 	ext = None
-	
+	warned = False
 	for path in inputfiles:
 		#path = inputfiles[0]
 		
 		# Extract file name parts
 		file = os.path.basename(path)
-		name, ext = os.path.splitext(file)
+		name = file
+		if('.' in file):
+			name, ext = file.split('.', 1)
+		elif(not warned):
+			sys.stderr.write("Warning: file " + file + " has no detectable file extension: uncompressed fastq will be assumed but this may cause errors. This warning will not be repeated\n")
+			warned = "True"
 		
 		# Parse salient details from name
 		well, direction = [find_regex_in_str(name, wellregex), find_regex_in_str(name, directregex)]
@@ -80,9 +84,9 @@ def parse_input_files(inputfiles):
 		# Check salient details
 		ident = None
 		if(direction == "ambiguous"):
-			sys.exit("Error: found multiple possible R1 or R2 in " + path + "\n")
+			sys.exit("Error: found multiple possible R1 or R2 in file" + path + "\n")
 		elif(direction == "none"):
-			sys.exit("Error: could not find R1 or R2 in " + path + "\n")
+			sys.exit("Error: could not find R1 or R2 in file " + path + "\n")
 		else:
 			ident, suffix, d = direction
 		
@@ -214,7 +218,9 @@ directregex = '(R)([12])'
 
 parser = argparse.ArgumentParser(description= """description:
                                                  |n
-                                                 Apply cutadapt paired-end trimming to a set of paired files, applying indices from a supplied table to demultiplex the files. The paired files should be supplied to --input, and pairs will be identified based on file names containing '_R1' and '_R2' denoting forward and reverse reads respectively. Indices are read from one or more demultiplexing tables supplied to --demuxtable arguments, which must be a three-column tab-separated text file each line of which contains an output name, the forward index, and the reverse index.  Indices will be matched to input read files based on well numbers. Thus, input files and output names must contain well numbers in the format 'A1' or 'A01' and must be preceded by - or _ and/or be followed by - or _ and/or be at the end of the name. Where input files do not contain well numbers, a conversion table must be supplied to --conversion in a two-column tab-separated format, where each line gives a suitably unique name for the input file followed by a well number. 
+                                                 Apply cutadapt paired-end trimming to a set of paired files, applying indices from a supplied table to demultiplex the files. The paired files should be supplied to --input, and pairs will be identified based on file names containing '_R1' and '_R2' denoting forward and reverse reads respectively. Files may be fasta or fastq, and may be compressed in any way that cutadapt accepts. In order to accurately generate output file names, input names should not contain '.' symbol apart from denoting file types, e.g. 'filename.fa', 'filename.fastq.gz' are permitted, 'file.name.fasta' will cause unexpected and possibly clashing output file names, as the '.name.' section will be lost.
+									|n
+									Indices are read from one or more demultiplexing tables supplied to --demuxtable arguments, which must be a three-column tab-separated text file each line of which contains an output name, the forward index, and the reverse index.  Indices will be matched to input read files based on well numbers. Thus, input files and output names must contain well numbers in the format 'A1' or 'A01' and must be preceded by - or _ and/or be followed by - or _ and/or be at the end of the name. Where input files do not contain well numbers, a conversion table must be supplied to --conversion in a two-column tab-separated format, where each line gives a suitably unique name for the input file followed by a well number. 
                                                  |n
                                                  The basic cutadapt command used is 'cutadapt -cores N -g O1=INDEX -G O2=INDEX [ -g O2=INDEX2 -G O2=INDEX2 ] -o IN_R1 -p IN_R2 OUT_R1 OUT_R2'. The number of cores for cutadapt to run on will be passed directly from the --cores arugment. Further arguments can be supplied to cutadapt using --arguments '-v W -x Y'. These will be passed to cutadapt unchecked.
                                                  |n
@@ -223,10 +229,11 @@ parser = argparse.ArgumentParser(description= """description:
 
 parser._optionals.title = "arguments"
 
-parser.add_argument("-i", "--input", help = "paths to two or more fastx files to demultiplex, required. These may be compressed", type = str, metavar = "IN_R1 IN_R2", required = True, nargs ='+', action=required_multiple(2))
+parser.add_argument("-i", "--input", help = "paths to two or more fastx files to demultiplex, required. These may be compressed.", type = str, metavar = "IN_R1 IN_R2", required = True, nargs ='+', action=required_multiple(2))
 parser.add_argument("-d", "--demuxtable", help = "path to a demultiplexing table, required", type = str, metavar = "X", action='append', required=True)
 parser.add_argument("-c", "--conversion", help = "path to a conversion table", type = str, metavar = "X", required=False)
 parser.add_argument("-a", "--arguments", help = "further arguments to pass to cutadapt, in a single quoted list", type = str, metavar = "'-v W -x Y'")
+parser.add_argument("-^", "--anchored", help = "anchor the indices to the start of the reads", action = 'store_true')
 parser.add_argument("-o", "--output", help = "path to a directory to store output files", type = str, metavar = "X", required = False, default = "./")
 parser.add_argument("-s", "--statistics", help = "path to a file to store demultiplexing statistics", type = str, metavar = "X", required = False)
 parser.add_argument("-w", "--warnmissing", help = "print warnings for lines in demultiplexing tables that do not match to files", action = 'store_true')
@@ -279,7 +286,8 @@ if __name__ == "__main__":
 		if(args.arguments): cutargs.extend(re.split(' +', args.arguments))
 		
 		cutargs.extend([o for a, d in zip(['-o ', '-p '],['R1', 'R2']) for o in [a, os.path.join(args.output + '/{name1}-{name2}_' + d + ext)]])
-		cutargs.extend([o for a, d in zip(['-g', '-G'], specs['demux']['indices']) for i in d for o in [a, i + '=^' + i]])
+		eq = '=^' if args.anchored else '='
+		cutargs.extend([o for a, d in zip(['-g', '-G'], specs['demux']['indices']) for i in d for o in [a, i + eq + i]])
 		cutargs.extend(specs['files'])
 		
 		' '.join(cutargs)
@@ -318,13 +326,13 @@ if __name__ == "__main__":
 				# Find the files for this combination
 				
 				files = [os.path.join(args.output, f + '-' + r + '_' + d + ext) for d in ['R1', 'R2']]
-				fileformat = "fasta" if ext[-1] in ['a', 'A'] else "fastq"
+				fileformat = "fasta" if re.match('a$|a\.', ext) else "fastq"
 				nseqs = len(list(SeqIO.parse(files[0], fileformat))) if args.statistics else None
 				
 				# Rename the files if they are a target, otherwise delete them
 				if(name):
 					for file, d in zip(files, ['R1', 'R2']):
-						os.rename(file, os.path.join(args.output, name + '_' + d + ext))
+						os.rename(file, os.path.join(args.output, name + '_' + d + fileformat))
 				else:
 					for file in files: os.remove(file)
 				
