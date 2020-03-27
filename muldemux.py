@@ -154,7 +154,8 @@ def parse_conversion(path, datadict):
 def parse_demuxtables(demuxtables, datadict):
 	#demuxtables, datadict = [args.demuxtable, data]
 	
-	missing_names = []
+	missing_demux_names = []
+	no_well_demux = []
 	namelist = []
 	
 	for table in demuxtables:
@@ -197,9 +198,15 @@ def parse_demuxtables(demuxtables, datadict):
 						datadict[well]['demux']['indices'][i].add(x)
 					
 				else:
-					missing_names.append(outname)
+					missing_demux_names.append(outname)
 	
-	return(datadict, missing_names)
+	for well, specs in datadict.items():
+		if 'demux' not in specs.keys():
+			no_well_demux.append(well + ": " + specs['name'])
+			del datadict[well]
+	
+	
+	return(datadict, missing_demux_names, no_well_demux)
 
 # Class definitions
 
@@ -241,7 +248,7 @@ parser.add_argument("-a", "--arguments", help = "further arguments to pass to cu
 parser.add_argument("-^", "--anchored", help = "anchor the indices to the start of the reads", action = 'store_true')
 parser.add_argument("-o", "--output", help = "path to a directory to store output files", type = str, metavar = "X", required = False, default = "./")
 parser.add_argument("-s", "--statistics", help = "path to a file to store demultiplexing statistics", type = str, metavar = "X", required = False)
-parser.add_argument("-m", "--warnmissing", help = "print warnings for lines in demultiplexing/conversion tables that do not match to files", action = 'store_true')
+parser.add_argument("-v", "--verbose", help = "print details of of found/missing names when parsing file list, demux tables and/or conversion table", action = 'store_true')
 parser.add_argument("-k", "--keeperrors", help = "don't delete files for incorrect index combinations", action = 'store_true')
 parser.add_argument("-p", "--printcutadapt", help = "print cutadapt stdout/stderr to the terminal", action = 'store_true')
 
@@ -260,7 +267,12 @@ if __name__ == "__main__":
 	data, conversion_needed, ext = parse_input_files(args.input)
 	ffmt = "fasta" if re.match('a$|a\.', ext) else "fastq"
 	
-	sys.stdout.write("%s file pairs parsed\n" % (str(len(data))))
+	sys.stdout.write("%s file pairs parsed" % (len(data)))
+	if(args.verbose):
+		sys.stdout.write(":\n\t%s\n" % ("\n\t".join(data.keys())))
+	else:
+		sys.stdout.write("\n")
+	
 	
 	# Parse conversion table and rename files dict
 	
@@ -270,34 +282,33 @@ if __name__ == "__main__":
 			data, convert_missing_names = parse_conversion(args.conversion, data)
 			sys.stdout.write("done\n")
 			
-			if(args.warnmissing and len(convert_missing_names) > 0):
-				sys.stderr.write("Warning: the following conversion table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(convert_missing_names) + "\n")
+			if(args.verbose and len(convert_missing_names) > 0):
+				sys.stdout.write("The following conversion table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(convert_missing_names) + "\n")
 		else:
-			sys.stderr.write("Error: well numbers cannot be ascertained from file names, a conversion table is required\n")
+			sys.exit("Error: well numbers cannot be ascertained from file names, a conversion table is required\n")
 	else:
 		if(args.conversion):
 			sys.stderr.write("Warning: supplied conversion table not needed\n")
 	
 	
-	
-	
 	# Parse demultiplexing tables
 	sys.stdout.write("Parsing conversion table(s)...")
 	
-	data, demux_missing_names = parse_demuxtables(args.demuxtable, data)
+	data, demux_missing_names, well_missing_demux = parse_demuxtables(args.demuxtable, data)
 	
 	sys.stdout.write("done\n")
 	
-	if(args.warnmissing and len(demux_missing_names) > 0):
-		sys.stderr.write("Warning: the following demultiplexing table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(demux_missing_names) + "\n")
+	if(args.verbose):
+		if(len(demux_missing_names) > 0):
+			sys.stdout.write("The following demultiplexing table(s) entries did not match to any supplied file pairs:\n\t" + "\n\t".join(demux_missing_names) + "\n")
+		if(len(well_missing_demux) > 0):
+			sys.stdout.write("The following file pairs had no entries in the demultiplexing table(s) and their associated files will not be processed:\n\t" + "\n\t".join(demux_missing_names) + "\n")
 	
-	
-	
+		
 	# Set up output directory
 	
 	if not os.path.exists(args.output):
 		os.makedirs(args.output)
-	
 	
 	
 	
@@ -309,7 +320,7 @@ if __name__ == "__main__":
 	# Loop through input file pairs
 	
 	for well, specs in data.items():
-		sys.stdout.write("Running cutadapt on well %s..." % (well))
+		sys.stdout.write("Running cutadapt on file pair %s: %s..." % (well, specs['name']))
 		
 		#well, specs = list(data.items())[0]
 		
