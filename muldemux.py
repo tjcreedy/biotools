@@ -254,6 +254,7 @@ if __name__ == "__main__":
 	sys.stdout.write("Checking input files...")
 	
 	data, conversion_needed, ext = parse_input_files(args.input)
+	fileformat = "fasta" if re.match('a$|a\.', ext) else "fastq"
 	
 	sys.stdout.write("%s file pairs parsed\n" % (str(len(data))))
 	
@@ -302,7 +303,7 @@ if __name__ == "__main__":
 		cutargs = ['cutadapt']
 		if(args.arguments): cutargs.extend(re.split(' +', args.arguments))
 		
-		cutargs.extend([o for a, d in zip(['-o ', '-p '],['R1', 'R2']) for o in [a, os.path.join(args.output + '/{name1}-{name2}_' + d + ext)]])
+		cutargs.extend([o for a, d in zip(['-o', '-p'],['R1', 'R2']) for o in [a, os.path.join(args.output + '/{name1}-{name2}_' + d + fileformat)]])
 		eq = '=^' if args.anchored else '='
 		cutargs.extend([o for a, d in zip(['-g', '-G'], specs['demux']['indices']) for i in d for o in [a, i + eq + i]])
 		cutargs.extend(specs['files'])
@@ -351,8 +352,7 @@ if __name__ == "__main__":
 				
 				# Find the files for this combination
 				
-				files = [os.path.join(args.output, f + '-' + r + '_' + d + ext) for d in ['R1', 'R2']]
-				fileformat = "fasta" if re.match('a$|a\.', ext) else "fastq"
+				files = [os.path.join(args.output, f + '-' + r + '_' + d + fileformat) for d in ['R1', 'R2']]
 				nseqs = len(list(SeqIO.parse(files[0], fileformat))) if args.statistics else None
 				
 				# Rename the files if they are a target, otherwise delete them
