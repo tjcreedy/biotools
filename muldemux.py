@@ -74,6 +74,7 @@ def parse_input_files(inputfiles):
 		name = file
 		if('.' in file):
 			name, ext = file.split('.', 1)
+			ext = '.'+ext
 		elif(not warned):
 			sys.stderr.write("Warning: file " + file + " has no detectable file extension: uncompressed fastq will be assumed but this may cause errors. This warning will not be repeated\n")
 			warned = "True"
