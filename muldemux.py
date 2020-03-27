@@ -299,9 +299,14 @@ if __name__ == "__main__":
 		os.makedirs(args.output)
 	
 	
+	
+	
+	# Set up writing to statistics file
+	if(args.statistics):
+		stats = open(args.statistics, 'w')
+		stats_write = csv.writer(stats, delimiter = '\t', quotechar = '', quoting = csv.QUOTE_NONE, escapechar = '')
+	
 	# Loop through input file pairs
-	
-	
 	
 	for well, specs in data.items():
 		sys.stdout.write("Running cutadapt on well %s..." % (well))
@@ -323,26 +328,14 @@ if __name__ == "__main__":
 		cutstderr = cutcmd.stderr.decode("utf-8")
 		cutstdout = cutcmd.stdout.decode("utf-8")
 		
-		sys.stdout.write("done\n")
-		
+		# Write outputs
 		if(args.printcutadapt):
+			sys.stdout.write("\n")
 			sys.stdout.write("Cutadapt command: %s \n" % (' '.join(cutargs)))
 			sys.stdout.write(cutstdout)
 			sys.stderr.write(cutstderr)
 		
-	
-	
-	# Set up writing to statistics file
-	if(args.statistics):
-		stats = open(args.statistics, 'w')
-		stats_write = csv.writer(stats, delimiter = '\t', quotechar = '', quoting = csv.QUOTE_NONE, escapechar = '')
-	
-	# Work through each file pair
-	
-	for well, specs in data.items():
-		#well,specs = list(data.items())[0]
-		
-		sys.stdout.write("Processing cutadapt outputs %s for well %s..." % ("and generating statistics" if args.statistics else "", well))
+		sys.stdout.write("processing cutadapt outputs %s..." % ("and generating statistics " if args.statistics else ""))
 		
 		# Find all indices
 		forindex, revindex = specs['demux']['indices']
@@ -384,6 +377,7 @@ if __name__ == "__main__":
 				if(args.statistics):
 					stats_write.writerow([well, specs['name'], f, r, nseqs, name if name else ''])
 		sys.stdout.write("done\n")
+	
 	
 	if args.statistics : stats.close()
 	
