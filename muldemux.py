@@ -306,7 +306,7 @@ if __name__ == "__main__":
 		if(len(demux_missing_names) > 0):
 			sys.stdout.write("The following demultiplexing table(s) entries did not match to any supplied file pairs:\n\t" + "\n\t".join(demux_missing_names) + "\n")
 		if(len(well_missing_demux) > 0):
-			sys.stdout.write("The following file pairs had no entries in the demultiplexing table(s) and their associated files will not be processed:\n\t" + "\n\t".join(demux_missing_names) + "\n")
+			sys.stdout.write("The following file pairs had no entries in the demultiplexing table(s) and their associated files will not be processed:\n\t" + "\n\t".join(well_missing_demux) + "\n")
 	
 		
 	# Set up output directory
