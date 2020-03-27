@@ -66,6 +66,8 @@ def parse_input_files(inputfiles):
 	conversion_needed = False
 	ext = None
 	warned = False
+	n_wells_detected = 0
+	
 	for path in inputfiles:
 		#path = inputfiles[0]
 		
@@ -91,9 +93,10 @@ def parse_input_files(inputfiles):
 		else:
 			ident, suffix, d = direction
 		
-		if(well in ["ambiguous", "none"]):
+		if(well in ["ambiguous", "none"] or args.conversion):
 			conversion_needed = True
 		else:
+			n_wells_detected += 1
 			ident = std_well(well[1])
 		
 		# Store into dict
@@ -112,7 +115,7 @@ def parse_input_files(inputfiles):
 		if(None in subdict['files']):
 			sys.exit("Error: only one file found for " + subdict['name'] + "\n")
 	
-	return(data, conversion_needed, ext)
+	return(data, conversion_needed, ext, n_wells_detected)
 
 def parse_conversion(path, datadict):
 	#path, data = args.conversion, data
@@ -264,7 +267,7 @@ if __name__ == "__main__":
 	
 	sys.stdout.write("Checking input files...")
 	
-	data, conversion_needed, ext = parse_input_files(args.input)
+	data, conversion_needed, ext, n_wells_detected = parse_input_files(args.input, args.conversion)
 	ffmt = "fasta" if re.match('a$|a\.', ext) else "fastq"
 	
 	sys.stdout.write("%s file pairs parsed" % (len(data)))
@@ -285,7 +288,8 @@ if __name__ == "__main__":
 			if(args.verbose and len(convert_missing_names) > 0):
 				sys.stdout.write("The following conversion table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(convert_missing_names) + "\n")
 		else:
-			sys.exit("Error: well numbers cannot be ascertained from file names, a conversion table is required\n")
+			nerr = len(data)*2 - n_wells_detected
+			sys.exit("Error: well numbers cannot be ascertained from file names for " + str(nerr) + ", a conversion table is required\n")
 	else:
 		if(args.conversion):
 			sys.stderr.write("Warning: supplied conversion table not needed\n")
