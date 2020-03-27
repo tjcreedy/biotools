@@ -59,7 +59,7 @@ def find_regex_in_str(string, regex, regex_borders = ['^', '_', '-', '$']):
 		[match] = matchlist
 		return(re.sub(regexhit, '', string), ''.join(match), int(match[1]) if len(match)>1 and int(match[1]) else None)
 
-def parse_input_files(inputfiles):
+def parse_input_files(inputfiles, conversion):
 	#inputfiles = args.input
 	
 	data = {}
@@ -93,7 +93,7 @@ def parse_input_files(inputfiles):
 		else:
 			ident, suffix, d = direction
 		
-		if(well in ["ambiguous", "none"] or args.conversion):
+		if(well in ["ambiguous", "none"] or conversion is not None):
 			conversion_needed = True
 		else:
 			n_wells_detected += 1
@@ -203,9 +203,9 @@ def parse_demuxtables(demuxtables, datadict):
 				else:
 					missing_demux_names.append(outname)
 	
-	for well, specs in datadict.items():
-		if 'demux' not in specs.keys():
-			no_well_demux.append(well + ": " + specs['name'])
+	for well in list(datadict.keys()):
+		if 'demux' not in datadict[well].keys():
+			no_well_demux.append(well + ": " + datadict[well]['name'])
 			del datadict[well]
 	
 	
