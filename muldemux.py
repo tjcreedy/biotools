@@ -116,6 +116,9 @@ def parse_input_files(inputfiles):
 
 def parse_conversion(path, datadict):
 	#path, data = args.conversion, data
+	
+	missing_names = []
+	
 	with open(path, 'r') as tab_file:
 		for n, row in enumerate(csv.reader(tab_file, delimiter = '\t')):
 			n = str(n+1)
@@ -130,7 +133,7 @@ def parse_conversion(path, datadict):
 				if(len(namematches) > 1):
 					sys.exit("Error: found multiple" + e + ":\n\t" + "\n\t".join(namematches) + "\n")
 				elif(len(namematches) == 0):
-					sys.stderr.write("Warning: found no" + e + "\n")
+					missing_names.append(name)
 					continue
 				
 				[name] = namematches
@@ -145,14 +148,15 @@ def parse_conversion(path, datadict):
 		if(std_well(name) is None):
 			sys.exit("Error: no conversion was found for " + name + "\n")
 	
-	return(datadict)
+	return(datadict, missing_names)
 
 
 def parse_demuxtables(demuxtables, datadict):
 	#demuxtables, datadict = [args.demuxtable, data]
 	
-	missing_files = list()
-	namelist = list()
+	missing_names = []
+	namelist = []
+	
 	for table in demuxtables:
 		#table = demuxtables[0]
 		with open(table, 'r') as tab_file:
@@ -193,9 +197,9 @@ def parse_demuxtables(demuxtables, datadict):
 						datadict[well]['demux']['indices'][i].add(x)
 					
 				else:
-					missing_files.append(outname)
+					missing_names.append(outname)
 	
-	return(datadict, missing_files)
+	return(datadict, missing_names)
 
 # Class definitions
 
@@ -237,7 +241,7 @@ parser.add_argument("-a", "--arguments", help = "further arguments to pass to cu
 parser.add_argument("-^", "--anchored", help = "anchor the indices to the start of the reads", action = 'store_true')
 parser.add_argument("-o", "--output", help = "path to a directory to store output files", type = str, metavar = "X", required = False, default = "./")
 parser.add_argument("-s", "--statistics", help = "path to a file to store demultiplexing statistics", type = str, metavar = "X", required = False)
-parser.add_argument("-w", "--warnmissing", help = "print warnings for lines in demultiplexing tables that do not match to files", action = 'store_true')
+parser.add_argument("-m", "--warnmissing", help = "print warnings for lines in demultiplexing/conversion tables that do not match to files", action = 'store_true')
 parser.add_argument("-k", "--keeperrors", help = "don't delete files for incorrect index combinations", action = 'store_true')
 parser.add_argument("-p", "--printcutadapt", help = "print cutadapt stdout/stderr to the terminal", action = 'store_true')
 
@@ -263,23 +267,29 @@ if __name__ == "__main__":
 	if(conversion_needed):
 		if(args.conversion):
 			sys.stdout.write("Parsing conversion table...")
-			data = parse_conversion(args.conversion, data)
+			data, convert_missing_names = parse_conversion(args.conversion, data)
 			sys.stdout.write("done\n")
+			
+			if(args.warnmissing and len(convert_missing_names) > 0):
+				sys.stderr.write("Warning: the following conversion table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(convert_missing_names) + "\n")
 		else:
 			sys.stderr.write("Error: well numbers cannot be ascertained from file names, a conversion table is required\n")
 	else:
 		if(args.conversion):
 			sys.stderr.write("Warning: supplied conversion table not needed\n")
 	
+	
+	
+	
 	# Parse demultiplexing tables
 	sys.stdout.write("Parsing conversion table(s)...")
 	
-	data, missing_files = parse_demuxtables(args.demuxtable, data)
+	data, demux_missing_names = parse_demuxtables(args.demuxtable, data)
 	
 	sys.stdout.write("done\n")
 	
-	if(args.warnmissing):
-		sys.stderr.write("Warning: the following demultiplexing table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(missing_files) + "\n")
+	if(args.warnmissing and len(demux_missing_names) > 0):
+		sys.stderr.write("Warning: the following demultiplexing table entries did not match to any supplied file pairs:\n\t" + "\n\t".join(demux_missing_names) + "\n")
 	
 	
 	
@@ -353,15 +363,21 @@ if __name__ == "__main__":
 				# Find the files for this combination
 				
 				files = [os.path.join(args.output, well + '_' + f + '-' + r + '_' + d + '.' + ffmt) for d in ['R1', 'R2']]
-				nseqs = len(list(SeqIO.parse(files[0], ffmt))) if args.statistics else None
 				
-				# Rename the files if they are a target, otherwise delete them
-				if(name):
-					for file, d in zip(files, ['R1', 'R2']):
-						os.rename(file, os.path.join(args.output, name + '_' + d + '.' + ffmt))
+				nseqs = 0
+				if os.path.exists(files[0]):
+					nseqs = len(list(SeqIO.parse(files[0], ffmt)))
+				
+					# Rename the files if they are a target, otherwise delete them
+					if(name):
+						for file, d in zip(files, ['R1', 'R2']):
+							os.rename(file, os.path.join(args.output, name + '_' + d + '.' + ffmt))
+					else:
+						if(not args.keeperrors):
+							for file in files: os.remove(file)
 				else:
-					if(not args.keeperrors):
-						for file in files: os.remove(file)
+					if(name):
+						sys.stderr.write("No output file could be found for %s, either there was an error or no matches for the corresponding index pair were found by cutadapt\n" % (name))
 				
 				# Output the statistics if reporting is on
 				
