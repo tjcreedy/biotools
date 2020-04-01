@@ -76,6 +76,9 @@ if __name__ == "__main__":
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/GBDL01179.gb', '-a', 'COX3', '-o', 'ATP6,1', '-x', '50', '-s', 'N,ATG/ATA,*,C', '-d', '28', '-t', '5'])
 	
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/gbmaster/BIOD00821.gb', '-d', '9', '-e', '1', '-m', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/nt_align_reduced/ND5.fa', '-a', 'ND5', '-s', 'N,ATT/ATA/ATG/ATC,1', '-f', 'N,TAA/TA/T,1', '-d', '30', '-t', '5'])
+	#args = parser.parse_args(['-i','/home/thomas/MMGdatabase_currrun/1_gbmaster_auto/BIOD01753.gb', '-d', '9', '-e', '1', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX1.fa', '-a', 'COX1', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC/TTG,*', '-f', 'N,TAA/TA/T,1', '-d', '30', '-t', '5'])
+	
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/BIOD01646.gb', '-a', 'ND4', '-o', 'NAD4L,7', '-x', '50', '-s', 'N,ATG/ATA,*,C', '-d', '27', '-t', '5'])
 	
 	args = parser.parse_args()
 	
@@ -212,6 +215,7 @@ if __name__ == "__main__":
 						# Check if the location of this feat is identical to the prior location of the previous feat
 						if(i > 0 and feats[i].location == feats_store[i-1].location):
 							feats[i].location = feats[i-1].location
+							feats[i].qualifiers['codon_start'] = feats[i-1].qualifiers['codon_start']
 							continue
 						
 						feat = feats[i]
@@ -257,7 +261,7 @@ if __name__ == "__main__":
 							sys.stderr.write("Warning: new annotation for " + name + " in " + seqname + " is incorrectly oriented, no change made")
 						elif(corrected_start != feat.location.start or corrected_finish != feat.location.end):
 							feat.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, feat.location.strand)
-							if(codon_start is not None):
+							if(codon_start):
 								feat.qualifiers['codon_start'] = codon_start
 							
 						

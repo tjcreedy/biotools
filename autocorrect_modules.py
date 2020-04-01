@@ -363,153 +363,6 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 	
 	return(outfeat)
 
-def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, featurename, translation_table, prioritise_longer_finishes):
-	#query_spec, distance, featurename, translation_table, prioritise_longer_finishes = [stringspec, args.search_distance, name, args.translation_table, True]
-	#feat, query_spec, distance, featurename, translation_table, prioritise_longer_finishes = [currfeat, stringspec, args.search_distance, name, args.translation_table, False]
-	feat_start, feat_finish = feat.location.start, feat.location.end
-	errstart = "Warning: sequence " + seqname + " has "
-	
-	for end in ['start','finish']:
-		#end = 'start'
-		#end = 'finish'
-		
-		if(end not in query_spec.keys()):
-			continue
-		
-		# Unpack search tuple
-		code, query, out_rf, selector = query_spec[end] if len(query_spec[end]) == 4 else query_spec[end] + tuple("X")
-		selector = out_rf if code == 'A' else selector
-		
-		# Check if already ends with the searched sequence - REMOVED AS EXISTING SEQUENCE MAY BE SHORTER SUBSET OF DESIRED SEQUENCE e.g. TA TAA
-		#if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf, args.translation_table)):
-		#	continue
-		
-		# Generate sequence for searching
-		subject_sequence, subject_start = extract_subject_region(seq_record, feat, end, code, distance)
-		
-		# Find locations of query
-		results = dict()
-		for q in query.split("/"):
-			# Work through locations of hits
-			for i in list(find_all(str(subject_sequence), q)):
-				# If the current hit location exists and is longer than the current hit, do not change, else add current hit length
-				results[i] = results[i] if i in results.keys() and len(q) < results[i] else len(q)
-		
-		# Remove results if selector is N, FC or LC
-		errmid = ""
-		if(len(results) == 0):
-			errmid = "no matches of "
-		if(selector == "N" and len(results) > 1):
-			errmid = "multiple matches of "
-			results = {}
-		if(selector == "FC"):
-			results = {i:l for i, l in results.items() if i <= distance}
-			errmid = "no first closest matches of "
-		elif(selector == "LC"):
-			results = {i:l for i, l in results.items() if i >= distance}
-			errmid = "no last closest matches of "
-		
-		# Retain only locations in the specified reading frame
-		if(code == 'N' and out_rf != "*" and len(results) > 0):
-			if(end == "start"):
-				results = {i:l for i, l in results.items() if (i + distance) % 3 + 1 == int(out_rf)}
-				# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
-			else:
-				results = {i:l for i, l in results.items() if (abs(feat.location.end - feat.location.start) - distance + i - 1) % 3 + 1 == int(out_rf)}
-			errmid = "no matches in the specified frame of " if len(results) == 0 else errmid
-		
-		truncated = False
-		codon_start = 1 if end == "start" else None
-		
-		if(end == "start"):
-			
-			# First check if truncated
-			start_distance = len(seq_record) - feat.location.end if feat.location.strand == -1 else feat.location.start
-			truncated = start_distance < distance
-			
-			# Retain only start locations that generate realistic amino acid sequences
-			stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table) for i, l in results.items()]
-			results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
-			
-			# If no feasible results at the start position, instead find the closest in-frame position 
-			if(len(results) == 0):
-				errmid = "no ORF-producing matches (will set to closest ORF) of "
-				
-				# Set the current position - if normal, this is the current start position, if truncated, this is the end of the contig
-				contig_start = list(find_all(str(subject_sequence), 'N'))[-1] + 1 if truncated else None
-				current_position = contig_start if truncated else distance
-				
-				# Set the correction - if normal, this is 0, if truncated, this is 1, to ensure no results outside the contig
-				correction = 1 if truncated else 0
-				
-				# Set up the three alternative results
-				results = { current_position + v + correction : 1 for v in [-1, 0, 1] }
-				
-				# Find the result with suitable ORF
-				stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table) for i, l in results.items()]
-				results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
-				
-				# If truncated, set result to contig start but note codon position
-				if(len(results) > 0 and truncated):
-						codon_start = sorted(results.keys())[0] - contig_start + 1
-						results = {contig_start : 1}
-				
-			
-		else:
-			# Prioritise longer matches by removing any matches shorter than the longest match
-			if(len(results) > 0 and prioritise_longer_finishes):
-				max_length = max(results.values())
-				results = {i:l for i, l in results.items() if l == max_length}
-			
-			
-			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
-			
-			# Find the distance to the finish of the contig from the current position (strand-dependent)
-			finish_distance = feat.location.start if feat.location.strand == -1 else len(seq_record) - feat.location.end
-			
-			# Remove partial stops if annotation likely truncated
-			if(finish_distance < distance):
-				truncated = True
-				results = {i:l for i,l in results.items() if l > 2}
-				# If no results remain, set result to be the end of the contig
-				if(len(results) == 0):
-					errmid = "no >2 matches near truncated finish (will set to contig end) of "
-					results = {str(subject_sequence).find('N') - 1 : 1}
-		
-		# Parse location results
-		errend = query  + " at the " + end + " of " + featurename + "\n"
-		
-		if(len(results) > 0):
-			
-			# Select the first location by default (which also is the LC location if LC set)
-			locations = sorted(results.keys())
-			location = locations[0]
-			
-			if(len(locations) > 1):
-				if(selector in ['L', 'FC']):
-					# If more than 1 locations but the user wants the last or first closest selected
-					location = locations[-1]
-				elif(selector == 'C'):
-					loc_dist = [abs(distance-l) for l in locations]
-					if(loc_dist.count(min(loc_dist)) == 1):
-						location = locations[loc_dist.index(min(loc_dist))]
-					else:
-						errmid = "multiple closest matches (taking first) of "
-			
-			feat_start, feat_finish = get_newends(location, results[location], feat.location.strand, end, distance, code, subject_start, feat_start, feat_finish, truncated)
-		else:
-			errmid = "no succesful matches of " if errmid == "" else errmid
-		
-		if(errmid != ""):
-			sys.stderr.write(errstart + errmid + errend)
-	
-	outfeat = copy.deepcopy(feat)
-	if(feat_start < feat_finish):
-		outfeat.location = SeqFeature.FeatureLocation(feat_start, feat_finish, feat.location.strand)
-	else:
-		codon_start = None
-	return(outfeat, codon_start)
-
 def get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, truncated):
 	
 	# Convert location if on reverse strand
@@ -617,6 +470,156 @@ def extract_subject_region(seqrecord, feat, end, code, distance):
 	sequence = sequence.translate(table = 5) if(code == 'A') else sequence
 	
 	return(sequence, end_positions[0])
+
+def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, featurename, translation_table, prioritise_longer_finishes):
+	#feat, query_spec, distance, featurename, translation_table, prioritise_longer_finishes = [currfeat, stringspec, args.search_distance, name, args.translation_table, prioritise_long_stops]
+	feat_start, feat_finish = feat.location.start, feat.location.end
+	errstart = "Warning: sequence " + seqname + " has "
+	
+	codon_start = None
+	
+	for end in ['start','finish']:
+		#end = 'start'
+		#end = 'finish'
+		
+		if(end not in query_spec.keys()):
+			continue
+		
+		# Unpack search tuple
+		code, query, out_rf, selector = query_spec[end] if len(query_spec[end]) == 4 else query_spec[end] + tuple("X")
+		selector = out_rf if code == 'A' else selector
+		
+		# Check if already ends with the searched sequence - REMOVED AS EXISTING SEQUENCE MAY BE SHORTER SUBSET OF DESIRED SEQUENCE e.g. TA TAA
+		#if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf, args.translation_table)):
+		#	continue
+		
+		# Generate sequence for searching
+		subject_sequence, subject_start = extract_subject_region(seq_record, feat, end, code, distance)
+		
+		# Find locations of query
+		results = dict()
+		for q in query.split("/"):
+			# Work through locations of hits
+			for i in list(find_all(str(subject_sequence), q)):
+				# If the current hit location exists and is longer than the current hit, do not change, else add current hit length
+				results[i] = results[i] if i in results.keys() and len(q) < results[i] else len(q)
+		
+		# Remove results if selector is N, FC or LC
+		errmid = ""
+		if(len(results) == 0):
+			errmid = "no matches of "
+		if(selector == "N" and len(results) > 1):
+			errmid = "multiple matches of "
+			results = {}
+		if(selector == "FC"):
+			results = {i:l for i, l in results.items() if i <= distance}
+			errmid = "no first closest matches of "
+		elif(selector == "LC"):
+			results = {i:l for i, l in results.items() if i >= distance}
+			errmid = "no last closest matches of "
+		
+		# Retain only locations in the specified reading frame
+		if(code == 'N' and out_rf != "*" and len(results) > 0):
+			if(end == "start"):
+				results = {i:l for i, l in results.items() if (i + distance) % 3 + 1 == int(out_rf)}
+				# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
+			else:
+				results = {i:l for i, l in results.items() if (abs(feat.location.end - feat.location.start) - distance + i - 1) % 3 + 1 == int(out_rf)}
+			errmid = "no matches in the specified frame of " if len(results) == 0 else errmid
+		
+		truncated = False
+		
+		if(end == "start"):
+			codon_start = 1 
+			
+			# First check if truncated
+			start_distance = len(seq_record) - feat.location.end if feat.location.strand == -1 else feat.location.start
+			truncated = start_distance < distance
+			
+			# Retain only start locations that generate realistic amino acid sequences
+			stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table) for i, l in results.items()]
+			results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
+			
+			# If no feasible results at the start position, instead find the closest in-frame position 
+			if(len(results) == 0):
+				errmid = "no ORF-producing matches (will set to closest ORF) of "
+				
+				# Set the current position - if normal, this is the current start position, if truncated, this is the end of the contig
+				contig_start = list(find_all(str(subject_sequence), 'N'))[-1] + 1 if truncated else None
+				current_position = contig_start if truncated else distance
+				
+				# Set the correction - if normal, this is 0, if truncated, this is 1, to ensure no results outside the contig
+				correction = 1 if truncated else 0
+				
+				# Set up the three alternative results
+				results = { current_position + v + correction : 1 for v in [-1, 0, 1] }
+				
+				# Find the result with suitable ORF
+				stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table) for i, l in results.items()]
+				results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
+				
+				# If truncated, set result to contig start but note codon position
+				if(len(results) > 0 and truncated):
+						codon_start = sorted(results.keys())[0] - contig_start + 1
+						results = {contig_start : 1}
+				
+			
+		else:
+			# Prioritise longer matches by removing any matches shorter than the longest match
+			if(len(results) > 0 and prioritise_longer_finishes):
+				max_length = max(results.values())
+				results = {i:l for i, l in results.items() if l == max_length}
+			
+			
+			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
+			
+			# Find the distance to the finish of the contig from the current position (strand-dependent)
+			finish_distance = feat.location.start if feat.location.strand == -1 else len(seq_record) - feat.location.end
+			
+			# Remove partial stops if annotation likely truncated
+			if(finish_distance < distance):
+				truncated = True
+				results = {i:l for i,l in results.items() if l > 2}
+				# If no results remain, set result to be the end of the contig
+				if(len(results) == 0):
+					errmid = "no >2 matches near truncated finish (will set to contig end) of "
+					results = {str(subject_sequence).find('N') - 1 : 1}
+		
+		# Parse location results
+		errend = query  + " at the " + end + " of " + featurename + "\n"
+		
+		if(len(results) > 0):
+			
+			# Select the first location by default (which also is the LC location if LC set)
+			locations = sorted(results.keys())
+			location = locations[0]
+			
+			if(len(locations) > 1):
+				if(selector in ['L', 'FC']):
+					# If more than 1 locations but the user wants the last or first closest selected
+					location = locations[-1]
+				elif(selector == 'C'):
+					loc_dist = [abs(distance-l) for l in locations]
+					if(loc_dist.count(min(loc_dist)) == 1):
+						location = locations[loc_dist.index(min(loc_dist))]
+					else:
+						errmid = "multiple closest matches (taking first) of "
+			
+			feat_start, feat_finish = get_newends(location, results[location], feat.location.strand, end, distance, code, subject_start, feat_start, feat_finish, truncated)
+		else:
+			errmid = "no succesful matches of " if errmid == "" else errmid
+		
+		if(errmid != ""):
+			sys.stderr.write(errstart + errmid + errend)
+	
+	outfeat = copy.deepcopy(feat)
+	if(feat_start < feat_finish):
+		outfeat.location = SeqFeature.FeatureLocation(feat_start, feat_finish, feat.location.strand)
+	else:
+		codon_start = None
+	return(outfeat, codon_start)
+
+
 
 def correct_truncated_features(feature, contiglength):
 	#feature, contiglength = [feat, len(seq_record)]
