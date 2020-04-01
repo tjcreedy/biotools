@@ -67,7 +67,7 @@ if __name__ == "__main__":
 	args, overlap = autocorrect_modules.standardise_names(args, overlap, namevariants)
 	
 	# Work through input genbank
-	unrecognised_names, missing_annotation, 	missing_context, output_records, unidentifiable_features, context_overdist = [{}, {}, {}, [], dict(), dict()]
+	unrecognised_names, missing_annotation, 	missing_context, output_records, unidentifiable_features, context_overdist = [set(), set(), set(), [], dict(), dict()]
 	
 	
 	for seq_record in SeqIO.parse(args.input, "genbank"):
