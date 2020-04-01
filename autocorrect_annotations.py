@@ -75,6 +75,8 @@ if __name__ == "__main__":
 	
 	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/GBDL01179.gb', '-a', 'COX3', '-o', 'ATP6,1', '-x', '50', '-s', 'N,ATG/ATA,*,C', '-d', '28', '-t', '5'])
 	
+	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/gbmaster/BIOD00821.gb', '-d', '9', '-e', '1', '-m', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/nt_align_reduced/ND5.fa', '-a', 'ND5', '-s', 'N,ATT/ATA/ATG/ATC,1', '-f', 'N,TAA/TA/T,1', '-d', '30', '-t', '5'])
+	
 	args = parser.parse_args()
 	
 	# Check arguments
@@ -95,21 +97,27 @@ if __name__ == "__main__":
 		
 	elif(args.annotation is not None):
 		
-		if(args.overlap is not None and args.match_alignment is None):
+		if(args.overlap):
 			
-			overlap = autocorrect_modules.parse_overlap(args.overlap, args.annotation)
+			if(args.match_overlap):
+				overlap = autocorrect_modules.parse_overlap(args.overlap, args.annotation)
+			else:
+				sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
 			
-		elif(args.match_alignment is not None and args.overlap is None):
+		elif(args.match_alignment):
 			
 			# Load in and process the alignment if doing matching
 			alignment_distances, alignment_stddevs = autocorrect_modules.parse_alignment(args.match_alignment, args.force_alignment_frame)
 			sys.stderr.write("Completed loading and parsing "+ args.match_alignment + "\n")
 			
-		else:
-			sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
+		elif(not args.startstring and not args.finishstring):
+			
+			sys.exti("Error: insufficient arguments - are you missing at least one of --overlap, --match_alignment, --startstring and/or --finishstring?")
+		
 		
 		if(args.startstring is not None or args.finishstring is not None):
 			stringspec = autocorrect_modules.parse_stringsearch(args.annotation, args.startstring, args.finishstring, args.translation_table, args.match_alignment is not None)
+		
 	else:
 		sys.exit("Error: insufficient arguments - are you missing --annotation?")
 	
@@ -196,8 +204,17 @@ if __name__ == "__main__":
 					autocorrect_modules.syncronise_features(name, feats, args.syncronise, seqname)
 				else:
 					
-					for feat in feats:
-						#feat = feats[0]
+					feats_store = copy.deepcopy(feats)
+					
+					for i in range(0, len(feats)):
+						#i = 0
+						
+						# Check if the location of this feat is identical to the prior location of the previous feat
+						if(i > 0 and feats[i].location == feats_store[i-1].location):
+							feats[i].location = feats[i-1].location
+							continue
+						
+						feat = feats[i]
 						
 						# Set defaults
 						corrected_start, corrected_finish = [feat.location.start, feat.location.end]
@@ -217,8 +234,7 @@ if __name__ == "__main__":
 						elif(args.match_alignment):
 							
 							# set the current feature to the correct place according to the alignment
-							currfeat = autocorrect_modules.correct_feature_by_alignment(feat, stringspec, alignment_distances[seqname], name, seqname)
-							
+							currfeat = autocorrect_modules.correct_feature_by_alignment(feat, stringspec, alignment_distances[seqname], name, seqname, len(seq_record))
 						
 						# Run string searching based adjustments
 						
