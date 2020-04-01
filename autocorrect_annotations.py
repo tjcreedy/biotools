@@ -53,9 +53,9 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	
 	# Read in arguments
-	arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/BIOD00497.gb']
-	arglist.extend("-a ND3 -o TRNG,0 -o TRNR,2 -x 35 -s N,ATA/ATT/ATG,*,C -d 45 -t 5".split(' '))
-	args = parser.parse_args(arglist)
+	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/BIOD00497.gb']
+	#arglist.extend("-a ND3 -o TRNG,0 -o TRNR,2 -x 35 -s N,ATA/ATT/ATG,*,C -d 45 -t 5".split(' '))
+	#args = parser.parse_args(arglist)
 	
 	# Check arguments
 	stringspec, overlap, alignment_distances, alignment_stddevs = autocorrect_modules.check_arguments(args)
