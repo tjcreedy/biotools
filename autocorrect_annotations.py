@@ -97,20 +97,20 @@ if __name__ == "__main__":
 		
 	elif(args.annotation is not None):
 		
-		if(args.overlap):
+		if(args.overlap is not None):
 			
-			if(args.match_overlap):
+			if(args.match_overlap is not None):
 				overlap = autocorrect_modules.parse_overlap(args.overlap, args.annotation)
 			else:
 				sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
 			
-		elif(args.match_alignment):
+		elif(args.match_alignment is not None):
 			
 			# Load in and process the alignment if doing matching
 			alignment_distances, alignment_stddevs = autocorrect_modules.parse_alignment(args.match_alignment, args.force_alignment_frame)
 			sys.stderr.write("Completed loading and parsing "+ args.match_alignment + "\n")
 			
-		elif(not args.startstring and not args.finishstring):
+		elif(args.startstring is None and args.finishstring is None):
 			
 			sys.exti("Error: insufficient arguments - are you missing at least one of --overlap, --match_alignment, --startstring and/or --finishstring?")
 		
