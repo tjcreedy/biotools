@@ -50,115 +50,24 @@ parser.add_argument("-w", "--show_warnings", help = "print warnings about missin
 
 if __name__ == "__main__":
 	
-	# Read in arguments
-	
-	#args = parser.parse_args(['-a', "ATP6", '-c', 'ATP8', '-o', '7', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/SPSO00168.gb', '-m', '50'])
-	#args = parser.parse_args(['-a', "CYTB", '-c', 'TRNS(UGA)', '-o', '2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-m', '50'])
-	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,-20', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00001.gb', '-m', '50'])
-	#args = parser.parse_args(['-a', "NAD", '-c', 'TRNH(GUG)', '-o', '0', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00409.gb', '-m', '50'])
-	#args = parser.parse_args(['-a', "NAD5", '-o', 'TRNF,1', '-m', '100', '-t', '5', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00471.gb'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/QINL005.gb', '-a', 'ND5', '-s', 'N,ATT/ATA/ATG/ATC,1,L', '-d', '3', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/BIOD00550.gb', '-a', 'ND2', '-s', 'N,ATA/ATG/ATC/TTG/ATT,*,LC', '-d', '20', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00094.gb', '-a', 'NAD1', '-f', 'N,TAA/TAG,1,F', '-d', '220', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-04_2edited/BIOD00622.gb', '-a', 'ATP6', '-f', 'N,TAG/TAA/TA,1,F', '-d', '15', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00010.gb', '-a', 'NAD4', '-s', 'N,ATG/ATA,1,F', '-d', '6', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/CCCP00017.gb', '-y', 'gene'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00109.gb', '-a', 'ND6', '-s', 'N,ATT/ATA/ATC/TTG/TTT,*,FC', '-d', '6', '-t', '5'])
-	
-	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNM,3', '-o', 'TRNI,-18', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-02-12_2edited/BIOD00002.gb', '-m', '50', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01170.gb', '-a', 'NAD2', '-s', 'N,ATA/ATG/ATC/TTG/ATT,*,LC', '-d', '20', '-t', '5'])
-	#args = parser.parse_args(['-a', "NAD2", '-o', 'TRNW,2', '-o', 'TRNS,2', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01170.gb', '-m', '50', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01170.gb', '-a', 'NAD2', '-f', 'N,TAA/TA,1,F, '-d', '21', '-t', '5'])
-	
-	#args = parser.parse_args(['-a', "ATP6", '-o', 'ATP8,7', '-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01796.gb', '-m', '50'])
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testin/BIOD01796.gb', '-a', 'ATP6', '-s', 'N,TTG/ATG/ATA,*,C', '-d', '53', '-t', '5'])
-	
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/GBDL01179.gb', '-a', 'COX3', '-o', 'ATP6,1', '-x', '50', '-s', 'N,ATG/ATA,*,C', '-d', '28', '-t', '5'])
-	
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/gbmaster/BIOD00821.gb', '-d', '9', '-e', '1', '-m', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/testing/nt_align_reduced/ND5.fa', '-a', 'ND5', '-s', 'N,ATT/ATA/ATG/ATC,1', '-f', 'N,TAA/TA/T,1', '-d', '30', '-t', '5'])
-	#args = parser.parse_args(['-i','/home/thomas/MMGdatabase_currrun/1_gbmaster_auto/BIOD01753.gb', '-d', '9', '-e', '1', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX1.fa', '-a', 'COX1', '-s', 'N,ATA/ATT/ATG/ATC/ACT/ACC/TTG,*', '-f', 'N,TAA/TA/T,1', '-d', '30', '-t', '5'])
-	
-	#args = parser.parse_args(['-i','/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/BIOD01646.gb', '-a', 'ND4', '-o', 'NAD4L,7', '-x', '50', '-s', 'N,ATG/ATA,*,C', '-d', '27', '-t', '5'])
-	
 	args = parser.parse_args()
 	
+	# Read in arguments
+	arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/BIOD00497.gb']
+	arglist.extend("-a ND3 -o TRNG,0 -o TRNR,2 -x 35 -s N,ATA/ATT/ATG,*,C -d 45 -t 5".split(' '))
+	args = parser.parse_args(arglist)
+	
 	# Check arguments
-	
-	stringspec = dict()
-	overlap = {}
-	
-	if(args.syncronise is not None):
-		if(args.startstring is not None or
-			args.finishstring is not None or
-			args.overlap is not None or 
-			args.match_alignment is not None):
-			sys.exit("Error: --syncronise is not compatible with --startstring, --finishstring, --annotation, --overlap or --match_alignment")
-		
-		if(args.syncronise not in ['gene', 'CDS', 'tRNA']):
-			sys.exit("Error: value passed to --syncronise should be gene, CDS or tRNA")
-			sys.stdout.write("Running position syncronisation on %s annotations\n" % (args.syncronise))
-		
-	elif(args.annotation is not None):
-		
-		if(args.overlap is not None):
-			
-			if(args.match_alignment is None):
-				overlap = autocorrect_modules.parse_overlap(args.overlap, args.annotation)
-			else:
-				sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
-			
-		elif(args.match_alignment is not None):
-			
-			# Load in and process the alignment if doing matching
-			alignment_distances, alignment_stddevs = autocorrect_modules.parse_alignment(args.match_alignment, args.force_alignment_frame)
-			sys.stderr.write("Completed loading and parsing "+ args.match_alignment + "\n")
-			
-		elif(args.startstring is None and args.finishstring is None):
-			
-			sys.exti("Error: insufficient arguments - are you missing at least one of --overlap, --match_alignment, --startstring and/or --finishstring?")
-		
-		
-		if(args.startstring is not None or args.finishstring is not None):
-			stringspec = autocorrect_modules.parse_stringsearch(args.annotation, args.startstring, args.finishstring, args.translation_table, args.match_alignment is not None)
-		
-	else:
-		sys.exit("Error: insufficient arguments - are you missing --annotation?")
-	
+	stringspec, overlap, alignment_distances, alignment_stddevs = autocorrect_modules.check_arguments(args)
 	
 	# Read and parse gene name variants
-	
 	namevariants = autocorrect_modules.loadnamevariants()
 	
 	# Find universal names for inputs
-	err = "Error: unrecognised locus name supplied to"
-	
-	if(args.syncronise is not None):
-		args.annotation = list(set(namevariants.values()))
-	else:
-		if(args.annotation is not None):
-			if(args.annotation.upper() in namevariants):
-				args.annotation = namevariants[args.annotation.upper()]
-			else:
-				err = err + " --annotation"
-				sys.exit(err)
-		
-		if(overlap is not None):
-			if all(c.upper() in namevariants for c in overlap.keys()):
-				overlap = { namevariants[c.upper()]:o for c,o in overlap.items() }
-			else:
-				#die with error
-				err = err + " --overlap"
-				sys.exit(err)
-	
+	args, overlap = autocorrect_modules.standardise_names(args, overlap, namevariants)
 	
 	# Work through input genbank
-	
-	unrecognised_names = set()
-	missing_annotation = set()
-	missing_context = set()
-	output_records = list()
-	unidentifiable_features = dict()
-	context_overdist = dict()
+	unrecognised_names, missing_annotation, 	missing_context, output_records, unidentifiable_features, context_overdist = [{}, {}, {}, [], dict(), dict()]
 	
 	
 	for seq_record in SeqIO.parse(args.input, "genbank"):
@@ -191,7 +100,7 @@ if __name__ == "__main__":
 			
 			if(args.overlap is not None):
 				context_features = {n:f for n, f in features.items() if n in overlap.keys()}
-				autocorrect_modules.check_context_features(context_features, seqname)
+				context_features = autocorrect_modules.check_context_features(context_features, seqname)
 		
 		
 		# Check if have all the features needed
@@ -221,7 +130,6 @@ if __name__ == "__main__":
 						feat = feats[i]
 						
 						# Set defaults
-						corrected_start, corrected_finish = [feat.location.start, feat.location.end]
 						codon_start = None
 						
 						# Run positional adjustments
@@ -245,7 +153,7 @@ if __name__ == "__main__":
 						if(len(stringspec) > 0):
 							
 							# Check whether long stops should be prioritised
-							prioritise_long_stops = args.match_alignment is not None
+							prioritise_long_stops = args.match_alignment is None
 							
 							# run correct_feature_by_query
 							currfeat, codon_start = autocorrect_modules.correct_feature_by_query(currfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
@@ -255,12 +163,14 @@ if __name__ == "__main__":
 						
 						# Check output and assign
 						
-						if(corrected_start < 0 or corrected_finish > len(seq_record.seq)):
+						if(currfeat.location.start < 0 or currfeat.location.end > len(seq_record.seq)):
 							sys.stderr.write("Warning: new annotation for " + name + " in " + seqname + " exceeds contig, no change made" + "\n")
-						if(corrected_start > corrected_finish):
+						if(currfeat.location.start > currfeat.location.end):
 							sys.stderr.write("Warning: new annotation for " + name + " in " + seqname + " is incorrectly oriented, no change made")
-						elif(corrected_start != feat.location.start or corrected_finish != feat.location.end):
-							feat.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, feat.location.strand)
+						elif(currfeat.location.start != feat.location.start or 
+							 currfeat.location.end != feat.location.end or 
+							 ('codon_start' in feat.qualifiers and feat.qualifiers['codon_start'] != codon_start)):
+							feat.location = currfeat.location
 							if(codon_start):
 								feat.qualifiers['codon_start'] = codon_start
 							

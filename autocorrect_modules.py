@@ -21,6 +21,75 @@ import warnings
 with warnings.catch_warnings():
 	warnings.simplefilter('ignore', BiopythonWarning)
 
+def check_arguments(arguments):
+	stringspecdict = dict()
+	overlapset = {}
+	alignment_dists = dict()
+	alignment_sds = []
+	if(arguments.syncronise is not None):
+		if(arguments.startstring is not None or
+			arguments.finishstring is not None or
+			arguments.overlap is not None or 
+			arguments.match_alignment is not None):
+			sys.exit("Error: --syncronise is not compatible with --startstring, --finishstring, --annotation, --overlap or --match_alignment")
+		
+		if(arguments.syncronise not in ['gene', 'CDS', 'tRNA']):
+			sys.exit("Error: value passed to --syncronise should be gene, CDS or tRNA")
+			sys.stdout.write("Running position syncronisation on %s annotations\n" % (arguments.syncronise))
+		
+	elif(arguments.annotation is not None):
+		
+		if(arguments.overlap is not None):
+			
+			if(arguments.match_alignment is None):
+				overlapset = parse_overlap(arguments.overlap, arguments.annotation)
+			else:
+				sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
+			
+		elif(arguments.match_alignment is not None):
+			
+			# Load in and process the alignment if doing matching
+			alignment_dists, alignment_sds = parse_alignment(arguments.match_alignment, arguments.force_alignment_frame)
+			sys.stderr.write("Completed loading and parsing "+ arguments.match_alignment + "\n")
+			
+		elif(arguments.startstring is None and arguments.finishstring is None):
+			
+			sys.exit("Error: insufficient arguments - are you missing at least one of --overlap, --match_alignment, --startstring and/or --finishstring?")
+		
+		
+		if(arguments.startstring is not None or arguments.finishstring is not None):
+			stringspecdict = parse_stringsearch(arguments.annotation, arguments.startstring, arguments.finishstring, arguments.translation_table, arguments.match_alignment is not None)
+		
+	else:
+		sys.exit("Error: insufficient arguments - are you missing --annotation?")
+	
+	return(stringspecdict, overlapset, alignment_dists, alignment_sds)
+
+def standardise_names(arguments, overlapdict, namevariants):
+	err = "Error: unrecognised locus name supplied to"
+	
+	if(arguments.syncronise is not None):
+		arguments.annotation = list(set(namevariants.values()))
+	else:
+		if(arguments.annotation is not None):
+			if(arguments.annotation.upper() in namevariants):
+				arguments.annotation = namevariants[arguments.annotation.upper()]
+			else:
+				err = err + " --annotation"
+				sys.exit(err)
+		
+		if(overlapdict is not None):
+			if all(c.upper() in namevariants for c in overlapdict.keys()):
+				overlapdict = { namevariants[c.upper()]:o for c,o in overlapdict.items() }
+			else:
+				#die with error
+				err = err + " --overlap"
+				sys.exit(err)
+	
+	return(arguments, overlapdict)
+
+
+
 def parse_alignment(path, frame):
 	#path, frame = [args.match_alignment, args.force_alignment_frame]
 	frame = frame - 1 if frame is not None else None
@@ -252,7 +321,7 @@ def syncronise_features(name, feats, synctype, seqname):
 		feat.location = other_feats[0].location
 
 def correct_positions_by_overlap(target, context_features, overlap, maxoverlap, seqlength, seqname):
-	#target, maxoverlap, seqlength = [feat, args.overlap_maxdist, len(seq_record.seq)]
+	#target, maxoverlap, seqlength = [feat, args.maxdist, len(seq_record.seq)]
 	
 	context_overdist = set()
 	outfeat = copy.deepcopy(target)
@@ -261,62 +330,63 @@ def correct_positions_by_overlap(target, context_features, overlap, maxoverlap, 
 	# Work through combinations of target and context features
 	
 	tpos = [int(target.location.start), int(target.location.end)]
-	for context_name in context_features:
-		#context_name = list(context_features.keys())[0]
-		context = context_features[context_name][0]
-		cpos = [int(context.location.start), int(context.location.end)]
-		
-		# Find gap between context and target
-		gap = [min(cpos)-max(tpos), min(tpos)-max(cpos)]
-		gap = [g for g in gap if g > 0]
-		
-		# Check gap is permissible
-		if(len(gap) > 0 and gap[0] > maxoverlap + overlap[context_name]):
-			context_overdist.add(context_name)
-			continue
-		
-		# Set orientation (+ve, context follows target)
-		orientation = 0
-		# Set current distance between selected positions
-		distance = 0
-		# Set the index of the target position to change
-		target_tpos_i = None
-		
-		
-		# Find cross-wise distances
-		crossdist = [max(cpos) - min(tpos), min(cpos) - max(tpos)]
-		
-		# Find the structure of the overlap
-		if(abs(crossdist[0]) == abs(crossdist[1])):
-			sys.stderr.write("Warning: orientation of " + context_name + " and " + "target annotations completely match, cannot perform overlap correction\n")
-			continue
-		elif(abs(crossdist[1]) < abs(crossdist[0])):
-			# Target is before context, overlap should be latter position of target and first position of context
-			orientation = 1
-			distance = crossdist[1]
-			target_tpos_i = tpos.index(max(tpos))
-		else:
-			# Target is after context, overlap should be first position of target and latter position of context
-			orientation = -1
-			distance = crossdist[0]
-			target_tpos_i = tpos.index(min(tpos))
-		
-		# Calculate the exact new position
-		corrected_tpos = tpos[target_tpos_i] + distance + orientation * (overlap[context_name])
-		
-		# Ensure the position is not outside the contig
-		corrected_tpos = 0 if corrected_tpos < 0 else corrected_tpos
-		corrected_tpos = seqlength if corrected_tpos > seqlength else corrected_tpos
-		
-		# Check that the orientation hasn't been flipped
-		if((target_tpos_i == 0 and corrected_tpos >= int(target.location.end)) or (target_tpos_i == 1 and corrected_tpos <= int(target.location.start))):
-			continue
-		
-		# Overwrite the relevant target end position
-		if(target_tpos_i == 0):
-			corrected_start = corrected_tpos
-		else:
-			corrected_finish = corrected_tpos
+	for context_name, context_feats in context_features.items():
+		#context_name, context_feats = list(context_features.items())[0]
+		for context in context_feats:
+			#context = context_feats[1]
+			cpos = [int(context.location.start), int(context.location.end)]
+			
+			# Find gap between context and target
+			gap = [min(cpos)-max(tpos), min(tpos)-max(cpos)]
+			gap = [g for g in gap if g > 0]
+			
+			# Check gap is permissible
+			if(len(gap) > 0 and gap[0] > maxoverlap + overlap[context_name]):
+				context_overdist.add(context_name)
+				continue
+			
+			# Set orientation (+ve, context follows target)
+			orientation = 0
+			# Set current distance between selected positions
+			distance = 0
+			# Set the index of the target position to change
+			target_tpos_i = None
+			
+			
+			# Find cross-wise distances
+			crossdist = [max(cpos) - min(tpos), min(cpos) - max(tpos)]
+			
+			# Find the structure of the overlap
+			if(abs(crossdist[0]) == abs(crossdist[1])):
+				sys.stderr.write("Warning: orientation of " + context_name + " and " + "target annotations completely match, cannot perform overlap correction\n")
+				continue
+			elif(abs(crossdist[1]) < abs(crossdist[0])):
+				# Target is before context, overlap should be latter position of target and first position of context
+				orientation = 1
+				distance = crossdist[1]
+				target_tpos_i = tpos.index(max(tpos))
+			else:
+				# Target is after context, overlap should be first position of target and latter position of context
+				orientation = -1
+				distance = crossdist[0]
+				target_tpos_i = tpos.index(min(tpos))
+			
+			# Calculate the exact new position
+			corrected_tpos = tpos[target_tpos_i] + distance + orientation * (overlap[context_name])
+			
+			# Ensure the position is not outside the contig
+			corrected_tpos = 0 if corrected_tpos < 0 else corrected_tpos
+			corrected_tpos = seqlength if corrected_tpos > seqlength else corrected_tpos
+			
+			# Check that the orientation hasn't been flipped
+			if((target_tpos_i == 0 and corrected_tpos >= int(target.location.end)) or (target_tpos_i == 1 and corrected_tpos <= int(target.location.start))):
+				continue
+			
+			# Overwrite the relevant target end position
+			if(target_tpos_i == 0):
+				corrected_start = corrected_tpos
+			else:
+				corrected_finish = corrected_tpos
 	
 	outfeat.location = SeqFeature.FeatureLocation(corrected_start, corrected_finish, outfeat.location.strand)
 	
@@ -393,7 +463,7 @@ def stopcount(seq_record, table, frame = (1,2,3)):
 	# Run counting
 	with warnings.catch_warnings():
 		warnings.simplefilter('ignore', BiopythonWarning)
-		counts = [seq_record.seq[(i-1):].translate(table = table).count("*") for i in run_frame]
+		counts = [re.sub("\*+$", "", seq_record.seq[(i-1):].translate(table = table)).count("*") for i in run_frame]
 	
 	# Return string or list depending on length
 	if(len(counts) > 1):
@@ -541,8 +611,8 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 			results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
 			
 			# If no feasible results at the start position, instead find the closest in-frame position 
-			if(len(results) == 0):
-				errmid = "no ORF-producing matches (will set to closest ORF) of "
+			if(len(results) == 0 or truncated):
+				errmid = "a truncated start or no ORF-producing matches (will set to closest ORF) of "
 				
 				# Set the current position - if normal, this is the current start position, if truncated, this is the end of the contig
 				contig_start = list(find_all(str(subject_sequence), 'N'))[-1] + 1 if truncated else None
@@ -649,16 +719,29 @@ def end_already_correct(nuc_seq, query_seq, end, code, frame, translation_table)
 		return(any((end == "start" and aa_seq.startswith(q)) or
 		           (end == "finish" and aa_seq.endswith(query_seq)) for q in query_seq.split("/")))
 
-def check_context_features(context_features, seqname):
+def check_context_features(contexts_in, seqname):
+	#contexts_in = context_features
 	# Check context_features all match in positions
-	for name, feats in context_features.items():
+	contexts_out = dict()
+	
+	for name, feats in contexts_in.items():
+		#name, feats = list(context_features.items())[0]
 		locations = [feat.location for feat in feats]
 		
-		if(not all(locations[0] == loc for loc in locations)):
+		feat_uniq = [feats[0]]
+		for i in range(1, len(locations)):
+			if(locations[i] != locations[i-1]):
+				feat_uniq.append(feats[i])
+		
+		contexts_out[name] = feat_uniq
+		
+		if(len(feat_uniq) > 1):
 			
 			err = "Warning, positions of " + str(len(locations)) + " annotations for " + str(name) + " in " + str(seqname) + " do not match. If these are multiple distinct loci, this should be fine, but if these should cover the same locus, you may get incorrect results.\n"
 			
 			for i, feat in enumerate(feats):
 				err += "\t(" + str(i+1) + ") " + feat.type +" is located at bases " + str(int(feat.location.start)+1) + " to " + str(int(feat.location.end)) + "\n"
-			
+		
 			sys.stderr.write(err)
+	
+	return(contexts_out)
