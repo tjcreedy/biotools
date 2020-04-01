@@ -124,7 +124,8 @@ if __name__ == "__main__":
 						# Check if the location of this feat is identical to the prior location of the previous feat
 						if(i > 0 and feats[i].location == feats_store[i-1].location):
 							feats[i].location = feats[i-1].location
-							feats[i].qualifiers['codon_start'] = feats[i-1].qualifiers['codon_start']
+							if('codon_start' in feats[i-1].qualifiers):
+								feats[i].qualifiers['codon_start'] = feats[i-1].qualifiers['codon_start']
 							continue
 						
 						feat = feats[i]

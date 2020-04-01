@@ -455,7 +455,8 @@ def get_newends(location, length, strand, end, distance, code, subject_start, fe
 	
 	return(feat_start, feat_finish)
 
-def stopcount(seq_record, table, frame = (1,2,3)):
+def stopcount(seqr, table, frame = (1,2,3)):
+	# seqr, frame = [potseq, 1]
 	
 	# Check input types
 	run_frame = (frame,) if not isinstance(frame, (tuple, list)) else frame
@@ -463,7 +464,8 @@ def stopcount(seq_record, table, frame = (1,2,3)):
 	# Run counting
 	with warnings.catch_warnings():
 		warnings.simplefilter('ignore', BiopythonWarning)
-		counts = [re.sub("\*+$", "", seq_record.seq[(i-1):].translate(table = table)).count("*") for i in run_frame]
+		aa = [str(seqr.seq[(i-1):].translate(table = table)) for i in run_frame]
+		counts = [re.sub("\*+$", "", a).count("*") if len(a) > 0 else 10 for a in aa]
 	
 	# Return string or list depending on length
 	if(len(counts) > 1):
@@ -473,6 +475,7 @@ def stopcount(seq_record, table, frame = (1,2,3)):
 
 def get_stopcount(location, length, strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, table):
 	#location, length, strand, table = [19, results[20], feat.location.strand, args.translation_table]
+	#location, length, strand, table = list(results.items())[1]+(feat.location.strand, translation_table)
 	# Generate the potential end position for this location
 	potstart, potfinish = get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, False)
 	
@@ -600,7 +603,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		truncated = False
 		
 		if(end == "start"):
-			codon_start = 1 
+			codon_start = 1
 			
 			# First check if truncated
 			start_distance = len(seq_record) - feat.location.end if feat.location.strand == -1 else feat.location.start
