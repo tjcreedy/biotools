@@ -156,7 +156,7 @@ if __name__ == "__main__":
 		seqname = seq_record.name
 		
 		if(args.match_alignment is not None and seqname not in alignment_distances):
-			sys.stderr.write("Warning: no sequence for " + seqname + " can be found in " + args.match_alignment + ", this will be skipped\n")
+			#sys.stderr.write("Warning: no sequence for " + seqname + " can be found in " + args.match_alignment + ", this will be skipped\n")
 			output_records.append(seq_record)
 			continue
 		
