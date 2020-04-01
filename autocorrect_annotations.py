@@ -99,7 +99,7 @@ if __name__ == "__main__":
 		
 		if(args.overlap is not None):
 			
-			if(args.match_overlap is not None):
+			if(args.match_alignment is None):
 				overlap = autocorrect_modules.parse_overlap(args.overlap, args.annotation)
 			else:
 				sys.exit("Error: --match_alignment and --overlap are mutually exclusive")
