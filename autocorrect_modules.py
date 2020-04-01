@@ -479,14 +479,17 @@ def get_stopcount(location, length, strand, code, end, distance, subject_start, 
 	# Generate the potential end position for this location
 	potstart, potfinish = get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, False)
 	
-	# Build the potential new feature for this location
-	potfeat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(potstart, potfinish), strand = strand)
-	
-	# Extract the sequence for this potential new feature
-	potseq = SeqRecord.SeqRecord(potfeat.extract(seq_record.seq))
-	
-	# Count the stops in this sequence and return true if less than or equal to 1
-	return(stopcount(potseq, table, 1))
+	if(potstart < potfinish):
+		# Build the potential new feature for this location
+		potfeat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(potstart, potfinish), strand = strand)
+		
+		# Extract the sequence for this potential new feature
+		potseq = SeqRecord.SeqRecord(potfeat.extract(seq_record.seq))
+		
+		# Count the stops in this sequence and return true if less than or equal to 1
+		return(stopcount(potseq, table, 1))
+	else:
+		return(100)
 
 
 
