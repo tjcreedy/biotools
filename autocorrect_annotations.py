@@ -13,7 +13,7 @@ import copy
 
 import autocorrect_modules
 
-from Bio import SeqIO, SeqFeature, BiopythonWarning
+from Bio import SeqIO, SeqRecord, BiopythonWarning
 
 import warnings
 with warnings.catch_warnings():
@@ -163,15 +163,25 @@ if __name__ == "__main__":
 						corrected_start, corrected_finish = [currfeat.location.start, currfeat.location.end]
 						
 						# Check output and assign
-						
+						w = "Warning: new annotation for " + name + " in " + seqname
 						if(currfeat.location.start < 0 or currfeat.location.end > len(seq_record.seq)):
-							sys.stderr.write("Warning: new annotation for " + name + " in " + seqname + " exceeds contig, no change made" + "\n")
-						if(currfeat.location.start > currfeat.location.end):
-							sys.stderr.write("Warning: new annotation for " + name + " in " + seqname + " is incorrectly oriented, no change made")
+							
+							sys.stderr.write(w + " exceeds contig, no change made\n")
+							
+						elif(currfeat.location.start > currfeat.location.end):
+							
+							sys.stderr.write(w + " is incorrectly oriented, no change made\n")
+							
+						elif(autocorrect_modules.stopcount(SeqRecord.SeqRecord(currfeat.extract(seq_record.seq)), args.translation_table, 1, False) > 0):
+							
+							sys.stderr.write(w + " generates internal stop codons, no change made\n")
+							
 						elif(currfeat.location.start != feat.location.start or 
 							 currfeat.location.end != feat.location.end or 
 							 ('codon_start' in feat.qualifiers and feat.qualifiers['codon_start'] != codon_start)):
+							
 							feat.location = currfeat.location
+							
 							if(codon_start):
 								feat.qualifiers['codon_start'] = codon_start
 							

@@ -455,8 +455,8 @@ def get_newends(location, length, strand, end, distance, code, subject_start, fe
 	
 	return(feat_start, feat_finish)
 
-def stopcount(seqr, table, frame = (1,2,3)):
-	# seqr, frame = [potseq, 1]
+def stopcount(seqr, table, frame = (1,2,3), includefinal = True):
+	# seqr, frame, includefinal = [potseq, 1, False]
 	
 	# Check input types
 	run_frame = (frame,) if not isinstance(frame, (tuple, list)) else frame
@@ -465,7 +465,8 @@ def stopcount(seqr, table, frame = (1,2,3)):
 	with warnings.catch_warnings():
 		warnings.simplefilter('ignore', BiopythonWarning)
 		aa = [str(seqr.seq[(i-1):].translate(table = table)) for i in run_frame]
-		counts = [re.sub("\*+$", "", a).count("*") if len(a) > 0 else 10 for a in aa]
+		aa = [re.sub("\*+$", "", a) for a in aa] if not includefinal else aa
+		counts = [a.count("*") if len(a) > 0 else 10 for a in aa]
 	
 	# Return string or list depending on length
 	if(len(counts) > 1):
@@ -473,7 +474,7 @@ def stopcount(seqr, table, frame = (1,2,3)):
 	else:
 		return counts[0]
 
-def get_stopcount(location, length, strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, table):
+def get_stopcount(location, length, strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, table, includefinal):
 	#location, length, strand, table = [19, results[20], feat.location.strand, args.translation_table]
 	#location, length, strand, table = list(results.items())[1]+(feat.location.strand, translation_table)
 	# Generate the potential end position for this location
@@ -487,7 +488,7 @@ def get_stopcount(location, length, strand, code, end, distance, subject_start, 
 		potseq = SeqRecord.SeqRecord(potfeat.extract(seq_record.seq))
 		
 		# Count the stops in this sequence and return true if less than or equal to 1
-		return(stopcount(potseq, table, 1))
+		return(stopcount(potseq, table, 1, includefinal))
 	else:
 		return(100)
 
@@ -613,7 +614,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 			truncated = start_distance < distance
 			
 			# Retain only start locations that generate realistic amino acid sequences
-			stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table) for i, l in results.items()]
+			stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table, False) for i, l in results.items()]
 			results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
 			
 			# If no feasible results at the start position, instead find the closest in-frame position 
@@ -631,7 +632,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				results = { current_position + v + correction : 1 for v in [-1, 0, 1] }
 				
 				# Find the result with suitable ORF
-				stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table) for i, l in results.items()]
+				stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table, False) for i, l in results.items()]
 				results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
 				
 				# If truncated, set result to contig start but note codon position
