@@ -510,18 +510,18 @@ def find_and_filter_frame(currresults, feat, code, end, distance, subject_start,
 	
 	# Filter out any results with >1 stops inc final and >0 stops not inc final, return if this successfully finds all
 	data = [d for d in data if d[2] <= 1 and d[3] == 0]
-	if(check_consistent_frame(data)): return(get_current_results(currresults, data), 0)
+	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Filter out significantly uncommon frames
 	framecounts = Counter([d[1] for d in data])
 	maxfc = max([c for c in framecounts.values()])
 	data = [d for d in data if framecounts[d[1]] >= maxfc - 1]
-	if(check_consistent_frame(data)): return(get_current_results(currresults, data), 0)
+	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Filter out frames where the nstops inc final do not match the stop status of the original feature (only if the original feature had no internal stops)
 	endstop, instop = [stopcount(SeqRecord.SeqRecord(feat.extract(seq_record.seq)), table, 1, t) for t in [True, False]]
 	if(instop == 0): data = [d for d in data if d[2] == endstop]
-	if(check_consistent_frame(data)): return(get_current_results(currresults, data), 0)
+	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Otherwise, return the results as they stand along with an error
 	return(get_current_results(currresults, data), 1)
