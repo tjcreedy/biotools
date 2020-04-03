@@ -12,7 +12,7 @@ import urllib.request
 import re
 from statistics import mode, stdev
 
-from collections import defaultdict
+from collections import defaultdict, Counter
 from Bio import SeqFeature, SeqRecord, AlignIO
 from Bio.Align import AlignInfo
 
@@ -433,22 +433,24 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 	
 	return(outfeat)
 
-def get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, truncated):
+def get_newends(location, length, feat, end, distance, code, subject_start, truncated):
+	
+	feat_start, feat_finish = [feat.location.start, feat.location.end]
 	
 	# Convert location if on reverse strand
-	location = location if strand == 1 else abs(location - (2*distance + 1))
+	location = location if feat.location.strand == 1 else abs(location - (2*distance + 1))
 	
 	# Generate the new end position
 		# Correct by length of the match if at the finish end
-	change = location + strand * length if end == "finish" else location
+	change = location + feat.location.strand * length if end == "finish" else location
 		# Multiply by 3 if AA
 	change = change * 3 if code == 'A' else change
 		# Calculate
 	newend = subject_start + change
 	
 	# Apply new end to appropriate end
-	if((end == "start" and strand == 1) or (
-			end == "finish" and strand == -1)):
+	if((end == "start" and feat.location.strand == 1) or (
+			end == "finish" and feat.location.strand == -1)):
 		feat_start = SeqFeature.BeforePosition(newend) if truncated else SeqFeature.ExactPosition(newend)
 	else:
 		feat_finish = SeqFeature.AfterPosition(newend) if truncated else SeqFeature.ExactPosition(newend)
@@ -474,25 +476,55 @@ def stopcount(seqr, table, frame = (1,2,3), includefinal = True):
 	else:
 		return counts[0]
 
-def get_stopcount(location, length, strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, table, includefinal):
+def get_stopcounts(location, length, feat, code, end, distance, subject_start, seq_record, table):
 	#location, length, strand, table = [19, results[20], feat.location.strand, args.translation_table]
 	#location, length, strand, table = list(results.items())[1]+(feat.location.strand, translation_table)
 	# Generate the potential end position for this location
-	potstart, potfinish = get_newends(location, length, strand, end, distance, code, subject_start, feat_start, feat_finish, False)
+	potstart, potfinish = get_newends(location, length, feat, end, distance, code, subject_start, False)
 	
 	if(potstart < potfinish):
 		# Build the potential new feature for this location
-		potfeat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(potstart, potfinish), strand = strand)
+		potfeat = SeqFeature.SeqFeature(SeqFeature.FeatureLocation(potstart, potfinish), strand = feat.location.strand)
 		
 		# Extract the sequence for this potential new feature
 		potseq = SeqRecord.SeqRecord(potfeat.extract(seq_record.seq))
 		
 		# Count the stops in this sequence and return true if less than or equal to 1
-		return(stopcount(potseq, table, 1, includefinal))
+		return([stopcount(potseq, table, 1, t) for t in [True, False]])
 	else:
-		return(100)
+		return([100, 100])
 
+def check_consistent_frame(stopdata):
+	#stopdata = data
+	return(len({d[1] for d in stopdata}) == 1)
 
+def get_current_results(results, stopdata):
+	locs = {d[0] for d in stopdata}
+	return({i:l for i, l in results.items() if i in locs})
+
+def find_and_filter_frame(currresults, feat, code, end, distance, subject_start, seq_record, table):
+	#currresults, table = [results, translation_table]
+	
+	# Generate list of lists containing [location, frame in subject, nstops inc final, nstops not inc final] 
+	data = [[i, i%3 + 1] + get_stopcounts(i, l, feat, code, end, distance, subject_start, seq_record, table) for i, l in currresults.items()]
+	
+	# Filter out any results with >1 stops inc final and >0 stops not inc final, return if this successfully finds all
+	data = [d for d in data if d[2] <= 1 and d[3] == 0]
+	if(check_consistent_frame(data)): return(get_current_results(currresults, data), 0)
+	
+	# Filter out significantly uncommon frames
+	framecounts = Counter([d[1] for d in data])
+	maxfc = max([c for c in framecounts.values()])
+	data = [d for d in data if framecounts[d[1]] >= maxfc - 1]
+	if(check_consistent_frame(data)): return(get_current_results(currresults, data), 0)
+	
+	# Filter out frames where the nstops inc final do not match the stop status of the original feature (only if the original feature had no internal stops)
+	endstop, instop = [stopcount(SeqRecord.SeqRecord(feat.extract(seq_record.seq)), table, 1, t) for t in [True, False]]
+	if(instop == 0): data = [d for d in data if d[2] == endstop]
+	if(check_consistent_frame(data)): return(get_current_results(currresults, data), 0)
+	
+	# Otherwise, return the results as they stand along with an error
+	return(get_current_results(currresults, data), 1)
 
 def extract_subject_region(seqrecord, feat, end, code, distance):
 	'''For a given feature and end ("start" or "finish"), extract a sequence of either nucleotides (code = 'N') or amino acids (code = 'A'), consisting of the first or last position plus or minus positions equal to distance in the reading direction of the feature'''
@@ -553,6 +585,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 	feat_start, feat_finish = feat.location.start, feat.location.end
 	errstart = "Warning: sequence " + seqname + " has "
 	
+	
 	codon_start = None
 	
 	for end in ['start','finish']:
@@ -565,6 +598,8 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		# Unpack search tuple
 		code, query, out_rf, selector = query_spec[end] if len(query_spec[end]) == 4 else query_spec[end] + tuple("X")
 		selector = out_rf if code == 'A' else selector
+		
+		errend = query  + " at the " + end + " of " + featurename + "\n"
 		
 		# Check if already ends with the searched sequence - REMOVED AS EXISTING SEQUENCE MAY BE SHORTER SUBSET OF DESIRED SEQUENCE e.g. TA TAA
 		#if(end_already_correct(feat.extract(seq_record.seq), query, end, code, out_rf, args.translation_table)):
@@ -614,8 +649,10 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 			truncated = start_distance < distance
 			
 			# Retain only start locations that generate realistic amino acid sequences
-			stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table, False) for i, l in results.items()]
-			results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
+			results, fail = find_and_filter_frame(results, feat, code, end, distance, subject_start, seq_record, translation_table)
+			
+			# Remove all results if completely impossible to determin
+			if(fail): results = {}
 			
 			# If no feasible results at the start position, instead find the closest in-frame position 
 			if(len(results) == 0 or truncated):
@@ -632,8 +669,8 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				results = { current_position + v + correction : 1 for v in [-1, 0, 1] }
 				
 				# Find the result with suitable ORF
-				stopcounts = [get_stopcount(i, l, feat.location.strand, code, end, distance, subject_start, feat_start, feat_finish, seq_record, translation_table, False) for i, l in results.items()]
-				results = {i:l for (i, l), c in zip(results.items(), stopcounts) if c <= 1 and c == min(stopcounts)}
+				results, fail = find_and_filter_frame(results, feat, code, end, distance, subject_start, seq_record, translation_table)
+				if(fail): errmid = "no single detectable frame in "
 				
 				# If truncated, set result to contig start but note codon position
 				if(len(results) > 0 and truncated):
@@ -663,7 +700,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 					results = {str(subject_sequence).find('N') - 1 : 1}
 		
 		# Parse location results
-		errend = query  + " at the " + end + " of " + featurename + "\n"
+		
 		
 		if(len(results) > 0):
 			
@@ -682,7 +719,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 					else:
 						errmid = "multiple closest matches (taking first) of "
 			
-			feat_start, feat_finish = get_newends(location, results[location], feat.location.strand, end, distance, code, subject_start, feat_start, feat_finish, truncated)
+			feat_start, feat_finish = get_newends(location, results[location], feat, end, distance, code, subject_start, truncated)
 		else:
 			errmid = "no succesful matches of " if errmid == "" else errmid
 		

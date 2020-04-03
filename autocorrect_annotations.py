@@ -53,8 +53,8 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	
 	# Read in arguments
-	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-03-21_current/BIOD00497.gb']
-	#arglist.extend("-a ND3 -o TRNG,0 -o TRNR,2 -x 35 -s N,ATA/ATT/ATG,*,C -d 45 -t 5".split(' '))
+	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-03_current/CCCP00105.gb']
+	#arglist.extend("-a ND2 -o TRNM,0 -o TRNI,-20 -o TRNQ,-55 -x 50 -s N,ATA/ATG/ATC/TTG/ATT/GTC/GTG/TTA/GTT,*,C -d 21 -t 5".split(' '))
 	#args = parser.parse_args(arglist)
 	
 	# Check arguments
@@ -119,7 +119,6 @@ if __name__ == "__main__":
 					feats_store = copy.deepcopy(feats)
 					
 					for i in range(0, len(feats)):
-						#i = 0
 						
 						# Check if the location of this feat is identical to the prior location of the previous feat
 						if(i > 0 and feats[i].location == feats_store[i-1].location):
@@ -128,6 +127,7 @@ if __name__ == "__main__":
 								feats[i].qualifiers['codon_start'] = feats[i-1].qualifiers['codon_start']
 							continue
 						
+						#i = 0
 						feat = feats[i]
 						
 						# Set defaults
@@ -158,12 +158,13 @@ if __name__ == "__main__":
 							
 							# run correct_feature_by_query
 							currfeat, codon_start = autocorrect_modules.correct_feature_by_query(currfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
+							if(codon_start): currfeat.qualifiers['codon_start'] = codon_start
 						
-						# Extract new start and finish
-						corrected_start, corrected_finish = [currfeat.location.start, currfeat.location.end]
 						
 						# Check output and assign
 						w = "Warning: new annotation for " + name + " in " + seqname
+						ss = currfeat.qualifiers['codon_start']-1 if codon_start else 0
+						
 						if(currfeat.location.start < 0 or currfeat.location.end > len(seq_record.seq)):
 							
 							sys.stderr.write(w + " exceeds contig, no change made\n")
@@ -172,13 +173,14 @@ if __name__ == "__main__":
 							
 							sys.stderr.write(w + " is incorrectly oriented, no change made\n")
 							
-						elif(autocorrect_modules.stopcount(SeqRecord.SeqRecord(currfeat.extract(seq_record.seq)), args.translation_table, 1, False) > 0):
+						elif(autocorrect_modules.stopcount(SeqRecord.SeqRecord(currfeat.extract(seq_record.seq)[ss:]), args.translation_table, 1, False) > 0):
 							
 							sys.stderr.write(w + " generates internal stop codons, no change made\n")
 							
 						elif(currfeat.location.start != feat.location.start or 
 							 currfeat.location.end != feat.location.end or 
-							 ('codon_start' in feat.qualifiers and feat.qualifiers['codon_start'] != codon_start)):
+							 ('codon_start' in feat.qualifiers and feat.qualifiers['codon_start'] != codon_start) or
+							 ('codon_start' not in feat.qualifiers and codon_start is not None)):
 							
 							feat.location = currfeat.location
 							
