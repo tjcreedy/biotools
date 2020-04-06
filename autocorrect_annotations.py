@@ -53,8 +53,8 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	
 	# Read in arguments
-	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-03_current/CCCP00105.gb']
-	#arglist.extend("-a ND2 -o TRNM,0 -o TRNI,-20 -o TRNQ,-55 -x 50 -s N,ATA/ATG/ATC/TTG/ATT/GTC/GTG/TTA/GTT,*,C -d 21 -t 5".split(' '))
+	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-06_current/GBDL01534.gb']
+	#arglist.extend("-a ND5 -o TRNH,0 -x 50 -s N,ATT/ATA/ATG/ATC,*,L -d 3 -t 5".split(' '))
 	#args = parser.parse_args(arglist)
 	
 	# Check arguments
@@ -107,7 +107,7 @@ if __name__ == "__main__":
 		ntf = len(target_features)
 		ncf = sum([len(cfl) for gene, cfl in context_features.items()]) if args.overlap is not None else 1
 		
-		if(ntf > 0 and ncf > 0):
+		if(ntf > 0):
 			
 			# Work through target features
 			for name, feats in target_features.items():
@@ -117,14 +117,15 @@ if __name__ == "__main__":
 				else:
 					
 					feats_store = copy.deepcopy(feats)
+					codon_start = None
 					
 					for i in range(0, len(feats)):
 						
 						# Check if the location of this feat is identical to the prior location of the previous feat
 						if(i > 0 and feats[i].location == feats_store[i-1].location):
 							feats[i].location = feats[i-1].location
-							if('codon_start' in feats[i-1].qualifiers):
-								feats[i].qualifiers['codon_start'] = feats[i-1].qualifiers['codon_start']
+							if(codon_start and feats[i].type == 'CDS'):
+								feats[i].qualifiers['codon_start'] = codon_start
 							continue
 						
 						#i = 0
@@ -137,7 +138,7 @@ if __name__ == "__main__":
 						
 						currfeat = copy.deepcopy(feat)
 						
-						if(args.overlap is not None):
+						if(args.overlap is not None and ncf > 0):
 							
 							currfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(feat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
 							
@@ -184,7 +185,7 @@ if __name__ == "__main__":
 							
 							feat.location = currfeat.location
 							
-							if(codon_start):
+							if(codon_start and feat.type == 'CDS'):
 								feat.qualifiers['codon_start'] = codon_start
 							
 						

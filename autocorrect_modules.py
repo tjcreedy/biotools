@@ -101,10 +101,13 @@ def parse_alignment(path, frame):
 	for seq_record in alignment:
 		prelim[seq_record.id] = {e: len(re.search(r, str(seq_record.seq)).group()) for e, r in zip(["start", "finish"],["^-*", "-*$"])}
 	start, finish = zip(*[[d[e] for e in ["start", "finish"]] for d in prelim.values()])
-		
+	
 	modes = dict()
 	for e, v in zip(['start', 'finish'], [start, finish]):
 		modes[e] = mode(v) if frame is None else round(mode(v)/3)*3+frame
+	
+		# Set modal finish to the first base of the stop codon rather than the last, to prevent double stops
+	modes['finish'] = modes['finish'] + 2
 	
 	# Generate consensus
 	alignment_summary = AlignInfo.SummaryInfo(alignment)
@@ -413,7 +416,6 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 			continue
 		
 		locations = [outfeat.location.start, outfeat.location.end]
-		
 		
 		if((end == 'start' and feat.location.strand == 1) or 
 		   (end == "finish" and feat.location.strand == -1)):
