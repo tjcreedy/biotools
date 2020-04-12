@@ -510,12 +510,17 @@ def find_and_filter_frame(currresults, feat, code, end, distance, subject_start,
 	# Generate list of lists containing [location, frame in subject, nstops inc final, nstops not inc final] 
 	data = [[i, i%3 + 1] + get_stopcounts(i, l, feat, code, end, distance, subject_start, seq_record, table) for i, l in currresults.items()]
 	
-	# Filter out any results with >1 stops inc final, to allow for final not being correct, return if suitable
-	data = [d for d in data if d[2] <= 1]
+	# Filter out any with greater than minimum number of nstops not inc final
+	min_nsnf = min([d[2] for d in data])
+	data = [d for d in data if d[2] == min_nsnf]
 	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
-	# Filter out any results with >0 stops not inc final
-	data = [d for d in data if d[3] == 0]
+	# Filter out any with greater than minimum number of nstops inc final
+	min_nsif = min([d[3] for d in data])
+	data = [d for d in data if d[3] == min_nsif]
+	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
+	
+	# Return if only one or all are consistent frames
 	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Filter out significantly uncommon frames

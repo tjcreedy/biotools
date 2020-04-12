@@ -53,8 +53,8 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	
 	# Read in arguments
-	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-06_current/GBDL01534.gb']
-	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD01757.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX1.fa']
+	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-06_current/BIOD01631.gb']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD03038.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX1.fa']
 	#arglist.extend("-a COX1 -s N,ATA/ATT/ATG/ATC/ACT/ACC/TTG/ACG,* -f N,TAA/TA/T,1 -d 30 -t 5".split(' '))
 	#args = parser.parse_args(arglist)
 	
@@ -118,15 +118,15 @@ if __name__ == "__main__":
 				else:
 					
 					feats_store = copy.deepcopy(feats)
-					codon_start = None
+					prev_codon_start = None
 					
 					for i in range(0, len(feats)):
 						
 						# Check if the location of this feat is identical to the prior location of the previous feat
 						if(i > 0 and feats[i].location == feats_store[i-1].location):
 							feats[i].location = feats[i-1].location
-							if(codon_start and feats[i].type == 'CDS'):
-								feats[i].qualifiers['codon_start'] = codon_start
+							if(prev_codon_start and feats[i].type == 'CDS'):
+								feats[i].qualifiers['codon_start'] = prev_codon_start
 							continue
 						
 						#i = 0
@@ -188,7 +188,7 @@ if __name__ == "__main__":
 							
 							if(codon_start and feat.type == 'CDS'):
 								feat.qualifiers['codon_start'] = codon_start
-							
+								prev_codon_start = codon_start
 						
 						# Correct truncated features
 						
