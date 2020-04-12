@@ -507,8 +507,14 @@ def get_current_results(results, stopdata):
 def find_and_filter_frame(currresults, feat, code, end, distance, subject_start, seq_record, table):
 	#currresults, table = [results, translation_table]
 	
+	if(len(currresults) == 0):
+		return(currresults)
+	
 	# Generate list of lists containing [location, frame in subject, nstops inc final, nstops not inc final] 
 	data = [[i, i%3 + 1] + get_stopcounts(i, l, feat, code, end, distance, subject_start, seq_record, table) for i, l in currresults.items()]
+	
+	# Output if good
+	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Filter out any with greater than minimum number of nstops not inc final
 	min_nsnf = min([d[2] for d in data])
