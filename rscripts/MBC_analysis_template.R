@@ -40,8 +40,8 @@ library(ggplot2)
   # Load any custom functions. These are assumed to be in the root of your
   # working directory.
 
-source("../../programming/Rfunc/check_expected_richness.R")
-source("../../programming/Rfunc/rarexplore.R")
+source("check_expected_richness.R")
+source("rarexplore.R")
 
 # Load data ---------------------------------------------------------------
   # Load the three core data tables. If you have more than these data,
