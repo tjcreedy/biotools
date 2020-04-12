@@ -54,9 +54,9 @@ if __name__ == "__main__":
 	
 	# Read in arguments
 	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-06_current/GBDL01534.gb']
-	arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD01757.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX1.fa']
-	arglist.extend("-a COX1 -s N,ATA/ATT/ATG/ATC/ACT/ACC/TTG/ACG,* -f N,TAA/TA/T,1 -d 30 -t 5".split(' '))
-	args = parser.parse_args(arglist)
+	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD01757.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX1.fa']
+	#arglist.extend("-a COX1 -s N,ATA/ATT/ATG/ATC/ACT/ACC/TTG/ACG,* -f N,TAA/TA/T,1 -d 30 -t 5".split(' '))
+	#args = parser.parse_args(arglist)
 	
 	# Check arguments
 	stringspec, overlap, alignment_distances, alignment_stddevs = autocorrect_modules.check_arguments(args)
