@@ -510,8 +510,12 @@ def find_and_filter_frame(currresults, feat, code, end, distance, subject_start,
 	# Generate list of lists containing [location, frame in subject, nstops inc final, nstops not inc final] 
 	data = [[i, i%3 + 1] + get_stopcounts(i, l, feat, code, end, distance, subject_start, seq_record, table) for i, l in currresults.items()]
 	
-	# Filter out any results with >1 stops inc final and >0 stops not inc final, return if this successfully finds all
-	data = [d for d in data if d[2] <= 1 and d[3] == 0]
+	# Filter out any results with >1 stops inc final, to allow for final not being correct, return if suitable
+	data = [d for d in data if d[2] <= 1]
+	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
+	
+	# Filter out any results with >0 stops not inc final
+	data = [d for d in data if d[3] == 0]
 	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Filter out significantly uncommon frames
@@ -587,7 +591,6 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 	feat_start, feat_finish = feat.location.start, feat.location.end
 	errstart = "Warning: sequence " + seqname + " has "
 	
-	
 	codon_start = None
 	
 	for end in ['start','finish']:
@@ -634,11 +637,14 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		
 		# Retain only locations in the specified reading frame
 		if(code == 'N' and out_rf != "*" and len(results) > 0):
+			target = [1,2,3,1,2][int(out_rf) + codon_start - 2] if(codon_start) else int(out_rf)
+			
 			if(end == "start"):
-				results = {i:l for i, l in results.items() if (i + distance) % 3 + 1 == int(out_rf)}
+				results = {i:l for i, l in results.items() if (i + distance) % 3 + 1 == target}
 				# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
 			else:
-				results = {i:l for i, l in results.items() if (abs(feat.location.end - feat.location.start) - distance + i - 1) % 3 + 1 == int(out_rf)}
+				results = {i:l for i, l in results.items() if (abs(feat.location.end - feat_start) - distance + i - 1) % 3 + 1 == target}
+			
 			errmid = "no matches in the specified frame of " if len(results) == 0 else errmid
 		
 		truncated = False
@@ -681,11 +687,15 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				
 			
 		else:
-			# Prioritise longer matches by removing any matches shorter than the longest match
-			if(len(results) > 0 and prioritise_longer_finishes):
-				max_length = max(results.values())
-				results = {i:l for i, l in results.items() if l == max_length}
 			
+			if(len(results) > 0):
+				# Prioritise longer matches by removing any matches shorter than the longest match
+				max_length = max(results.values())
+				if(prioritise_longer_finishes):
+					results = {i:l for i, l in results.items() if l == max_length}
+				elif(selector == "C"): # Remove shorter matches after the longest match
+					first_max_i = min([i for i, l in results.items() if l == max_length])
+					results = {i:l for i, l in results.items() if i <= first_max_i or l == max_length}
 			
 			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
 			
