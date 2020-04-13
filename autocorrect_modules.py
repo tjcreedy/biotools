@@ -435,24 +435,22 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 	
 	return(outfeat)
 
-def get_newends(location, length, feat, end, distance, code, subject_start, truncated):
-	
-	feat_start, feat_finish = [feat.location.start, feat.location.end]
+def get_newends(location, length, feat_start, feat_finish, strand, end, distance, code, subject_start, truncated):
 	
 	# Convert location if on reverse strand
-	location = location if feat.location.strand == 1 else abs(location - (2*distance + 1))
+	location = location if strand == 1 else abs(location - (2*distance + 1))
 	
 	# Generate the new end position
 		# Correct by length of the match if at the finish end
-	change = location + feat.location.strand * length if end == "finish" else location
+	change = location + strand * length if end == "finish" else location
 		# Multiply by 3 if AA
 	change = change * 3 if code == 'A' else change
 		# Calculate
 	newend = subject_start + change
 	
 	# Apply new end to appropriate end
-	if((end == "start" and feat.location.strand == 1) or (
-			end == "finish" and feat.location.strand == -1)):
+	if((end == "start" and strand == 1) or (
+			end == "finish" and strand == -1)):
 		feat_start = SeqFeature.BeforePosition(newend) if truncated else SeqFeature.ExactPosition(newend)
 	else:
 		feat_finish = SeqFeature.AfterPosition(newend) if truncated else SeqFeature.ExactPosition(newend)
@@ -482,7 +480,7 @@ def get_stopcounts(location, length, feat, code, end, distance, subject_start, s
 	#location, length, strand, table = [19, results[20], feat.location.strand, args.translation_table]
 	#location, length, strand, table = list(results.items())[1]+(feat.location.strand, translation_table)
 	# Generate the potential end position for this location
-	potstart, potfinish = get_newends(location, length, feat, end, distance, code, subject_start, False)
+	potstart, potfinish = get_newends(location, length, feat.location.start, feat.location.end, feat.location.strand, end, distance, code, subject_start, False)
 	
 	if(potstart < potfinish):
 		# Build the potential new feature for this location
@@ -742,7 +740,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 					else:
 						errmid = "multiple closest matches (taking first) of "
 			
-			feat_start, feat_finish = get_newends(location, results[location], feat, end, distance, code, subject_start, truncated)
+			feat_start, feat_finish = get_newends(location, results[location], feat_start, feat_finish, feat.location.strand, end, distance, code, subject_start, truncated)
 		else:
 			errmid = "no succesful matches of " if errmid == "" else errmid
 		
