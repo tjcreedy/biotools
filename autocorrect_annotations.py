@@ -53,10 +53,10 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	
 	# Read in arguments
-	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-06_current/BIOD01631.gb']
+	arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-08_current/BIOD01757.gb']
 	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD03038.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX1.fa']
-	#arglist.extend("-a COX1 -s N,ATA/ATT/ATG/ATC/ACT/ACC/TTG/ACG,* -f N,TAA/TA/T,1 -d 30 -t 5".split(' '))
-	#args = parser.parse_args(arglist)
+	arglist.extend("-a COX1 -o TRNY,8 -x 50 -s N,ATA/ATT/ATG/ATC/ACT/ACC/TTG/ACG,*,C -d 61 -t 5".split(' '))
+	args = parser.parse_args(arglist)
 	
 	# Check arguments
 	stringspec, overlap, alignment_distances, alignment_stddevs = autocorrect_modules.check_arguments(args)
@@ -185,10 +185,11 @@ if __name__ == "__main__":
 							 ('codon_start' not in feat.qualifiers and codon_start is not None)):
 							
 							feat.location = currfeat.location
+							prev_codon_start = codon_start
 							
 							if(codon_start and feat.type == 'CDS'):
 								feat.qualifiers['codon_start'] = codon_start
-								prev_codon_start = codon_start
+							
 						
 						# Correct truncated features
 						
