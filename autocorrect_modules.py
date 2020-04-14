@@ -511,21 +511,23 @@ def find_and_filter_frame(currresults, feat, code, end, distance, subject_start,
 	# Generate list of lists containing [location, frame in subject, nstops inc final, nstops not inc final] 
 	data = [[i, i%3 + 1] + get_stopcounts(i, l, feat, code, end, distance, subject_start, seq_record, table) for i, l in currresults.items()]
 	
-	# Output if good
-	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
-	
-	# Filter out any with greater than minimum number of nstops not inc final
-	min_nsnf = min([d[2] for d in data])
-	data = [d for d in data if d[2] == min_nsnf]
-	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
-	
-	# Filter out any with greater than minimum number of nstops inc final
-	min_nsif = min([d[3] for d in data])
-	data = [d for d in data if d[3] == min_nsif]
-	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
-	
-	# Return if only one or all are consistent frames
-	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
+	# If any have one or zeros stops, at the end, return these if OK
+	checkdata = [d for d in data if d[2] <= 1 and d[3] == 0]
+	if(len(checkdata) > 0):
+		if(check_consistent_frame(checkdata) or len(checkdata) < 2):
+			return(get_current_results(currresults, checkdata), 0)
+		else:
+			data = checkdata
+	else:
+		# Filter out any with greater than minimum number of nstops not inc final
+		min_nsnf = min([d[2] for d in data])
+		data = [d for d in data if d[2] == min_nsnf]
+		if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
+		
+		# Filter out any with greater than minimum number of nstops inc final
+		min_nsif = min([d[3] for d in data])
+		data = [d for d in data if d[3] == min_nsif]
+		if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Filter out significantly uncommon frames
 	framecounts = Counter([d[1] for d in data])
