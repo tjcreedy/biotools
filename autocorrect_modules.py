@@ -401,7 +401,6 @@ def correct_location_if_valid(location, correction, checkvalue):
 	else:
 		return(location)
 
-
 def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname, seqlength):
 	#query_spec, distances, featname, seqlength = [stringspec, alignment_distances[seqname], name, len(seq_record)]
 	
@@ -412,13 +411,13 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 		#end = 'finish'
 		
 		# Skip if not processing this end or if the end is already correct
-		if(end not in query_spec.keys() or distances[end] == 0):
+		if(end not in query_spec.keys() or (end == 'start' and distances[end] == 0)):
 			continue
 		
 		locations = [outfeat.location.start, outfeat.location.end]
 		
 		# Set finish distance to the first base of the stop to prevent double stops
-		distances[end] =- [2,0,1][(locations[1]-locations[0])%3] if end == 'finish' else 0
+		distances[end] -= [2,0,1][(locations[1]-locations[0])%3] if end == 'finish' else 0
 		
 		if((end == 'start' and feat.location.strand == 1) or 
 		   (end == "finish" and feat.location.strand == -1)):

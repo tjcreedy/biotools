@@ -52,11 +52,11 @@ if __name__ == "__main__":
 	
 	args = parser.parse_args()
 	
-
+	
 	# Read in arguments
-	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-14_current/BIOD01645.gb']
-	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD01645.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/ND3.fa']
-	#arglist.extend("-a ND3 -s N,ATA/ATT/ATG/ATC,* -f N,TAA/TAG/TA,1 -d 20 -t 5".split(' '))
+	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-14_current/BIOD00036.gb']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD00036.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/COX3.fa']
+	#arglist.extend("-a COX3 -s N,ATG/ATA,* -f N,TAA/TA/T/TAG,1 -d 20 -t 5 -e 1".split(' '))
 	#args = parser.parse_args(arglist)
 	
 	# Check arguments
@@ -163,7 +163,7 @@ if __name__ == "__main__":
 								# Set start reading frame based on distance if not set
 							if(args.match_alignment and stringspec['start'][2] == '*' and args.force_alignment_frame):
 								correction = [[1,3,2], [2,1,3], [3,1,2]]
-								correction = correction[args.force_alignment_frame]
+								correction = correction[args.force_alignment_frame - 1]
 								stringspec['start'][2] = correction[alignment_distances[seqname]['start']%3]
 							
 							# run correct_feature_by_query
