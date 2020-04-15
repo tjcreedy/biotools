@@ -52,10 +52,11 @@ if __name__ == "__main__":
 	
 	args = parser.parse_args()
 	
+
 	# Read in arguments
-	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-08_current/BIOD01757.gb']
-	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD01242.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/ATP6.fa']
-	#arglist.extend("-a ATP6 -s N,ATG/ATA/GTG/ATT,* -f N,TAG/TAA/TA,1 -d 20 -t 5".split(' '))
+	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-14_current/BIOD01645.gb']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1_gbmaster_auto_run1/BIOD01645.gb', '-m', '/home/thomas/MMGdatabase_currrun/3b_nt_align/ND3.fa']
+	#arglist.extend("-a ND3 -s N,ATA/ATT/ATG/ATC,* -f N,TAA/TAG/TA,1 -d 20 -t 5".split(' '))
 	#args = parser.parse_args(arglist)
 	
 	# Check arguments
@@ -155,8 +156,15 @@ if __name__ == "__main__":
 						
 						if(len(stringspec) > 0):
 							
-							# Check whether long stops should be prioritised
+							
+							# Specify settings for alignment matching
+								# Turn off priority for long stops 
 							prioritise_long_stops = args.match_alignment is None
+								# Set start reading frame based on distance if not set
+							if(args.match_alignment and stringspec['start'][2] == '*' and args.force_alignment_frame):
+								correction = [[1,3,2], [2,1,3], [3,1,2]]
+								correction = correction[args.force_alignment_frame]
+								stringspec['start'][2] = correction[alignment_distances[seqname]['start']%3]
 							
 							# run correct_feature_by_query
 							currfeat, codon_start = autocorrect_modules.correct_feature_by_query(currfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)

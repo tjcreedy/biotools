@@ -21,6 +21,73 @@ import warnings
 with warnings.catch_warnings():
 	warnings.simplefilter('ignore', BiopythonWarning)
 
+
+def parse_alignment(path, frame):
+	#path, frame = [args.match_alignment, args.force_alignment_frame]
+	frame = frame - 1 if frame is not None else None
+	
+	alignment = AlignIO.read(path, "fasta")
+	
+	# Get modal start and finish positions
+	prelim = dict()
+	for seq_record in alignment:
+		prelim[seq_record.id] = {e: len(re.search(r, str(seq_record.seq)).group()) for e, r in zip(["start", "finish"],["^-*", "-*$"])}
+	start, finish = zip(*[[d[e] for e in ["start", "finish"]] for d in prelim.values()])
+	
+	modes = dict()
+	for e, v in zip(['start', 'finish'], [start, finish]):
+		modes[e] = mode(v) if frame is None else round(mode(v)/3)*3+frame
+	
+	
+	# Generate consensus
+	alignment_summary = AlignInfo.SummaryInfo(alignment)
+	consensus = str(alignment_summary.gap_consensus())
+	
+	# Find approximate ungapped distance to modal position for each sequence
+	output = dict()
+	
+	for seq_record in alignment:
+		dists = dict()
+		for e in ['start', 'finish']:
+			#seq_record = alignment[603]
+			#e = 'start'
+			#e = 'finish'
+			# Set up the two locations in a list
+			locations = [prelim[seq_record.id][e], modes[e]]
+			
+			if(locations[0] == locations[1]):
+				dists[e] = 0
+			else:
+				# Extract the sequence, either the target if it's outside the alignment or the consensus if inside
+				sequence = str(seq_record.seq) if locations[0] < locations[1] else consensus
+				
+				# Reverse the sequence if we're looking at the finish
+				sequence = sequence[::-1] if e == 'finish' else sequence
+				
+				# Extract the in between sequence
+				between_sequence = sequence[min(locations):max(locations)]
+				
+				# Find the ungapped distance
+				distance = len(between_sequence) - between_sequence.count("-")
+				
+				# Correct the distance depending on direction and end
+				distance = distance * -1 if(locations[0] > locations[1]) else distance
+				distance = distance * -1 if e == 'finish' else distance
+				
+				dists[e] = distance
+				
+			
+		
+		output[seq_record.id] = dists
+	
+	# Find standard deviation of the distance
+	start, finish = zip(*[[d[e] for e in ["start", "finish"]] for d in output.values()])
+	
+	std_dev = {e:round(stdev(v)) for e, v in zip(["start", "finish"], [start, finish])}
+	
+	return(output, std_dev)
+
+
 def check_arguments(arguments):
 	stringspecdict = dict()
 	overlapset = {}
@@ -90,73 +157,6 @@ def standardise_names(arguments, overlapdict, namevariants):
 
 
 
-def parse_alignment(path, frame):
-	#path, frame = [args.match_alignment, args.force_alignment_frame]
-	frame = frame - 1 if frame is not None else None
-	
-	alignment = AlignIO.read(path, "fasta")
-	
-	# Get modal start and finish positions
-	prelim = dict()
-	for seq_record in alignment:
-		prelim[seq_record.id] = {e: len(re.search(r, str(seq_record.seq)).group()) for e, r in zip(["start", "finish"],["^-*", "-*$"])}
-	start, finish = zip(*[[d[e] for e in ["start", "finish"]] for d in prelim.values()])
-	
-	modes = dict()
-	for e, v in zip(['start', 'finish'], [start, finish]):
-		modes[e] = mode(v) if frame is None else round(mode(v)/3)*3+frame
-	
-		# Set modal finish to the first base of the stop codon rather than the last, to prevent double stops
-	modes['finish'] = modes['finish'] + 2
-	
-	# Generate consensus
-	alignment_summary = AlignInfo.SummaryInfo(alignment)
-	consensus = str(alignment_summary.gap_consensus())
-	
-	# Find approximate ungapped distance to modal position for each sequence
-	output = dict()
-	
-	for seq_record in alignment:
-		dists = dict()
-		for e in ['start', 'finish']:
-			#seq_record = alignment[603]
-			#e = 'start'
-			#e = 'finish'
-			# Set up the two locations in a list
-			locations = [prelim[seq_record.id][e], modes[e]]
-			
-			if(locations[0] == locations[1]):
-				dists[e] = 0
-			else:
-				# Extract the sequence, either the target if it's outside the alignment or the consensus if inside
-				sequence = str(seq_record.seq) if locations[0] < locations[1] else consensus
-				
-				# Reverse the sequence if we're looking at the finish
-				sequence = sequence[::-1] if e == 'finish' else sequence
-				
-				# Extract the in between sequence
-				between_sequence = sequence[min(locations):max(locations)]
-				
-				# Find the ungapped distance
-				distance = len(between_sequence) - between_sequence.count("-")
-				
-				# Correct the distance depending on direction and end
-				distance = distance * -1 if(locations[0] > locations[1]) else distance
-				distance = distance * -1 if e == 'finish' else distance
-				
-				dists[e] = distance
-				
-			
-		
-		output[seq_record.id] = dists
-	
-	# Find standard deviation of the distance
-	start, finish = zip(*[[d[e] for e in ["start", "finish"]] for d in output.values()])
-	
-	std_dev = {e:round(stdev(v)) for e, v in zip(["start", "finish"], [start, finish])}
-	
-	return(output, std_dev)
-
 def str_is_int(s):
 	try: 
 		int(s)
@@ -193,7 +193,7 @@ def parse_stringsearch(annotation_in, startstring_in, finishstring_in, translati
 			sys.exit("Error: --translation_table must be specified if searching for --startstring")
 		sys.stderr.write("\t%s: %s\n" % (end, searchstring))
 		
-		search = tuple(searchstring.split(","))
+		search = searchstring.split(",")
 		
 		err = "Error: search string " + searchstring
 		if(search[0] not in ['A', 'N']):
@@ -220,7 +220,7 @@ def parse_stringsearch(annotation_in, startstring_in, finishstring_in, translati
 			if( mmhi not in ['F','L','C','FC','LC','N'] ):
 				sys.exit(err + " has an unrecognised multiple-hit handling instruction ( must be F, FC, C, LC, L or N)")
 		else:
-			search = search + tuple(['C'])
+			search = search + ['C']
 		
 		output[end] = search
 	
@@ -416,6 +416,9 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 			continue
 		
 		locations = [outfeat.location.start, outfeat.location.end]
+		
+		# Set finish distance to the first base of the stop to prevent double stops
+		distances[end] =- [2,0,1][(locations[1]-locations[0])%3] if end == 'finish' else 0
 		
 		if((end == 'start' and feat.location.strand == 1) or 
 		   (end == "finish" and feat.location.strand == -1)):
@@ -651,7 +654,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 			target = [1,2,3,1,2][int(out_rf) + codon_start - 2] if(codon_start) else int(out_rf)
 			
 			if(end == "start"):
-				results = {i:l for i, l in results.items() if (i + distance) % 3 + 1 == target}
+				results = {i:l for i, l in results.items() if (i - distance) % 3 + 1 == target }
 				# Retain location if that location's rf (l+1)%3 is equal to the (target rf converted to subject rf)
 			else:
 				results = {i:l for i, l in results.items() if (abs(feat.location.end - feat_start) - distance + i - 1) % 3 + 1 == target}
