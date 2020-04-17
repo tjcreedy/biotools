@@ -21,6 +21,8 @@ import warnings
 with warnings.catch_warnings():
 	warnings.simplefilter('ignore', BiopythonWarning)
 
+#from matplotlib import pyplot
+
 
 def cumsum(lis):
 	total = 0
@@ -37,6 +39,39 @@ def ungapped_distance(seq_str, locations, end):
 	
 	# Find the ungapped distance	
 	return(len(between_sequence) - between_sequence.count("-"))
+
+def ishigher(x, y):
+	for v in y:
+		if(v > x):
+			return(False)
+	return(True)
+
+def find_maxima(lis, d):
+	#lis = seg
+	#d = 10
+	maxima = []
+	i = 0
+	while i <= len(lis):
+		s, f = [i - d, i + d]
+		s = s if s >= 0 else 0
+		f = f if f <= len(lis)-1 else len(lis)
+		if(ishigher(lis[i], lis[s:f+1])):
+			maxima.append(i)
+			i += d + 1
+		else:
+			i += 1
+	return(maxima)
+
+def find_0intercepts(lis):
+	intercepts = set()
+	i=0
+	while i < len(lis):
+		pair = lis[i:i+2]
+		if(min(pair) <= 0 and max(pair) >= 0):
+			abspair = [abs(p) for p in pair]
+			intercepts.add(i + abspair.index(min(abspair)))
+		i += 1
+	return(sorted(list(intercepts)))
 
 def parse_alignment(path, frame):
 	#path, frame = [args.match_alignment, args.force_alignment_frame]
@@ -59,18 +94,33 @@ def parse_alignment(path, frame):
 	consensus = str(alignment_summary.gap_consensus())
 	
 	# Build consensus gap pattern and find corrected modal positions for alignment body
-	gap_pattern = [1 if b is '-' else -1 for b in consensus]
+		# Find ratio of characters to gaps
+	ngaps = consensus.count('-')
+	nchars = len(consensus) - ngaps
+	ratio = ngaps/nchars
+		# Find pattern of gaps
+	gap_pattern = [1 if b is '-' else -ratio for b in consensus] 	
+	
 	c_modes = dict()
 	for e, m in modes.items():
 		#e, m = list(modes.items())[0]
+		
 		# Sort the gap pattern in the direction required
 		gp = reversed(gap_pattern) if e == 'finish' else gap_pattern
 		
-		# Calculate the cumulative sum, then take a segment between the modal position and 1/4 of the remaining alignment
-		seg = list(cumsum(gp))[m:m+round((len(gap_pattern)-m)/4)]
+		# Calculate the cumulative sum, then take the segment between the modal position and the next time the ratio of gaps:characters passes 0
+		seg = list(cumsum(gp))[m:]
+		seg = seg[:find_0intercepts(seg)[0]]
 		
-		# Find the position where the number of gaps is maximal; the next position is the alignment body
-		body = m+seg.index(max(seg))+1
+		#pyplot.plot(seg)
+		# Find the location of the start of the body of the alignment
+			# Find the maximum gap position
+		body = seg.index(max(seg))
+			# Find the first regional maximum of the gap pattern; 
+		#body = [x for x in find_maxima(seg, 40) if x != 0][0]
+		
+		# add this to the modal position - the next position is the alignment body
+		body = m+body+1
 		
 		# Calculate the number of ungapped consensus positions between the mode and this position
 		dist = ungapped_distance(consensus, [modes[e], body], e)
@@ -83,7 +133,7 @@ def parse_alignment(path, frame):
 	output = dict()
 	
 	for seq_record in alignment:
-		#seq_record = [sr for sr in alignment if sr.id == 'BIOD00303'][0]
+		#seq_record = [sr for sr in alignment if sr.id == 'BIOD01331'][0]
 		dists = dict()
 		sequence = str(seq_record.seq)
 		
@@ -104,7 +154,7 @@ def parse_alignment(path, frame):
 			# Get the ungapped distance modified by the standard distance
 			dists[e] = ungapped_distance(check_seq, locations, e) - correction
 			
-			# Correct the distance depending on direction and end
+			# Correct the distance depending on end
 			dists[e] = dists[e] * -1 if e == 'finish' else dists[e]
 			
 		
@@ -279,22 +329,20 @@ def loadnamevariants():
 	return(output)
 
 def get_features_from_names(seqrecord, names, namevariants):
-	#seqrecord, names = [seq_record, feature_names]
 	
 	names = [names] if isinstance(names, str) else names
 	
 	features = defaultdict(list)
 	unrecognised_names = set()
 	unidentifiable_features = set()
-	#seqname = seqrecord.name
 	
 	for feat in seqrecord.features:
-		#feat = seqrecord.features[68]
+
 		# Remove any translations
 		if('translation' in feat.qualifiers.keys()):
 			del(feat.qualifiers['translation'])
 		
-		# Extract the feature name
+		# Extract the tag that contains the feature name
 		featname = 0
 		nametags = ['gene', 'product', 'label', 'standard_name']
 		if(any(t in feat.qualifiers.keys() for t in nametags)):
@@ -306,13 +354,9 @@ def get_features_from_names(seqrecord, names, namevariants):
 			continue
 		else:
 			unidentifiable_features.add((feat.type, feat.location.start, feat.location.end))
-			#err = "Warning, can't identify %s %s annotation" % (seqname, feat.type)
-			#if(hasattr(feat.location, 'start')):
-			#	err += " %s-%s" % (str(int(feat.location.start)+1), str(int(feat.location.end)))
-			#err += ": no gene/product/label/standard_name tag\n"
-			#sys.stderr.write(err)
 			continue
 		
+		# Find the standard name
 		if(featname in namevariants):
 			name = namevariants[featname]
 			if(name in names):
