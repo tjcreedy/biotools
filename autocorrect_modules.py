@@ -22,6 +22,22 @@ with warnings.catch_warnings():
 	warnings.simplefilter('ignore', BiopythonWarning)
 
 
+def cumsum(lis):
+	total = 0
+	for i in lis:
+		total += i
+		yield total
+
+def ungapped_distance(seq_str, locations, end):
+	# Reverse the sequence if we're looking at the finish
+	sequence = seq_str[::-1] if end is 'finish' else seq_str
+	
+	# Extract the in between sequence
+	between_sequence = sequence[min(locations):max(locations)]
+	
+	# Find the ungapped distance	
+	return(len(between_sequence) - between_sequence.count("-"))
+
 def parse_alignment(path, frame):
 	#path, frame = [args.match_alignment, args.force_alignment_frame]
 	frame = frame - 1 if frame is not None else None
@@ -38,44 +54,58 @@ def parse_alignment(path, frame):
 	for e, v in zip(['start', 'finish'], [start, finish]):
 		modes[e] = mode(v) if frame is None else round(mode(v)/3)*3+frame
 	
-	
 	# Generate consensus
 	alignment_summary = AlignInfo.SummaryInfo(alignment)
 	consensus = str(alignment_summary.gap_consensus())
+	
+	# Build consensus gap pattern and find corrected modal positions for alignment body
+	gap_pattern = [1 if b is '-' else -1 for b in consensus]
+	c_modes = dict()
+	for e, m in modes.items():
+		#e, m = list(modes.items())[0]
+		# Sort the gap pattern in the direction required
+		gp = reversed(gap_pattern) if e == 'finish' else gap_pattern
+		
+		# Calculate the cumulative sum, then take a segment between the modal position and 1/4 of the remaining alignment
+		seg = list(cumsum(gp))[m:m+round((len(gap_pattern)-m)/4)]
+		
+		# Find the position where the number of gaps is maximal; the next position is the alignment body
+		body = m+seg.index(max(seg))+1
+		
+		# Calculate the number of ungapped consensus positions between the mode and this position
+		dist = ungapped_distance(consensus, [modes[e], body], e)
+		
+		# Output these values
+		c_modes[e] = (body, dist)
+	
 	
 	# Find approximate ungapped distance to modal position for each sequence
 	output = dict()
 	
 	for seq_record in alignment:
+		#seq_record = [sr for sr in alignment if sr.id == 'BIOD00303'][0]
 		dists = dict()
+		sequence = str(seq_record.seq)
+		
 		for e in ['start', 'finish']:
-			#seq_record = alignment[603]
 			#e = 'start'
 			#e = 'finish'
-			# Set up the two locations in a list
-			locations = [prelim[seq_record.id][e], modes[e]]
 			
-			if(locations[0] == locations[1]):
-				dists[e] = 0
-			else:
-				# Extract the sequence, either the target if it's outside the alignment or the consensus if inside
-				sequence = str(seq_record.seq) if locations[0] < locations[1] else consensus
-				
-				# Reverse the sequence if we're looking at the finish
-				sequence = sequence[::-1] if e == 'finish' else sequence
-				
-				# Extract the in between sequence
-				between_sequence = sequence[min(locations):max(locations)]
-				
-				# Find the ungapped distance
-				distance = len(between_sequence) - between_sequence.count("-")
-				
-				# Correct the distance depending on direction and end
-				distance = distance * -1 if(locations[0] > locations[1]) else distance
-				distance = distance * -1 if e == 'finish' else distance
-				
-				dists[e] = distance
-				
+			# Set up the two locations in a list
+			locations = [prelim[seq_record.id][e], c_modes[e][0]]
+			
+			#Check whether the target is inside the alignment
+			check_seq = sequence 
+			correction = c_modes[e][1]
+			if(locations[0] > locations[1]):
+				check_seq = sequence
+				correction = correction * -1
+			
+			# Get the ungapped distance modified by the standard distance
+			dists[e] = ungapped_distance(check_seq, locations, e) - correction
+			
+			# Correct the distance depending on direction and end
+			dists[e] = dists[e] * -1 if e == 'finish' else dists[e]
 			
 		
 		output[seq_record.id] = dists
