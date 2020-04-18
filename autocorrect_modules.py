@@ -21,7 +21,7 @@ import warnings
 with warnings.catch_warnings():
 	warnings.simplefilter('ignore', BiopythonWarning)
 
-#from matplotlib import pyplot
+
 
 
 def cumsum(lis):
@@ -112,28 +112,29 @@ def parse_alignment(path, frame):
 		seg = list(cumsum(gp))[m:]
 		seg = seg[:find_0intercepts(seg)[0]]
 		
-		#pyplot.plot(seg)
+		#from matplotlib import pyplot
+		#pyplot.plot(list(cumsum(gp)))
 		# Find the location of the start of the body of the alignment
 			# Find the maximum gap position
 		body = seg.index(max(seg))
 			# Find the first regional maximum of the gap pattern; 
 		#body = [x for x in find_maxima(seg, 40) if x != 0][0]
 		
-		# add this to the modal position - the next position is the alignment body
-		body = m+body+1
+		# add this to the modal position and find the closest amino acid location
+		body = round((m+body)/3)*3+frame
 		
 		# Calculate the number of ungapped consensus positions between the mode and this position
 		dist = ungapped_distance(consensus, [modes[e], body], e)
 		
 		# Output these values
-		c_modes[e] = (body, dist)
+		c_modes[e] = (body, -dist)
 	
 	
 	# Find approximate ungapped distance to modal position for each sequence
 	output = dict()
 	
 	for seq_record in alignment:
-		#seq_record = [sr for sr in alignment if sr.id == 'BIOD01331'][0]
+		#seq_record = [sr for sr in alignment if sr.id == 'BIOD00380'][0]
 		dists = dict()
 		sequence = str(seq_record.seq)
 		
@@ -144,15 +145,18 @@ def parse_alignment(path, frame):
 			# Set up the two locations in a list
 			locations = [prelim[seq_record.id][e], c_modes[e][0]]
 			
-			#Check whether the target is inside the alignment
-			check_seq = sequence 
+			#Check whether the target is inside the body
+			check_seq = sequence
 			correction = c_modes[e][1]
 			if(locations[0] > locations[1]):
-				check_seq = sequence
-				correction = correction * -1
+				check_seq = consensus
+				correction = -correction
 			
 			# Get the ungapped distance modified by the standard distance
-			dists[e] = ungapped_distance(check_seq, locations, e) - correction
+			dists[e] = ungapped_distance(check_seq, locations, e) + correction
+			
+			# Correct the distance if inside the body
+			dists[e] = dists[e] if(locations[0] < locations[1]) else dists[e] * -1
 			
 			# Correct the distance depending on end
 			dists[e] = dists[e] * -1 if e == 'finish' else dists[e]
@@ -776,13 +780,13 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 		else:
 			
 			if(len(results) > 0):
-				# Prioritise longer matches by removing any matches shorter than the longest match
+				# Prioritise longer matches 
 				max_length = max(results.values())
-				if(prioritise_longer_finishes):
+				if(prioritise_longer_finishes): #Remove any matches shorter than the longest match
 					results = {i:l for i, l in results.items() if l == max_length}
-				elif(selector == "C"): # Remove shorter matches after the longest match
+				elif(selector == "C"): # Remove matches shorter than the longest (or if longest >= 3 all matches) after the longest match
 					first_max_i = min([i for i, l in results.items() if l == max_length])
-					results = {i:l for i, l in results.items() if i <= first_max_i or l == max_length}
+					results = {i:l for i, l in results.items() if i <= first_max_i or (max_length < 3 and l == max_length)}
 			
 			# If searching for finish string and the annotation is likely truncated, remove any incomplete stop codons
 			
