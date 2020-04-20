@@ -55,9 +55,10 @@ if __name__ == "__main__":
 	
 	# Read in arguments
 	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-14_current/BIOD00380.gb']
-	#arglist = ['-i', '/home/thomas/MMGdatabase_testrun/1a_gbmaster_auto_run1/BIOD00881.gb', '-m', '/home/thomas/MMGdatabase_testrun/1e_nt_align/COX3.fa']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1a_gbmaster_auto_run1/BIOD00456.gb', '-m', '/home/thomas/MMGdatabase_currrun/1e_nt_align/ND4.fa']
 	#arglist.extend("-a ATP8 -s N,ATT/ATC/AAG/ATA/TTG,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a COX3 -s N,ATG/ATA,* -f N,TAA/TA/T/TAG,1 -d 20 -t 5 -e 1".split(' '))
+	#arglist.extend("-a ND4 -s N,ATG/ATA,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#args = parser.parse_args(arglist)
 	
 	# Check arguments
@@ -143,7 +144,7 @@ if __name__ == "__main__":
 						
 						if(args.overlap is not None and ncf > 0):
 							
-							currfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(feat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
+							currfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(currfeat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
 							
 							if(len(record_context_overdist) > 0):
 								context_overdist[seqname] = record_context_overdist
@@ -151,7 +152,7 @@ if __name__ == "__main__":
 						elif(args.match_alignment):
 							
 							# set the current feature to the correct place according to the alignment
-							currfeat = autocorrect_modules.correct_feature_by_alignment(feat, stringspec, alignment_distances[seqname], name, seqname, len(seq_record))
+							currfeat = autocorrect_modules.correct_feature_by_alignment(currfeat, stringspec, alignment_distances[seqname], name, seqname, len(seq_record))
 						
 						# Run string searching based adjustments
 						
