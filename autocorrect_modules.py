@@ -97,7 +97,7 @@ def parse_alignment(path, frame):
 		# Find ratio of characters to gaps
 	ngaps = consensus.count('-')
 	nchars = len(consensus) - ngaps
-	ratio = round(ngaps/nchars,3)
+	ratio = round(ngaps/nchars,5)
 		# Find pattern of gaps
 	gap_pattern = [1 if b is '-' else -ratio for b in consensus]
 	
@@ -109,7 +109,7 @@ def parse_alignment(path, frame):
 		gp = reversed(gap_pattern) if e == 'finish' else gap_pattern
 		
 		# Calculate the cumulative sum (add 0 to end in case rounding errors prevent return to 0), then take the segment between the modal position and the next time the ratio of gaps:characters passes 0
-		cusum = [round(s,3) for s in list(cumsum(gp))] + [0]
+		cusum = list(cumsum(gp)) + [0]
 		
 		#from matplotlib import pyplot
 		#pyplot.plot(cusum)
