@@ -97,23 +97,27 @@ def parse_alignment(path, frame):
 		# Find ratio of characters to gaps
 	ngaps = consensus.count('-')
 	nchars = len(consensus) - ngaps
-	ratio = ngaps/nchars
+	ratio = round(ngaps/nchars,3)
 		# Find pattern of gaps
-	gap_pattern = [1 if b is '-' else -ratio for b in consensus] 	
+	gap_pattern = [1 if b is '-' else -ratio for b in consensus]
 	
 	c_modes = dict()
 	for e, m in modes.items():
-		#e, m = list(modes.items())[0]
+		#e, m = list(modes.items())[1]
 		
-		# Sort the gap pattern in the direction required
+		# Sort the gap pattern in the direction required.
 		gp = reversed(gap_pattern) if e == 'finish' else gap_pattern
 		
-		# Calculate the cumulative sum, then take the segment between the modal position and the next time the ratio of gaps:characters passes 0
-		seg = list(cumsum(gp))[m:]
-		seg = seg[:find_0intercepts(seg)[0]]
+		# Calculate the cumulative sum (add 0 to end in case rounding errors prevent return to 0), then take the segment between the modal position and the next time the ratio of gaps:characters passes 0
+		cusum = [round(s,3) for s in list(cumsum(gp))] + [0]
 		
 		#from matplotlib import pyplot
-		#pyplot.plot(list(cumsum(gp)))
+		#pyplot.plot(cusum)
+		#print(cusum)
+		
+		seg = cusum[m:]
+		seg = seg[:find_0intercepts(seg)[0]]
+		
 		# Find the location of the start of the body of the alignment
 			# Find the maximum gap position
 		body = seg.index(max(seg))

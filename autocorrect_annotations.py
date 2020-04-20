@@ -55,9 +55,9 @@ if __name__ == "__main__":
 	
 	# Read in arguments
 	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-14_current/BIOD00380.gb']
-	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1a_gbmaster_auto_run1/BIOD00380.gb', '-m', '/home/thomas/MMGdatabase_currrun/1e_nt_align/ATP8.fa']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_testrun/1a_gbmaster_auto_run1/BIOD00881.gb', '-m', '/home/thomas/MMGdatabase_testrun/1e_nt_align/COX3.fa']
 	#arglist.extend("-a ATP8 -s N,ATT/ATC/AAG/ATA/TTG,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
-	#arglist.extend("-a ND2 -s N,ATA/ATG/ATC/TTG/ATT/GTC/GTG/TTA/GTT,* -f N,TAA/TA,1 -d 20 -t 5 -e 1".split(' '))
+	#arglist.extend("-a COX3 -s N,ATG/ATA,* -f N,TAA/TA/T/TAG,1 -d 20 -t 5 -e 1".split(' '))
 	#args = parser.parse_args(arglist)
 	
 	# Check arguments
