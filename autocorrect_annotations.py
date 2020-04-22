@@ -55,15 +55,17 @@ if __name__ == "__main__":
 	
 	# Read in arguments
 	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-14_current/BIOD00380.gb']
-	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1a_gbmaster_auto_run1/BIOD00456.gb', '-m', '/home/thomas/MMGdatabase_currrun/1e_nt_align/ND4.fa']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/2a_gbmaster_auto_run2/BIOD02175.gb', '-m', '/home/thomas/MMGdatabase_currrun/2e_nt_align/ATP6.fa']
+	#arglist.extend("-a ATP6 -s N,ATG/ATA/GTG/ATT,* -f N,TAG/TAA/TA,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a ATP8 -s N,ATT/ATC/AAG/ATA/TTG,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a COX3 -s N,ATG/ATA,* -f N,TAA/TA/T/TAG,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a ND4 -s N,ATG/ATA,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#args = parser.parse_args(arglist)
 	
 	# Check arguments
-	stringspec, overlap, alignment_distances, alignment_stddevs = autocorrect_modules.check_arguments(args)
-	#alignment_distances['BIOD00380']
+	stringspec, overlap, alignment_distances = autocorrect_modules.check_arguments(args)
+	#x = [s for s, v in alignment_distances.items() if v['body'] != v['mode']][500]
+	#alignment_distances[x]
 	# Read and parse gene name variants
 	namevariants = autocorrect_modules.loadnamevariants()
 	
@@ -144,15 +146,24 @@ if __name__ == "__main__":
 						
 						if(args.overlap is not None and ncf > 0):
 							
-							currfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(currfeat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
+							posfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(currfeat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
 							
 							if(len(record_context_overdist) > 0):
 								context_overdist[seqname] = record_context_overdist
 							
 						elif(args.match_alignment):
 							
-							# set the current feature to the correct place according to the alignment
-							currfeat = autocorrect_modules.correct_feature_by_alignment(currfeat, stringspec, alignment_distances[seqname], name, seqname, len(seq_record))
+							dists = alignment_distances[seqname]
+							
+							# set the current feature to the correct place according to the alignment body
+							posfeat, align_moved = autocorrect_modules.correct_feature_by_alignment(currfeat, stringspec, dists['body'], name, seqname, len(seq_record))
+							if(dists['body'] != dists['mode']):
+								posfeat = {'body': posfeat}
+								align_moved = {'body': align_moved}
+								posfeat['mode'], align_moved['mode'] = autocorrect_modules.correct_feature_by_alignment(currfeat, stringspec, dists['mode'], name, seqname, len(seq_record))
+							
+						
+						currfeat = posfeat
 						
 						# Run string searching based adjustments
 						
@@ -163,14 +174,43 @@ if __name__ == "__main__":
 								# Turn off priority for long stops 
 							prioritise_long_stops = args.match_alignment is None
 								# Set start reading frame based on distance if not set
+							correction = [[1,3,2], [2,1,3], [3,1,2]]
 							if(args.match_alignment and stringspec['start'][2] == '*' and args.force_alignment_frame):
-								correction = [[1,3,2], [2,1,3], [3,1,2]]
 								correction = correction[args.force_alignment_frame - 1]
-								stringspec['start'][2] = correction[alignment_distances[seqname]['start']%3]
+								stringspec['start'][2] = correction[alignment_distances[seqname]['body']['start']%3]
+							
+							
+							# Set up if doing multiple runs
+							featdict = None
+							if(type(currfeat) is dict):
+								featdict = copy.deepcopy(currfeat)
+								currfeat = currfeat['body']
 							
 							# run correct_feature_by_query
-							currfeat, codon_start = autocorrect_modules.correct_feature_by_query(currfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
+							currfeat, codon_start, query_moved = autocorrect_modules.correct_feature_by_query(currfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
 							if(codon_start): currfeat.qualifiers['codon_start'] = codon_start
+							
+							# Do second run if necessary
+							if(featdict is not None):
+								currfeat = {'body': currfeat}
+								query_moved = {'body': query_moved}
+								
+								
+								if(stringspec['start'][2] == '*' and args.force_alignment_frame):
+									correction = correction[args.force_alignment_frame - 1]
+									stringspec['start'][2] = correction[alignment_distances[seqname]['mode']['start']%3]
+								
+								currfeat['mode'], codon_start, query_moved['mode'] = autocorrect_modules.correct_feature_by_query(featdict['mode'], stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
+								if(codon_start): currfeat['mode'].qualifiers['codon_start'] = codon_start
+								
+								if(currfeat['mode'].location == currfeat['body'].location):
+									currfeat = currfeat['mode']
+								else:
+									movement_total = {m: {e: d + query_moved[m][e] for e, d in v.items()} for m,v in align_moved.items()}
+									accuracy = {m: sum([abs(alignment_distances[seqname][m][e]-d) for e, d in v.items()]) for m, v in movement_total.items()}
+									bestmethod = [m for m, a in accuracy.items() if a == min(list(accuracy.values()))][0]
+									currfeat = currfeat[bestmethod]
+							
 						
 						
 						# Check output and assign

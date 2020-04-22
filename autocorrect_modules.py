@@ -51,11 +51,10 @@ def find_maxima(lis, d):
 	#d = 10
 	maxima = []
 	i = 0
-	while i <= len(lis):
+	while i < len(lis):
 		s, f = [i - d, i + d]
 		s = s if s >= 0 else 0
-		f = f if f <= len(lis)-1 else len(lis)
-		if(ishigher(lis[i], lis[s:f+1])):
+		if(ishigher(lis[i], lis[s:f])):
 			maxima.append(i)
 			i += d + 1
 		else:
@@ -92,21 +91,38 @@ def parse_alignment(path, frame):
 	# Generate consensus
 	alignment_summary = AlignInfo.SummaryInfo(alignment)
 	consensus = str(alignment_summary.gap_consensus())
+	#modal_consensus = consensus[modes['start']:-modes['finish']]
 	
-	# Build consensus gap pattern and find corrected modal positions for alignment body
+	# Build consensus gap pattern and find positions for alignment body
+	# TERMINOLOGY:
+	# ----X--X---XXXXXXXXXXXX--X-X-----
+	#-----X--X---XXXXXXXXXXXX--X-X--X--
+	#-X---X--X---XXXXXXXXXXXX--X-X-----
+	#     1      2          3    4     
+	# 1: modal start
+	# 2: body start
+	# 3: body finish
+	# 4: modal finish
+		
 		# Find ratio of characters to gaps
-	ngaps = consensus.count('-')
-	nchars = len(consensus) - ngaps
-	ratio = round(ngaps/nchars,5)
+	def gapratio(seqstring):
+		ngaps = seqstring.count('-')
+		nchars = len(seqstring) - ngaps
+		return(round(ngaps/nchars,5))
+	
+	consensus_gapratio = gapratio(consensus)
+	#modal_gapratio = gapratio(modal_consensus)
+	
 		# Find pattern of gaps
-	gap_pattern = [1 if b is '-' else -ratio for b in consensus]
+	#modal_gap_pattern = [1 if b is '-' else -modal_gapratio for b in modal_consensus]
+	consensus_gap_pattern = [1 if b is '-' else -consensus_gapratio for b in consensus]
 	
 	c_modes = dict()
 	for e, m in modes.items():
 		#e, m = list(modes.items())[1]
 		
 		# Sort the gap pattern in the direction required.
-		gp = reversed(gap_pattern) if e == 'finish' else gap_pattern
+		gp = reversed(consensus_gap_pattern) if e == 'finish' else consensus_gap_pattern
 		
 		# Calculate the cumulative sum (add 0 to end in case rounding errors prevent return to 0), then take the segment between the modal position and the next time the ratio of gaps:characters passes 0
 		cusum = list(cumsum(gp)) + [0]
@@ -116,13 +132,20 @@ def parse_alignment(path, frame):
 		#print(cusum)
 		
 		seg = cusum[m:]
-		seg = seg[:find_0intercepts(seg)[0]]
+		segshort = seg[:find_0intercepts(seg)[0]]
+		#pyplot.plot(seg)
+		#pyplot.plot(segshort)
 		
-		# Find the location of the start of the body of the alignment
+		# Find the location of the start of the body of the alignment with multiple methods
+		body = []
 			# Find the maximum gap position
-		body = seg.index(max(seg))
+		body.append(segshort.index(max(segshort)))
 			# Find the first regional maximum of the gap pattern; 
-		#body = [x for x in find_maxima(seg, 40) if x != 0][0]
+		regional_max = [x for x in find_maxima(segshort, 30) if x != 0]
+		body.append(regional_max[0] if len(regional_max)>0 else None)
+		
+			# Pick the first
+		body = min([b for b in body if b is not None])
 		
 		# add this to the modal position and find the closest amino acid location
 		body = round((m+body)/3)*3+frame
@@ -133,47 +156,54 @@ def parse_alignment(path, frame):
 		# Output these values
 		c_modes[e] = (body, -dist)
 	
+	modes = {e:(v, 0) for e, v in modes.items()}
 	
-	# Find approximate ungapped distance to modal position for each sequence
-	output = dict()
+	# Find approximate ungapped distance to target position for each sequence
+	def get_seqdists(alignment, targets):
+		output = dict()
+		
+		for seq_record in alignment:
+			#seq_record = [sr for sr in alignment if sr.id == 'BIOD02328'][0]
+			dists = dict()
+			sequence = str(seq_record.seq)
+			
+			for e in ['start', 'finish']:
+				#e = 'start'
+				#e = 'finish'
+				# Set up the two locations in a list
+				locations = [prelim[seq_record.id][e], targets[e][0]]
+				
+				#Check whether the sequence location is inside the target
+				check_seq = sequence
+				correction = targets[e][1]
+				if(locations[0] > locations[1]):
+					check_seq = consensus
+					correction = -correction
+				
+				# Get the ungapped distance modified by the standard distance
+				dists[e] = ungapped_distance(check_seq, locations, e) + correction
+				
+				# Correct the distance if inside the body
+				dists[e] = dists[e] if(locations[0] < locations[1]) else dists[e] * -1
+				
+				# Correct the distance depending on end
+				dists[e] = dists[e] * -1 if e == 'finish' else dists[e]
+				
+			output[seq_record.id] = dists
+		
+		return(output)
 	
-	for seq_record in alignment:
-		#seq_record = [sr for sr in alignment if sr.id == 'BIOD00380'][0]
-		dists = dict()
-		sequence = str(seq_record.seq)
-		
-		for e in ['start', 'finish']:
-			#e = 'start'
-			#e = 'finish'
-			
-			# Set up the two locations in a list
-			locations = [prelim[seq_record.id][e], c_modes[e][0]]
-			
-			#Check whether the target is inside the body
-			check_seq = sequence
-			correction = c_modes[e][1]
-			if(locations[0] > locations[1]):
-				check_seq = consensus
-				correction = -correction
-			
-			# Get the ungapped distance modified by the standard distance
-			dists[e] = ungapped_distance(check_seq, locations, e) + correction
-			
-			# Correct the distance if inside the body
-			dists[e] = dists[e] if(locations[0] < locations[1]) else dists[e] * -1
-			
-			# Correct the distance depending on end
-			dists[e] = dists[e] * -1 if e == 'finish' else dists[e]
-			
-		
-		output[seq_record.id] = dists
+	
+	output = {'mode': get_seqdists(alignment, modes),
+			 'body': get_seqdists(alignment, c_modes)}
+	output = {s:{m:output[m][s] for m in output.keys()} for s in output['mode'].keys()}
 	
 	# Find standard deviation of the distance
-	start, finish = zip(*[[d[e] for e in ["start", "finish"]] for d in output.values()])
+	#start, finish = zip(*[[d[e] for e in ["start", "finish"]] for d in output.values()])
 	
-	std_dev = {e:round(stdev(v)) for e, v in zip(["start", "finish"], [start, finish])}
+	#std_dev = {e:round(stdev(v)) for e, v in zip(["start", "finish"], [start, finish])}
 	
-	return(output, std_dev)
+	return(output)
 
 
 def check_arguments(arguments):
@@ -204,7 +234,7 @@ def check_arguments(arguments):
 		elif(arguments.match_alignment is not None):
 			
 			# Load in and process the alignment if doing matching
-			alignment_dists, alignment_sds = parse_alignment(arguments.match_alignment, arguments.force_alignment_frame)
+			alignment_dists = parse_alignment(arguments.match_alignment, arguments.force_alignment_frame)
 			sys.stderr.write("Completed loading and parsing "+ arguments.match_alignment + "\n")
 			
 		elif(arguments.startstring is None and arguments.finishstring is None):
@@ -218,7 +248,7 @@ def check_arguments(arguments):
 	else:
 		sys.exit("Error: insufficient arguments - are you missing --annotation?")
 	
-	return(stringspecdict, overlapset, alignment_dists, alignment_sds)
+	return(stringspecdict, overlapset, alignment_dists)
 
 def standardise_names(arguments, overlapdict, namevariants):
 	err = "Error: unrecognised locus name supplied to"
@@ -497,18 +527,18 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 			continue
 		
 		locations = [outfeat.location.start, outfeat.location.end]
-		
+		dist = distances[end]
 		# Set finish distance to the first base of the stop to prevent double stops
-		distances[end] -= [2,0,1][(locations[1]-locations[0])%3] if end == 'finish' else 0
+		dist -= [2,0,1][(locations[1]-locations[0])%3] if end == 'finish' else 0
 		
 		if((end == 'start' and feat.location.strand == 1) or 
 		   (end == "finish" and feat.location.strand == -1)):
 			
-			locations[0] =  correct_location_if_valid(locations[0], feat.location.strand * distances[end], 0)
+			locations[0] =  correct_location_if_valid(locations[0], feat.location.strand * dist, 0)
 			
 		else:
 			
-			locations[1] =  correct_location_if_valid(locations[1], feat.location.strand * distances[end], seqlength)
+			locations[1] =  correct_location_if_valid(locations[1], feat.location.strand * dist, seqlength)
 		
 		if( locations[0] > locations[1] ):
 			sys.stderr.write("Warning: changing " + end + " of " + featname + " in " + seqname + " to match alignment causes incorrect orientation, no change made\n")
@@ -516,8 +546,12 @@ def correct_feature_by_alignment(feat, query_spec, distances, featname, seqname,
 			sys.stderr.write("Warning: changing " + end + " of " + featname + " in " + seqname + " to match alignment causes annotation to exceed contig, no change made\n")
 		else:
 			outfeat.location = SeqFeature.FeatureLocation(locations[0], locations[1], outfeat.location.strand)
+		
+	movement = [outfeat.location.start - feat.location.start, outfeat.location.end - feat.location.end]
+	movement = [-m for m in reversed(movement)] if feat.location.strand == -1 else movement
+	distances_moved = {e:v for e, v in zip(['start', 'finish'], movement)}
 	
-	return(outfeat)
+	return(outfeat, distances_moved)
 
 def get_newends(location, length, feat_start, feat_finish, strand, end, distance, code, subject_start, truncated):
 	
@@ -686,6 +720,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 	feat_start, feat_finish = feat.location.start, feat.location.end
 	errstart = "Warning: sequence " + seqname + " has "
 	
+	distances_moved = {'start': 0, 'finish': 0}
 	codon_start = None
 	
 	for end in ['start','finish']:
@@ -827,8 +862,10 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 						errmid = "multiple closest matches (taking first) of "
 			
 			feat_start, feat_finish = get_newends(location, results[location], feat_start, feat_finish, feat.location.strand, end, distance, code, subject_start, truncated)
+			distances_moved[end] = location - distance
 		else:
 			errmid = "no succesful matches of " if errmid == "" else errmid
+			codon_start = None
 		
 		if(errmid != ""):
 			sys.stderr.write(errstart + errmid + errend)
@@ -837,8 +874,8 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 	if(feat_start < feat_finish):
 		outfeat.location = SeqFeature.FeatureLocation(feat_start, feat_finish, feat.location.strand)
 	else:
-		codon_start = None
-	return(outfeat, codon_start)
+		distances_moved = {'start': 0, 'finish': 0}
+	return(outfeat, codon_start, distances_moved)
 
 
 
