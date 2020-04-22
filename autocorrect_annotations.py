@@ -143,6 +143,7 @@ if __name__ == "__main__":
 						# Run positional adjustments
 						
 						currfeat = copy.deepcopy(feat)
+						posfeat = currfeat
 						
 						if(args.overlap is not None and ncf > 0):
 							
