@@ -10,7 +10,7 @@ import sys
 import copy
 import urllib.request
 import re
-from statistics import mode, stdev
+from statistics import mode #, stdev
 
 from collections import defaultdict, Counter
 from Bio import SeqFeature, SeqRecord, AlignIO
@@ -119,7 +119,7 @@ def parse_alignment(path, frame):
 	
 	c_modes = dict()
 	for e, m in modes.items():
-		#e, m = list(modes.items())[1]
+		#e, m = list(modes.items())[0]
 		
 		# Sort the gap pattern in the direction required.
 		gp = reversed(consensus_gap_pattern) if e == 'finish' else consensus_gap_pattern
@@ -856,10 +856,9 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 					location = locations[-1]
 				elif(selector == 'C'):
 					loc_dist = [abs(distance-l) for l in locations]
-					if(loc_dist.count(min(loc_dist)) == 1):
-						location = locations[loc_dist.index(min(loc_dist))]
-					else:
-						errmid = "multiple closest matches (taking first) of "
+					location = locations[loc_dist.index(min(loc_dist))]
+					if(loc_dist.count(min(loc_dist)) > 1): errmid = "multiple closest matches (taking first) of "
+			
 			
 			feat_start, feat_finish = get_newends(location, results[location], feat_start, feat_finish, feat.location.strand, end, distance, code, subject_start, truncated)
 			distances_moved[end] = location - distance
