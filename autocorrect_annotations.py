@@ -54,11 +54,15 @@ if __name__ == "__main__":
 	
 	
 	# Read in arguments
-	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-14_current/BIOD00380.gb']
+	#arglist = ['-i', '/home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-23_current/BIOD02225.gb']
+	#arglist.extend("-a ATP6 -o ATP8,7 -x 50 -s N,ATG/ATA/GTG/ATT,*,C -d 53 -t 5".split(' '))
 	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1a_gbmaster_auto_run1/BIOD00100.gb', '-m', '/home/thomas/MMGdatabase_currrun/1e_nt_align/ND6.fa']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_testrun/1a_gbmaster_auto_run1/BIOD00100.gb', '-m', '/home/thomas/MMGdatabase_testrun/1e_nt_align/COX2.fa']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_testrun/1a_gbmaster_auto_run1/BIOD00100.gb', '-m', '/home/thomas/MMGdatabase_testrun/1e_nt_align/ND1.fa']
 	#arglist.extend("-a ATP6 -s N,ATG/ATA/GTG/ATT,* -f N,TAG/TAA/TA,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a ATP8 -s N,ATT/ATC/AAG/ATA/TTG,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a COX3 -s N,ATG/ATA,* -f N,TAA/TA/T/TAG,1 -d 20 -t 5 -e 1".split(' '))
+	#arglist.extend("-a ND1 -s N,TTG/ATG/ATT/TTA/ATA,* -f N,TAA/TAG/TA,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a ND4 -s N,ATG/ATA,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a ND6 -s N,ATT/ATA/ATC/TTG,* -f N,TAA/TAG/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#args = parser.parse_args(arglist)

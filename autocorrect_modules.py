@@ -132,27 +132,29 @@ def parse_alignment(path, frame):
 		#print(cusum)
 		
 		seg = cusum[m:]
-		segshort = seg[:find_0intercepts(seg)[0]]
-		#pyplot.plot(seg)
-		#pyplot.plot(segshort)
-		
-		# Find the location of the start of the body of the alignment with multiple methods
-		body = []
-			# Find the maximum gap position
-		body.append(segshort.index(max(segshort)))
-			# Find the first regional maximum of the gap pattern; 
-		regional_max = [x for x in find_maxima(segshort, 30) if x != 0]
-		body.append(regional_max[0] if len(regional_max)>0 else None)
-		
-			# Pick the first
-		body = min([b for b in body if b is not None])
-		
-		# add this to the modal position and find the closest amino acid location
-		body = round((m+body)/3)*3+frame
-		
-		# Calculate the number of ungapped consensus positions between the mode and this position
-		dist = ungapped_distance(consensus, [modes[e], body], e)
-		
+		body, dist = [0, 0]
+		if (m > 0 and any([s > 0 for s in seg]) and find_0intercepts(seg)[0] > 0):
+			segshort = seg[:find_0intercepts(seg)[0]]
+			#pyplot.plot(seg)
+			#pyplot.plot(segshort)
+			
+			# Find the location of the start of the body of the alignment with multiple methods
+			body = []
+				# Find the maximum gap position
+			body.append(segshort.index(max(segshort)))
+				# Find the first regional maximum of the gap pattern; 
+			regional_max = [x for x in find_maxima(segshort, 30) if x != 0]
+			body.append(regional_max[0] if len(regional_max)>0 else None)
+			
+				# Pick the first
+			body = min([b for b in body if b is not None])
+			
+			# add this to the modal position and find the closest amino acid location
+			body = round((m+body)/3)*3+frame
+			
+			# Calculate the number of ungapped consensus positions between the mode and this position
+			dist = ungapped_distance(consensus, [modes[e], body], e)
+			
 		# Output these values
 		c_modes[e] = (body, -dist)
 	
@@ -629,7 +631,7 @@ def find_and_filter_frame(currresults, feat, code, end, distance, subject_start,
 	# Generate list of lists containing [location, frame in subject, nstops inc final, nstops not inc final] 
 	data = [[i, i%3 + 1] + get_stopcounts(i, l, feat, code, end, distance, subject_start, seq_record, table) for i, l in currresults.items()]
 	
-	# If any have one or zeros stops, at the end, return these if OK
+	# If any have one or zero stops, at the end, return these if OK
 	checkdata = [d for d in data if d[2] <= 1 and d[3] == 0]
 	if(len(checkdata) > 0):
 		if(check_consistent_frame(checkdata) or len(checkdata) < 2):
@@ -637,6 +639,8 @@ def find_and_filter_frame(currresults, feat, code, end, distance, subject_start,
 		else:
 			data = checkdata
 	else:
+		# Otherwise, i.e. there are some with internal stops 
+		
 		# Filter out any with greater than minimum number of nstops not inc final
 		min_nsnf = min([d[2] for d in data])
 		data = [d for d in data if d[2] == min_nsnf]
@@ -647,11 +651,11 @@ def find_and_filter_frame(currresults, feat, code, end, distance, subject_start,
 		data = [d for d in data if d[3] == min_nsif]
 		if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
-	# Filter out significantly uncommon frames
-	framecounts = Counter([d[1] for d in data])
-	maxfc = max([c for c in framecounts.values()])
-	data = [d for d in data if framecounts[d[1]] >= maxfc - 1]
-	if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
+	## Filter out significantly uncommon frames
+	#framecounts = Counter([d[1] for d in data])
+	#maxfc = max([c for c in framecounts.values()])
+	#data = [d for d in data if framecounts[d[1]] >= maxfc - 1]
+	#if(check_consistent_frame(data) or len(data) < 2): return(get_current_results(currresults, data), 0)
 	
 	# Filter out frames where the nstops inc final do not match the stop status of the original feature (only if the original feature had no internal stops)
 	endstop, instop = [stopcount(SeqRecord.SeqRecord(feat.extract(seq_record.seq)), table, 1, t) for t in [True, False]]
@@ -808,7 +812,7 @@ def correct_feature_by_query(feat, query_spec, seq_record, seqname, distance, fe
 				
 				# Find the result with suitable ORF
 				results, fail = find_and_filter_frame(results, feat, code, end, distance, subject_start, seq_record, translation_table)
-				if(fail): errmid = "no single detectable frame in "
+				if(fail): errmid = "no single detectable frame (no change will be made) in "
 				
 				# If truncated, set result to contig start but note codon position
 				if(len(results) > 0 and truncated):
