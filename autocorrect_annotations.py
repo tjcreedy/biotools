@@ -227,8 +227,10 @@ if __name__ == "__main__":
 						feat = feats[i]
 						
 						w = "Warning: new annotation for " + name + " in " + seqname
-						cs = donefeat.qualifiers['codon_start'][0] if type(donefeat.qualifiers['codon_start']) is list else donefeat.qualifiers['codon_start']
-						ss = int(cs)-1 if codon_start else 0
+						ss = 0
+						if(codon_start and 'codon_start' in donefeat.qualifiers):
+							cs = donefeat.qualifiers['codon_start'][0] if type(donefeat.qualifiers['codon_start']) is list else donefeat.qualifiers['codon_start']
+							ss = int(cs)-1
 						
 						if(donefeat.location.start < 0 or donefeat.location.end > len(seq_record.seq)):
 							
