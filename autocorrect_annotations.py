@@ -59,6 +59,7 @@ if __name__ == "__main__":
 	#arglist = ['-i', '/home/thomas/MMGdatabase_currrun/1a_gbmaster_auto_run1/BIOD00100.gb', '-m', '/home/thomas/MMGdatabase_currrun/1e_nt_align/ND6.fa']
 	#arglist = ['-i', '/home/thomas/MMGdatabase_testrun/1a_gbmaster_auto_run1/BIOD00100.gb', '-m', '/home/thomas/MMGdatabase_testrun/1e_nt_align/COX2.fa']
 	#arglist = ['-i', '/home/thomas/MMGdatabase_testrun/1a_gbmaster_auto_run1/BIOD00100.gb', '-m', '/home/thomas/MMGdatabase_testrun/1e_nt_align/ND1.fa']
+	#arglist = ['-i', '/home/thomas/MMGdatabase_global/1a_gbmaster_auto_run1/GBDL00250.gb', '-m', '/home/thomas/MMGdatabase_global/1e_nt_align/ND1.fa']
 	#arglist.extend("-a ATP6 -s N,ATG/ATA/GTG/ATT,* -f N,TAG/TAA/TA,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a ATP8 -s N,ATT/ATC/AAG/ATA/TTG,* -f N,TAA/TA/T,1 -d 20 -t 5 -e 1".split(' '))
 	#arglist.extend("-a COX3 -s N,ATG/ATA,* -f N,TAA/TA/T/TAG,1 -d 20 -t 5 -e 1".split(' '))
@@ -140,19 +141,17 @@ if __name__ == "__main__":
 							continue
 						
 						#i = 0
-						feat = feats[i]
+						startfeat = copy.deepcopy(feats[i])
 						
 						# Set defaults
 						codon_start = None
 						
 						# Run positional adjustments
-						
-						currfeat = copy.deepcopy(feat)
-						posfeat = currfeat
+						posfeat = None
 						
 						if(args.overlap is not None and ncf > 0):
 							
-							posfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(currfeat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
+							posfeat, record_context_overdist = autocorrect_modules.correct_positions_by_overlap(startfeat, context_features, overlap, args.maxdist, len(seq_record.seq), seqname)
 							
 							if(len(record_context_overdist) > 0):
 								context_overdist[seqname] = record_context_overdist
@@ -162,16 +161,19 @@ if __name__ == "__main__":
 							dists = alignment_distances[seqname]
 							
 							# set the current feature to the correct place according to the alignment body
-							posfeat, align_moved = autocorrect_modules.correct_feature_by_alignment(currfeat, stringspec, dists['body'], name, seqname, len(seq_record))
+							posfeat, align_moved = autocorrect_modules.correct_feature_by_alignment(startfeat, stringspec, dists['body'], name, seqname, len(seq_record))
 							if(dists['body'] != dists['mode']):
 								posfeat = {'body': posfeat}
 								align_moved = {'body': align_moved}
-								posfeat['mode'], align_moved['mode'] = autocorrect_modules.correct_feature_by_alignment(currfeat, stringspec, dists['mode'], name, seqname, len(seq_record))
+								posfeat['mode'], align_moved['mode'] = autocorrect_modules.correct_feature_by_alignment(startfeat, stringspec, dists['mode'], name, seqname, len(seq_record))
 							
+						else:
+							posfeat = startfeat
 						
-						currfeat = posfeat
+						
 						
 						# Run string searching based adjustments
+						donefeat = None
 						
 						if(len(stringspec) > 0):
 							
@@ -187,60 +189,65 @@ if __name__ == "__main__":
 							
 							
 							# Set up if doing multiple runs
-							featdict = None
-							if(type(currfeat) is dict):
-								featdict = copy.deepcopy(currfeat)
-								currfeat = currfeat['body']
+							posfeat_mode = None
+							if(type(posfeat) is dict):
+								posfeat_mode = posfeat['mode']
+								posfeat = posfeat['body']
 							
 							# run correct_feature_by_query
-							currfeat, codon_start, query_moved = autocorrect_modules.correct_feature_by_query(currfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
-							if(codon_start): currfeat.qualifiers['codon_start'] = codon_start
+							donefeat, codon_start, query_moved = autocorrect_modules.correct_feature_by_query(posfeat, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
+							if(codon_start): donefeat.qualifiers['codon_start'] = codon_start
 							
 							# Do second run if necessary
-							if(featdict is not None):
-								currfeat = {'body': currfeat}
+							if(posfeat_mode is not None):
+								donefeat = {'body': donefeat}
 								query_moved = {'body': query_moved}
-								
 								
 								if(stringspec['start'][2] == '*' and args.force_alignment_frame):
 									correction = correction[args.force_alignment_frame - 1]
 									stringspec['start'][2] = correction[alignment_distances[seqname]['mode']['start']%3]
 								
-								currfeat['mode'], codon_start, query_moved['mode'] = autocorrect_modules.correct_feature_by_query(featdict['mode'], stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
-								if(codon_start): currfeat['mode'].qualifiers['codon_start'] = codon_start
+								donefeat['mode'], codon_start, query_moved['mode'] = autocorrect_modules.correct_feature_by_query(posfeat_mode, stringspec, seq_record, seqname, args.search_distance, name, args.translation_table, prioritise_long_stops)
+								if(codon_start): donefeat['mode'].qualifiers['codon_start'] = codon_start
 								
-								if(currfeat['mode'].location == currfeat['body'].location):
-									currfeat = currfeat['mode']
+								if(donefeat['mode'].location == donefeat['body'].location):
+									donefeat = donefeat['mode']
 								else:
 									movement_total = {m: {e: d + query_moved[m][e] for e, d in v.items()} for m,v in align_moved.items()}
 									accuracy = {m: sum([abs(alignment_distances[seqname][m][e]-d) for e, d in v.items()]) for m, v in movement_total.items()}
 									bestmethod = [m for m, a in accuracy.items() if a == min(list(accuracy.values()))][0]
-									currfeat = currfeat[bestmethod]
+									donefeat = donefeat[bestmethod]
+								
 							
+						else:
+							donefeat = posfeat
 						
 						
 						# Check output and assign
-						w = "Warning: new annotation for " + name + " in " + seqname
-						ss = currfeat.qualifiers['codon_start']-1 if codon_start else 0
+						feat = feats[i]
 						
-						if(currfeat.location.start < 0 or currfeat.location.end > len(seq_record.seq)):
+						w = "Warning: new annotation for " + name + " in " + seqname
+						cs = donefeat.qualifiers['codon_start'][0] if type(donefeat.qualifiers['codon_start']) is list else donefeat.qualifiers['codon_start']
+						ss = int(cs)-1 if codon_start else 0
+						
+						if(donefeat.location.start < 0 or donefeat.location.end > len(seq_record.seq)):
 							
 							sys.stderr.write(w + " exceeds contig, no change made\n")
 							
-						elif(currfeat.location.start > currfeat.location.end):
+						elif(donefeat.location.start > donefeat.location.end):
 							
 							sys.stderr.write(w + " is incorrectly oriented, no change made\n")
 							
-						elif(autocorrect_modules.stopcount(SeqRecord.SeqRecord(currfeat.extract(seq_record.seq)[ss:]), args.translation_table, 1, False) > 0):
+						elif(autocorrect_modules.stopcount(SeqRecord.SeqRecord(donefeat.extract(seq_record.seq)[ss:]), args.translation_table, 1, False) > 0):
 							
 							sys.stderr.write(w + " generates internal stop codons, no change made\n")
 							
-						elif(currfeat.location.start != feat.location.start or 
-							 currfeat.location.end != feat.location.end or 
+						elif(donefeat.location.start != feat.location.start or 
+							 donefeat.location.end != feat.location.end or 
 							 ('codon_start' in feat.qualifiers and feat.qualifiers['codon_start'] != codon_start) or
 							 ('codon_start' not in feat.qualifiers and codon_start is not None)):
 							
-							feat.location = currfeat.location
+							feat.location = donefeat.location
 							prev_codon_start = codon_start
 							
 							if(codon_start and feat.type == 'CDS'):
@@ -251,7 +258,7 @@ if __name__ == "__main__":
 						
 						if((feat.location.start == 0 or feat.location.end == len(seq_record))
 							and feat.type != 'source'
-							and seq_record.annotations['data_file_division'] != 'circular'):
+							and seq_record.annotations['topology'] != 'circular'):
 							autocorrect_modules.correct_truncated_features(feat, len(seq_record))
 							
 						
