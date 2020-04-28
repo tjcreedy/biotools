@@ -104,22 +104,18 @@ colnames(reads) %in% row.names(taxonomy)
 taxonomy <- taxonomy[colnames(reads),]
 
     # We create a detailed version of the taxonomy table with the scores
-
-    # Split up strings to make list
-taxdetailed <- strsplit(taxonomy$taxonomy, "[:(,]") %>%
-    # Turn into single vector
-  unlist() %>%
-    # Get rid of ')'
-  gsub(')', '', .) %>%
-   # Turn into table
-  matrix(., ncol = 3, byrow = T, 
-         dimnames = list(NULL, c("level", "taxon", "score"))) %>%      
-    # Add OTUs
-  cbind(otu = rep(row.names(taxonomy), each = 7), .) %>% 
-    # Convert to data frame
-  data.frame() %>%
-    # Reparse and set the column data types
-  type.convert(as.is = T)
+    # This code is based on Yige Sun's rewriting of this step, thanks!
+      # Add the OTUs as a column
+taxonomy$otu <- row.names(taxonomy)
+      # Separate the taxonomy column into multiple columns by the ',' character
+taxdetailed <- separate(taxonomy, taxonomy, paste0('V', 1:(max(str_count(taxonomy$taxonomy, ','))+1)), 
+                        sep = ",", fill = 'right', remove = T) %>% 
+      # Turn the separate columns for taxa into rows
+  pivot_longer(., cols = starts_with('V'), values_to = 'taxon', values_drop_na = T) %>%
+      # Retain only the OTU and taxon columns
+  select(otu, taxon) %>%
+      # Separate the taxon column into three columns by colon and parentheses
+  separate(., taxon, into = c('level', 'taxon', 'score', NA), sep = "[:()]")
 
     # Record which taxa were selected
 taxdetailed$selected <- taxdetailed$score == 1
