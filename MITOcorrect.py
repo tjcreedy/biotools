@@ -12,7 +12,7 @@ import re
 import argparse
 import textwrap as _textwrap
 import MITOcorrect_modules as mcm
-import sys
+import shutil
 import multiprocessing
 import functools
 
@@ -67,9 +67,11 @@ parser.add_argument('-f', '--framefree', default = False, action = 'store_true')
 parser.add_argument('-c', '--alignmenttype') # aa or nt
 parser.add_argument('-o', '--outputdirectory')
 parser.add_argument('-k', '--keepalignments', default = False, action = 'store_true')
-parser.add_argument('-w', '--writedetailedresults', default = False, action = 'store_true')
+parser.add_argument('-r', '--detailedresults', default = False, action = 'store_true')
+parser.add_argument('-p', '--potentialfeatures', default = False, action = 'store_true')
 parser.add_argument('-1', '--onefile', default = False, action = 'store_true') # Output all input gb files in one output file
-
+parser.add_argument('-i', '--alignmentweight', default = 0.5)
+parser.add_argument('-j', '--overlapweight', default = 0.5)
 
 # Main
 if __name__ == "__main__":
@@ -131,7 +133,7 @@ if __name__ == "__main__":
         # Process the present cleanfeatures in parallel
         outfeats = []
         
-        with multiprocessing.Pool(processes = args.threads) as pool:
+        with multiprocessing.Pool(processes=args.threads) as pool:
              poolout = pool.map(functools.partial(mcm.correct_feature,
                                                   cleanfeats, specs, gbname, 
                                                   seqrecord, args, temp), 
@@ -142,7 +144,7 @@ if __name__ == "__main__":
         
         log.write(''.join(logl))
         
-        if args.writedetailedresults:
+        if args.detailedresults:
             for l in statsl:
                 statw.writerow(l)
         
@@ -160,14 +162,14 @@ if __name__ == "__main__":
     
     # Delete temporary alignment directory
     if not args.keepalignments:
-        os.rmdir(temp)
+        shutil.rmtree(temp)
         # delete output
     
     # Close logfile
     log.close()
     
     # Close stats file
-    if args.writedetailedresults:
+    if args.detailedresults:
         stath.close()
     
     exit()

@@ -337,7 +337,7 @@ def start_statsfile(outdir):
                            for e in ['start', 'end'] 
                            for t in ['overlap', 'consensus', 'body']]
                         + ['consensus_agreements', 'deletions', 
-                           'insertions']
+                           'insertions', 'final_score', 'selected']
                         ))
     
     # Return the handle and writer object
@@ -869,10 +869,10 @@ def gapped_distance(seq, value, dist):
     
     return(out)
 
-def align_and_analyse(results, specs, aligntype, target, seqname, temp, keep):
+def align_and_analyse(results, args, specs, target, seqname, temp):
     # results, specs, aligntype = [filterresults, specifications[target], args.alignmenttype]
     
-    
+    # Align and generate alignment scores
     for result in results:
         #result = results[0]
         
@@ -885,7 +885,7 @@ def align_and_analyse(results, specs, aligntype, target, seqname, temp, keep):
         files = [os.path.join(temp, name + s) for s in suffixes]
         
         # Generate a temporary fasta
-        outrecord = SeqRecord.SeqRecord(seq=result[aligntype], 
+        outrecord = SeqRecord.SeqRecord(seq=result[args.alignmenttype], 
                                         id=name, description='')
         SeqIO.write(outrecord, files[0], 'fasta')
         
@@ -914,7 +914,7 @@ def align_and_analyse(results, specs, aligntype, target, seqname, temp, keep):
         
         # Delete the files
         os.remove(files[0])
-        if not keep: os.remove(files[1])
+        if not args.keepalignments: os.remove(files[1])
         
         # Find start and stop positions 
         seqss = dict()
@@ -955,7 +955,7 @@ def align_and_analyse(results, specs, aligntype, target, seqname, temp, keep):
                              + stdist[e])
         
         diserr = cond, bodd
-        if aligntype == 'AA':
+        if args.alignmenttype == 'AA':
             diserr = [[i * 3 for i in j] for j in diserr]
         
         
@@ -973,34 +973,42 @@ def align_and_analyse(results, specs, aligntype, target, seqname, temp, keep):
         
         ccts = [cid.count(c) for c in '-di']
         
-        # Compile
-        result.update({'cond': cond, 'bodd': bodd, 'ccts': ccts, 
-                       'slen': len(result['nt'])})
         
+        # Generate a score for each end of the annotation
+        endscore = [None, None]
+        for i in [0, 1]:
+            
+            # TODO - step through this manually because it's giving strange
+            # values...
+            
+            # Generate the weighted average of the alignment distances
+            alignscore = (abs(ccts[i]) * args.alignmentweight
+                          + abs(bodd[i]) * (1 - args.alignmentweight)) / 2
+            
+            # Generate the weighted average of the overlap dist and alignscore
+            endscore[i] = (abs(result['adjd'][i]) * args.overlapweight
+                           + alignscore * (1 - args.overlapweight)) / 2
+        
+         # Compile
+        result.update({'cond': cond, 'bodd': bodd, 'ccts': ccts, 
+                       'slen': len(result['nt']), 'score': sum(endscore) / 2})
+    
+    
+    # Find the minimum score and mark the selection in the results
+    minscore = min([r['score'] for r in results])
+    for r in results:
+        r['select'] = r['score'] == minscore
     
     return(results, '')
 
-def output_filter_result(results, gbname, seqname, target, sw=None):
+def write_detailed_results(results, gbname, seqname, target, sw=None):
     # results = alignresults
     # Start output list
-    resultfeats = list()
+    
     statl = []
     for result in results:
-        #result = results[0]
         # Extract the feature
         feat = result['feat']
-        
-        # Generate name for this result
-        name = "%s_%s-%s" % (target, int(feat.location.start) + 1,
-                             int(feat.location.end))
-        
-        # Give the feature the name and a type
-        feat.qualifiers['gene'] = name
-        feat.qualifiers['note'] = 'potential_MITOcorrect_annotation'
-        feat.type = 'potential'
-        
-        # Add the feature to the outputs
-        resultfeats.append(feat)
         
         # Construct a line to write to the stats file
         stats = ([gbname, seqname, target,
@@ -1014,13 +1022,55 @@ def output_filter_result(results, gbname, seqname, target, sw=None):
                   result['inst']]
                   + [result[k][i] for i in [0, 1] 
                    for k in ['adjd', 'cond', 'bodd']]
-                  + result['ccts'])
+                  + result['ccts'] 
+                  + [result['score'], result['select']])
         if sw:
             sw.write(stats)
         else:
             statl.append(stats)
     
-    return(resultfeats, statl)
+    return(statl)
+
+def generate_output_target(results, target, args):
+    
+    resultfeats = list()
+    
+    for result in results:
+        if args.potentialfeatures:
+            
+            #result = results[0]
+            
+            # Extract the feature
+            feat = result['feat']
+            
+            # Generate name for this result
+            name = "%s_%s-%s" % (target, int(feat.location.start) + 1,
+                                 int(feat.location.end))
+            
+            # Give the feature the name and a type
+            feat.qualifiers['gene'] = name
+            feat.qualifiers['note'] = 'potential_MITOcorrect_annotation'
+            feat.type = 'potential'
+            
+            # Add the feature to the outputs
+            resultfeats.append(feat)
+            
+        elif result['select']:
+            
+            feat = result['feat']
+            
+            # Add feat details
+            feat.qualifiers['gene'] = target
+            feat.type = 'CDS'
+            
+            # TODO: add second feat for gene
+            
+            # Add the feature to the outputs
+            resultfeats.append(feat)
+            
+    
+    return(resultfeats)
+
 
 def initialise(args):
     
@@ -1045,8 +1095,8 @@ def initialise(args):
     log = (open(os.path.join(args.logfile), 'w') 
         if args.logfile else open(os.devnull, 'w'))
     
-    # Start an output file for writing statistics if args.writedetailedresults
-    if args.writedetailedresults:
+    # Start an output file for writing statistics if args.detailedresults
+    if args.detailedresults:
         stath, statw = start_statsfile(args.outputdirectory)
     
     return(namevariants, annotypes, specs, temp, log, stath, statw)
@@ -1087,15 +1137,17 @@ def prepare_seqrecord(seqn, seqrecord, gbname, namevariants, annotypes,
     return(present, cleanfeats, ofeats, issues, log)
 
 
-def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, temp,
-                    target):
+def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, 
+                    temp, target):
+    # TODO: something to ensure original annotation is always part of the
+    # results list
+    
+    # Extract the CDS
+    feat = list(cleanfeats[target])[0]
     
     # Set up log and stats
     log = "\n\t%s\n" % (target) 
     statl = []
-    
-    # Extract the CDS
-    feat = list(cleanfeats[target])[0]
     
     # Determine the start and stop positions of the current annotation,
     # slicing by strand (1 or -1) makes order correct
@@ -1131,40 +1183,37 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, temp,
     
     # Make an empty list, the default output if no result
     result = []
+    flog, alog = ['', '']
     if len(searchresults) > 1:
         
         # Filter results
         filterresults, flog = filter_searchresults(searchresults)
         
         # Align the filtered results and generate alignment stats
-        alignresults, alog = align_and_analyse(filterresults,
-                                             specifications[target],
-                                             args.alignmenttype,
-                                             target, seqrecord.name, temp,
-                                             args.keepalignments)
+        alignresults, alog = align_and_analyse(filterresults, args,
+                                               specifications[target],
+                                               target, seqrecord.name, temp)
         
-        if args.writedetailedresults:
+        if args.detailedresults:
             # Output a list of features to write to the contig
             # Write a table of filter results
+            statl = write_detailed_results(alignresults, gbname,
+                                                   seqrecord.name, target)
             
-            result, statl = output_filter_result(alignresults, gbname,
-                                              seqrecord.name, target)
-            
+        
+        # Output final result(s)
+        # TODO: selection of single result if equal scores
+        result = generate_output_target(alignresults, target, args)
+        
+        
+        if args.potentialfeatures:
             result.append(feat)
-            
-        else:
-            
-            # TODO: selection of final result choice
-            # should output two features, target type and gene, in a list
-            # output empty list if no final result
-             result = [feat]
-    
-    
+        
+        
     if len(result) == 0:
-        
-        # TODO: generate list of two features, target type and gene based on input feat
+         # TODO: generate list of two features, target type and gene based on input feat
         result = [feat]
-        
+    
     
     # Extend outfeats with these
     return(result, [log + clog + rlog + slog + flog + alog], statl)
