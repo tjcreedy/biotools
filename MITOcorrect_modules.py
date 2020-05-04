@@ -876,7 +876,7 @@ def gapped_distance(seq, value, dist):
     
     return(out)
 
-def align_and_analyse(results, args, specs, target, seqname, temp, feat):
+def align_and_analyse(results, args, specs, target, seqname, temp):
     # results, specs, aligntype = [filterresults, specifications[target], args.alignmenttype]
     
     # Align and generate alignment scores
