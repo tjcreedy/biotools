@@ -6,7 +6,6 @@
 
 # Imports
 
-
 import os
 import re
 import argparse
@@ -80,11 +79,12 @@ if __name__ == "__main__":
     
     arglist = re.sub('dir', '/home/thomas/MITOcorrect_testing',
             """-s dir/testspecs.tsv
-               -g dir/test_multigenbank.gb
+               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD00411.gb
                -l dir/testlog.txt
                -a dir/test_ntalignfile.tsv
                -o dir/testout/ 
-               -t 2 -b 5 -c nt -k -w -1""").split()
+               -t 2 -b 5 -c nt -k -r -p -1""").split()
+    #-g dir/test_multigenbank.gb
     #os.chdir('/home/thomas/MITOcorrect_testing')
     #args = parser.parse_args(arglist)
     
@@ -131,7 +131,6 @@ if __name__ == "__main__":
         log.write(plog)
         
         # Process the present cleanfeatures in parallel
-        outfeats = []
         
         with multiprocessing.Pool(processes=args.threads) as pool:
              poolout = pool.map(functools.partial(mcm.correct_feature,

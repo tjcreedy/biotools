@@ -467,7 +467,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
     
     # Work through the ends
     for i, end in enumerate(specs.keys()):
-        #i, end = list(enumerate(specs.keys()))[0]
+        # i, end = list(enumerate(specs.keys()))[1]
         # Extract the relevant specifications
         snames = ['overlapmaxdistance', 'overlap']
         maxdist, cspecs = [0, 0]
@@ -477,7 +477,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
             continue
         
         # Set up list for results
-        correction = dict()
+        correction = []
         
         # Generate a list of lists of all specified context features
         
@@ -494,7 +494,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
         
         # Work through the specified context annotations
         for context in contexts:
-            #context = contexts[0]
+            # context = contexts[1]
             cname, cfeat, specdist = context
             
             # Extract the feature locations
@@ -532,7 +532,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
             
             # Check gap and index of closest position are permissible
             
-            if distance > maxdist + specdist:
+            if abs(distance) > maxdist + specdist:
                 overdist.add(cname)
                 continue
             
@@ -552,14 +552,12 @@ def overlap(initpos, strand, feats, specs, seqrecord):
                  # or on -ve strand, current start is after newstop
                  (i == 1 and gtl([newpos, initpos[0]][::strand])))):
                  
-                correction[cname] = [newpos, change * strand]
+                correction.append([cname, newpos, change * strand])
         
         if len(correction) > 0:
-            cval = [c[1] for c in correction.values()]
-            abscval = [abs(c) for c in cval]
-            mindist = cval[abscval.index(min(abscval))]
-            minname = [n for n, d in correction.items() if d[1] == mindist][0]
-            changes[i] = [minname] + correction[minname]
+            cval = [abs(cv[2]) for cv in correction]
+            mini = cval.index(min(cval))
+            changes[i] = correction[mini]
         
     
     logstring = []
@@ -744,14 +742,8 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
     options = []
     for startpos, startdet in results['start'].items():
         for stoppos, stopdet in results['stop'].items():
-            #startpos, startdet = list(results['start'].items())[0]
-            #stoppos, stopdet = list(results['stop'].items())[2]
-            
-            # Skip the combination if the results are not in the same reading
-            # frame relative to the original annotation, unless search squences
-            # are not in frame (i.e. freeframe is on)
-            if not ff and startdet['arf'] != stopdet['arf']:
-                continue
+            #startpos, startdet = list(results['start'].items())[-1]
+            #stoppos, stopdet = list(results['stop'].items())[1]
             
             # Correct the stop position by the length
             stoppos = stoppos + stopdet['len'] * strand
@@ -761,6 +753,19 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
             
             # Set up a list of start and stop positions
             pos = [startpos, stoppos]
+            
+            # Skip the combination if:
+                # the start position is not less than the stop position (or vice
+                # versa on reverse strand)
+            if (gtl(pos[::strand])
+                # the total length of the resulting sequence is less than the
+                # sum of the lengths of the matches
+                or max(pos) - min(pos) < startdet['len'] + stopdet['len']
+                # the results are not in the same reading frame unless search
+                # sequences are not expected to be in frame (i.e. freeframe on)
+                or (not ff and startdet['arf'] != stopdet['arf'])):
+                continue
+            
             # Set the positions to be truncated if necessary
             for i, e in enumerate(['start', 'stop']):
                 # For each truncated end, apply the appropriate position type
@@ -771,6 +776,7 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
                     pos[i] = (SeqFeature.BeforePosition(pos[i]) 
                               if strand == [1, -1][i]
                               else SeqFeature.AfterPosition(pos[i]))
+            
             
             # Calculate the distance from the overlap position
             # TODO: Check correct in -ve strand - should be!
@@ -819,26 +825,26 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
 
 def filter_searchresults(results):
     #results = searchresults
-# =============================================================================
-#         # Organise
-#         resrf = result['rf']
-#         if resrf in byrf:
-#             byrf[resrf] = {'results': [], 'stopcount': []}
-#         
-#         byrf[resrf]['results'].append
-# =============================================================================
     
-    
-    # Filter out any with more than the minimum number of 
-    # internal stops
+    # Filter out any with more than the minimum number of internal stops
     intstops = [r['inst'] for r in results]
     minintstop = min(intstops)
+    results = [r for r in results if r['inst'] == minintstop]
+    
+    # Filter out those with the lowest overlap score. Always retain a minimum
+    # number of results, plus a proportion of the remainder, removing the rest
+    overlapscore = [sum([abs(a) for a in r['adjd']]) for r in results]
+    retentionthresh = 6
+    retentionprop = 0.51
+    if (len(overlapscore) > retentionthresh + round(retentionprop)):
+        nretain = round(retentionprop * (len(overlapscore) - retentionthresh))
+        maxval = sorted(overlapscore)[retentionthresh + nretain - 1]
+        results = [r for r, s in zip(results, overlapscore) if s <= maxval]
     
     # TODO: more filtering? Perhaps rf based?
     
     # TODO some logging here?
-    
-    return([r for r in results if r['inst'] == minintstop], '')
+    return(results, '')
 
 
 def ungapped_distance(seq, value, ref):
@@ -1136,9 +1142,10 @@ def prepare_seqrecord(seqn, seqrecord, gbname, namevariants, annotypes,
     
     return(present, cleanfeats, ofeats, issues, log)
 
-
 def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, 
                     temp, target):
+    # specifications, target = [specs, present[11]]
+    
     # TODO: something to ensure original annotation is always part of the
     # results list
     
