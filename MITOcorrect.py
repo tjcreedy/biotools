@@ -78,10 +78,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = re.sub('dir', '/home/thomas/MITOcorrect_testing',
-            """-s dir/testspecs.tsv
-               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD00411.gb
+            """-s dir/MITOcorrect_specs.tsv
+               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD01726.gb
                -l dir/testlog.txt
-               -a dir/test_ntalignfile.tsv
+               -a dir/ntalignfile.tsv
                -o dir/testout/ 
                -t 2 -b 5 -c nt -k -r -p -1""").split()
     #-g dir/test_multigenbank.gb
@@ -118,8 +118,8 @@ if __name__ == "__main__":
             else:
                 if args.onefile:
                     outrecords = mcm.write_genbank_file(outrecords,
-                                                        args.outputdirectory,
-                                                        gbname)
+                                                    args.outputdirectory,
+                                                    "args.outputdirectory.gb")
                 break
         seqn += 1
         

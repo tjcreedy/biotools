@@ -829,6 +829,7 @@ def filter_searchresults(results):
     # Filter out any with more than the minimum number of internal stops
     intstops = [r['inst'] for r in results]
     minintstop = min(intstops)
+    minintstop = 0 if minintstop > 3 else minintstop
     results = [r for r in results if r['inst'] == minintstop]
     
     # Filter out those with the lowest overlap score. Always retain a minimum
@@ -875,7 +876,7 @@ def gapped_distance(seq, value, dist):
     
     return(out)
 
-def align_and_analyse(results, args, specs, target, seqname, temp):
+def align_and_analyse(results, args, specs, target, seqname, temp, feat):
     # results, specs, aligntype = [filterresults, specifications[target], args.alignmenttype]
     
     # Align and generate alignment scores
@@ -998,7 +999,6 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
          # Compile
         result.update({'cond': cond, 'bodd': bodd, 'ccts': ccts, 
                        'slen': len(result['nt']), 'score': sum(endscore) / 2})
-    
     
     # Find the minimum score and mark the selection in the results
     minscore = min([r['score'] for r in results])
@@ -1144,7 +1144,7 @@ def prepare_seqrecord(seqn, seqrecord, gbname, namevariants, annotypes,
 
 def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, 
                     temp, target):
-    # specifications, target = [specs, present[11]]
+    # specifications, target = [specs, present[6]]
     
     # TODO: something to ensure original annotation is always part of the
     # results list
@@ -1197,25 +1197,28 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
         filterresults, flog = filter_searchresults(searchresults)
         
         # Align the filtered results and generate alignment stats
-        alignresults, alog = align_and_analyse(filterresults, args,
-                                               specifications[target],
-                                               target, seqrecord.name, temp)
+        if len(filterresults) > 0:
+            alignresults, alog = align_and_analyse(filterresults, args,
+                                                   specifications[target],
+                                                   target, seqrecord.name, 
+                                                   temp)
+        else:
+            alignresults, alog = [filterresults, '']
         
         if args.detailedresults:
             # Output a list of features to write to the contig
             # Write a table of filter results
             statl = write_detailed_results(alignresults, gbname,
                                                    seqrecord.name, target)
-            
         
         # Output final result(s)
         # TODO: selection of single result if equal scores
         result = generate_output_target(alignresults, target, args)
         
         
-        if args.potentialfeatures:
-            result.append(feat)
         
+        if args.potentialfeatures or len(result) == 0:
+            result.append(feat)
         
     if len(result) == 0:
          # TODO: generate list of two features, target type and gene based on input feat
