@@ -35,6 +35,7 @@ library(dplyr)
 library(reshape2)
 library(vegan)
 library(ggplot2)
+library(ape)
 
 # Load functions ----------------------------------------------------------
   # Load any custom functions. These are assumed to be in the root of your
@@ -44,11 +45,11 @@ source("check_expected_richness.R")
 source("rarexplore.R")
 
 # Load data ---------------------------------------------------------------
-  # Load the three core data tables. If you have more than these data,
-  # great! Add loading commands for them here. I would generally suggest
-  # merging and/or reconfiguring them as necessary to be similar to the
-  # configuration of these tables.
-
+  # Load the three core data tables and your tree, if you have one. 
+  # If you have more than these data, great! Add loading commands for them
+  # here. I would generally suggest merging and/or reconfiguring them as 
+  # necessary to be similar to the configuration of these tables, or to
+  # integrate their data within them.
 
   # Load the reads table output by vsearch --usearch_global --tabbedout
 
@@ -72,6 +73,8 @@ metadata <- read.csv("metadata.csv", row.names = 1)
 taxonomy <- read.table("taxonomy.tsv", sep = "\t", row.names = 1)
 colnames(taxonomy) <- c("taxonomy", "strand", "selected")
 
+  # Load tree
+tree <- read.tree("otus.nwk")
 
 # Organise data -----------------------------------------------------------
   # Here we make sure all the data corresponds properly to each other and 
@@ -87,6 +90,8 @@ reads <- t(reads)
 
 ## Some merging using rowsum(reads, group = XXX)
 
+# METADATA
+
   # Next, check that our metadata and reads table correspond. For both 
   # tables, the sample names are in the row.names
     
@@ -97,6 +102,8 @@ row.names(reads) %in% row.names(metadata)
 metadata <- metadata[row.names(reads), ]
       # This keeps only metadata rows where the sample occurs in MBC, and 
       # sorts the rows to match the MBC row order
+
+# TAXONOMY
 
   # The data in the taxonomy table needs to be filtered and separated out
     # As above
@@ -139,6 +146,22 @@ taxonomy <- subset(taxonomy, select = -otu)
 taxonomy <- taxonomy[colnames(reads), ]
 
 rm(taxdetailed)
+
+# TREE
+  
+  # Check that all of the OTUs are in the tree
+all(row.names(reads) %in% tree$tip.label)
+
+  # Drop any tips of the tree that are not in the OTUs - useful if you
+  # used a scaffold or reference set
+tree <- drop.tip(tree, tree$tip.label[! tree$tip.label %in% row.names(reads)])
+
+  # Sort the OTUs according to the tree - will also drop any OTUs that are
+  # not in the tree!
+reads <- reads[tree$tip,]
+
+  # Re-sort the taxonomy
+taxonomy <- taxonomy[colnames(reads),]
 
 # Filtering data ----------------------------------------------------------
   # This is the most important step, where you remove irrelevant or likely
