@@ -79,7 +79,7 @@ if __name__ == "__main__":
     
     arglist = re.sub('dir', '/home/thomas/MITOcorrect_testing',
             """-s dir/MITOcorrect_specs.tsv
-               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD01726.gb
+               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/CCCP00094.gb
                -l dir/testlog.txt
                -a dir/ntalignfile.tsv
                -o dir/testout/ 
@@ -131,25 +131,30 @@ if __name__ == "__main__":
         log.write(plog)
         
         # Process the present cleanfeatures in parallel
-        
-        with multiprocessing.Pool(processes=args.threads) as pool:
-             poolout = pool.map(functools.partial(mcm.correct_feature,
-                                                  cleanfeats, specs, gbname, 
-                                                  seqrecord, args, temp), 
-                                present, 1)
-        
-        flatten = lambda l: [item for sublist in l for item in sublist]
-        outfeats, logl, statsl = map(flatten, zip(*poolout))
-        
-        log.write(''.join(logl))
-        
-        if args.detailedresults:
-            for l in statsl:
-                statw.writerow(l)
-        
-        # Replace all features with the new ones and add on the others
-        if len(outfeats) > 0:
-            seqrecord.features = outfeats + ofeats
+        if len(present) > 0:
+            with multiprocessing.Pool(processes=args.threads) as pool:
+                poolout = pool.map(functools.partial(mcm.correct_feature,
+                                                     cleanfeats, specs, gbname,
+                                                     seqrecord, args, temp), 
+                                    present, 1)
+            
+            flatten = lambda l: [item for sublist in l for item in sublist]
+            outfeats, logl, statsl = map(flatten, zip(*poolout))
+            
+            log.write(''.join(logl))
+            
+            if args.detailedresults:
+                for l in statsl:
+                    statw.writerow(l)
+            
+            # Replace all features with the new ones and add on the others
+            if len(outfeats) > 0:
+                seqrecord.features = outfeats + ofeats
+        else:
+            x = None
+            # TODO log that no target features found and that the sequence is
+            # being output as-is
+            
         
         # Append completed seqrecord to outputs records
         outrecords.append(seqrecord)

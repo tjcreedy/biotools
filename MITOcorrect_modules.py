@@ -1191,7 +1191,7 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     # Make an empty list, the default output if no result
     result = []
     flog, alog = ['', '']
-    if len(searchresults) > 1:
+    if len(searchresults) > 0:
         
         # Filter results
         filterresults, flog = filter_searchresults(searchresults)
@@ -1219,7 +1219,8 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
         
         if args.potentialfeatures or len(result) == 0:
             result.append(feat)
-        
+    
+    
     if len(result) == 0:
          # TODO: generate list of two features, target type and gene based on input feat
         result = [feat]
