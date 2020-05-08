@@ -11,10 +11,10 @@ def chunker(seq, size):
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 # Main
 acclist = sys.stdin.read().splitlines()
-chunk = 100
+chunks = 100
 n = 0
-for chunk in chunker(acclist, chunk):
-    start = chunk * n + 1
+for chunk in chunker(acclist, chunks):
+    start = chunks * n + 1
     sys.stderr.write("getting genbanks chunk %s-%s\n" % 
                      (start, start + len(chunk) - 1))
     accstring = ','.join(chunk)
