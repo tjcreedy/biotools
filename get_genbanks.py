@@ -16,7 +16,7 @@ n = 0
 for chunk in chunker(acclist, chunk):
     start = chunk * n + 1
     sys.stderr.write("getting genbanks chunk %s-%s\n" % 
-                     (start, start + len(chunk)))
+                     (start, start + len(chunk) - 1))
     accstring = ','.join(chunk)
     url = ("http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?"
           + "db=nuccore&id=" + accstring + "&rettype=gb")
