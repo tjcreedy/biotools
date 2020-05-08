@@ -18,6 +18,7 @@ my $minregion = 1;
 my @reqregion;
 my @regiontypes = ('CDS');
 my $keepframe;
+my $organism;
 
 my $dontchecknames;
 my $showgenes;
@@ -81,7 +82,7 @@ Description:
 	
 	Additionally, common naming variants of mitochondrial regions are hardcoded into the script (e.g. CDS regions COX1 and COI will both be output to COX1). The variants that the script knows about can be reviewed using the -showgenes option.
 	
-	A separate fasta will be written for each region found, containing all of the sequences of that CDS from across all the different sequences in the genbank file(s). The LOCUS name of the sequence in the genbank-format flat file will be used as the sequence header.
+	A separate fasta will be written for each region found, containing all of the sequences of that CDS from across all the different sequences in the genbank file(s). The LOCUS name of the sequence in the genbank-format flat file will be used as the sequence header. Alternatively, you can try to use use the organism field of the genbank file as the sequence header using --organism: note that this is very likely to give blank or non-unique headers, and if the script fails to parse the species name it will revert to the LOCUS field.
 	
 	Optionally, you can specify that sequences will only be output for entries where a minimum number of regions are met using -minregion. Similarly, you can optionally specify that certain regions must be present in a sequence for it to output any regions using the -reqregion option. For example, if you only wanted to retrieve sequences for regions from genomes that contain COX1 and COB, you would specify -reqregion COX1 COB. The names used must conform with the standard set of output names (the second column when using the -showgenes option). All available regions will still be output.
 	
@@ -114,6 +115,7 @@ GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "reqregion=s{0,}"	=> \@reqregion,
 	   "regiontypes=s{1,3}"	=> \@regiontypes,
 	   "showgenes"		=> \$showgenes,
+	   "organism"		=> \$organism,
 	   "keepframe"		=> \$keepframe,
 	   "help"		=> \$help) or die "\nError getting options\n\n";
 
@@ -155,9 +157,10 @@ foreach my $gbp (@gbpaths){
 		
 		$seq->verbose(-1);
 		
-		# Extract sequence name
+		# Extract sequence name and species name
 		my $seqname = $seq->display_id;
-		
+		my $species = $seq->species->node_name;
+		$species =~ tr/ /_/;
 		# Get all features with sufficient identification from object
 		my @all_feats = grep {$_->has_tag('gene') or $_->has_tag('product') or $_->has_tag('label')} ($seq->get_SeqFeatures);
 		
@@ -216,7 +219,11 @@ foreach my $gbp (@gbpaths){
 				# Compile output sequence object and store
 				my $outseq = $feat->seq;
 				$outseq = $outseq->trunc($codon_start, $outseq->length());
-				$outseq->display_id($seqname);
+				if($organism){
+					$outseq->display_id($species) or $outseq->display_id($seqname);
+				} else {
+					$outseq->display_id($seqname);
+				}
 				$outseq->description("");
 				$outseq->verbose(-1);
 				
