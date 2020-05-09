@@ -1304,10 +1304,11 @@ def print_terminal(filenames, prinq):
     start = time.perf_counter()
     done = 0
     remain = "unknown time"
-    current = ''
+    current = '                            '
     run = True
     # Print
     while run:
+
         line = ("\rCorrected %s of %s total records, %s remaining%s" % 
                 (done, tot, remain, current))
         sys.stdout.write(line)
