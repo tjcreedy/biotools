@@ -295,7 +295,7 @@ sub get_clean_name{
 	} else {
 		die "Error: feature passed to get_clean_name subroutine without gene, label or product tag\n";
 	}
-	$name =~ s/[\/,]/_/g;
+	$name =~ s/[\/,\\:;]/_/g;
 	return($name)
 }
 
