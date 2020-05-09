@@ -15,7 +15,6 @@ import shutil
 import multiprocessing
 import functools
 
-
 # Class definitions
 
 class MultilineFormatter(argparse.HelpFormatter):
@@ -68,7 +67,7 @@ parser.add_argument('-o', '--outputdirectory')
 parser.add_argument('-k', '--keepalignments', default = False, action = 'store_true')
 parser.add_argument('-r', '--detailedresults', default = False, action = 'store_true')
 parser.add_argument('-p', '--potentialfeatures', default = False, action = 'store_true')
-parser.add_argument('-1', '--onefile', default = False, action = 'store_true') # Output all input gb files in one output file
+parser.add_argument('-1', '--onefile', type = str) # Output all input gb files in one output file, given as argument
 parser.add_argument('-i', '--alignmentweight', default = 0.5)
 parser.add_argument('-j', '--overlapweight', default = 0.5)
 
@@ -79,101 +78,45 @@ if __name__ == "__main__":
     
     arglist = re.sub('dir', '/home/thomas/MITOcorrect_testing',
             """-s dir/MITOcorrect_specs.tsv
-               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/CCCP00094.gb
+               -g dir/test_multigenbank.gb
                -l dir/testlog.txt
                -a dir/ntalignfile.tsv
                -o dir/testout/ 
-               -t 2 -b 5 -c nt -k -r -p -1""").split()
+               -t 2 -b 5 -c nt -r -1 out.gb""").split()
     #-g dir/test_multigenbank.gb
+    #-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/CCCP00094.gb
     #os.chdir('/home/thomas/MITOcorrect_testing')
     #args = parser.parse_args(arglist)
     
     # Parse the arguments into the main utility variables
-    namevars, annotypes, specs, temp, log, stath, statw = mcm.initialise(args)
+    utilityvars = mcm.initialise(args)
     
-    # Set up the first file and output set
-    gblist, gbname, seqn = mcm.get_file_details(args.genbank.pop(0))
-    outrecords = []
-    seqn = 0
+    # Initialise the queue manager and pool
+    manager = multiprocessing.Manager()
+    pool =  multiprocessing.Pool(args.threads + 4)
     
-    # Loop through genbank files and entries within each.
-    while True:
-        
-        # Retreive the next record to work on
-        seqrecord = next(gblist, None)
-        
-        # If generator is empty, write out the results file unless user 
-        # requests all outputs to be in the same output, then 
-        # move onto the next file if available, or exit.
-        if seqrecord is None:
-            if len(outrecords) > 0:
-                if not args.onefile:
-                    outrecords = mcm.write_genbank_file(outrecords,
-                                                        args.outputdirectory,
-                                                        gbname)
-            if len(args.genbank) > 0:
-                gblist, path, gbname, ext = mcm.get_file_details(
-                        args.genbank.pop(0))
-                continue
-            else:
-                if args.onefile:
-                    outrecords = mcm.write_genbank_file(outrecords,
-                                                    args.outputdirectory,
-                                                    "args.outputdirectory.gb")
-                break
-        seqn += 1
-        
-        
-        # Extract the necessary items from the seqrecord and clean
-        present, cleanfeats, ofeats, issues, plog = mcm.prepare_seqrecord(
-                                                    seqn, seqrecord, gbname,
-                                                    namevars, annotypes, specs)
-        log.write(plog)
-        
-        # Process the present cleanfeatures in parallel
-        if len(present) > 0:
-            with multiprocessing.Pool(processes=args.threads) as pool:
-                poolout = pool.map(functools.partial(mcm.correct_feature,
-                                                     cleanfeats, specs, gbname,
-                                                     seqrecord, args, temp), 
-                                    present, 1)
-            
-            flatten = lambda l: [item for sublist in l for item in sublist]
-            outfeats, logl, statsl = map(flatten, zip(*poolout))
-            
-            log.write(''.join(logl))
-            
-            if args.detailedresults:
-                for l in statsl:
-                    statw.writerow(l)
-            
-            # Replace all features with the new ones and add on the others
-            if len(outfeats) > 0:
-                seqrecord.features = outfeats + ofeats
-        else:
-            x = None
-            # TODO log that no target features found and that the sequence is
-            # being output as-is
-            
-        
-        # Append completed seqrecord to outputs records
-        outrecords.append(seqrecord)
-        
-        # End of loop on gb
+    # Start the writers first in their own threads
+    seqq, statq, logq, prinq, watch = mcm.start_writers(pool, manager, args)
+    
+    # Do the work
+    seqrecordgen = mcm.get_seqrecords(args.genbank, args.onefile)
+    out = pool.map(functools.partial(mcm.process_seqrecord, args, utilityvars, 
+                                     seqq, statq, logq, prinq),
+                   seqrecordgen)
+    
     
     # TODO: Process issues dict
     
+    seqq.put('kill')
+    if args.detailedresults: statq.put('kill')
+    logq.put('kill')
+    prinq.put('kill')
+    pool.close()
+    pool.join()
     
     # Delete temporary alignment directory
     if not args.keepalignments:
-        shutil.rmtree(temp)
+        shutil.rmtree(utilityvars[3])
         # delete output
-    
-    # Close logfile
-    log.close()
-    
-    # Close stats file
-    if args.detailedresults:
-        stath.close()
     
     exit()

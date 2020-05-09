@@ -12,28 +12,19 @@ import re
 import os
 import csv
 import subprocess
-
-from collections import defaultdict #, Counter
+import functools
+import time
+import datetime
+from collections import defaultdict
 from math import ceil, copysign
 from Bio import Seq, SeqFeature, SeqRecord, SeqIO, AlignIO
 from Bio.Align import AlignInfo
 
-# =============================================================================
-# 
-# import copy
-# from statistics import mode #, stdev
-# import random, string
-# import random, string
-# 
-# from Bio.Align import AlignInfo
-# 
-# from Bio import BiopythonWarning
-# import warnings
-# with warnings.catch_warnings():
-#     warnings.simplefilter('ignore', BiopythonWarning)
-# 
-# =============================================================================
- 
+def elapsed_time(start):
+    end = time.perf_counter()
+    elapsed = round(end - start, 2)
+    return(" | %ss | " % str(elapsed))
+
 def loadnamevariants(source=None):
     variants = {}
     types = {}
@@ -61,9 +52,7 @@ def loadnamevariants(source=None):
      
     # Close handle
     source.close()
-    # TODO check this works!
     return(variants, types)
-
 
 def str_is_int(s):
     try:
@@ -71,7 +60,6 @@ def str_is_int(s):
         return True
     except ValueError:
         return False
-
 
 def parsespecs(path, alignpath, namevariants):
     #path, alignpath = [args.specifications, args.alignmentpaths]
@@ -82,15 +70,183 @@ def parsespecs(path, alignpath, namevariants):
     
     sys.stdout.write("Parsing specifications file %s\n" % (path))
     
-    with open(path, 'r') as sh:
-        #sh = open(path, 'r')
+    sh = open(path, 'r')
+    
+    # Extract the header row and split to list
+    header = sh.readline().strip().split('\t')
+    
+    # TODO: check for duplicate headers
+    
+    ln = 1
+    for line in sh:
+        #line = sh.readline()
         
-        # Extract the header row and split to list
-        header = sh.readline().strip().split('\t')
+        ln += 1
         
-        # TODO: check for duplicate headers
+        # Extract the values of the row and split to list
+        items = line.strip().split('\t')
         
-        ln = 1
+        # Get correct gene name
+        name = None
+        if items[0].upper() in namevariants:
+            name = namevariants[items[0].upper()]
+        
+        if name is None:
+            sys.exit(("Error: gene name %s in first column of line %s is ", 
+                      "not recognised") % (items[0], str(ln)) )
+        
+        # Check start/stop column
+        if items[1] not in ['start', 'stop']:
+            sys.exit(("Error: end specification %s in second column of ",
+                      "line %s is not recognised") % (items[1], str(ln)) )
+        end = items[1]
+        
+        # Generate holding dict for this line's specs
+        
+        hold = dict()
+        
+        # Work through specifications
+        for spec, value in zip(header[2:], items[2:]):
+            #spec, value = [header[2], items[2]]
+            
+            # Do not record if value is empty
+            if value == '':continue
+            
+            # If a list specification, generate list
+            if '/' in value: 
+                value = value.split('/')
+            
+            # If a dict specification, generate dict
+            if (type(value) is list and ',' in value[0] or 
+                type(value) is str and ',' in value):
+                
+                if (type(value) is list):
+                    value = [v.split(',') for v in value]
+                else:
+                    value = [value.split(',')]
+                
+                value = {k:v for k, v in value}
+            
+            # Add to specs dict
+            
+            hold[spec] = value
+            
+        
+        # Do input checking
+        for spec, value in hold.items():
+            #spec = 'alignbody'
+            #value = hold[spec]
+            if spec == 'overlap':
+                # Overlap should be dict of recognised context names and 
+                # integer distances
+                if type(value) is not dict:
+                    sys.exit(("Error: specification for %s on line %s is ",
+                             "not recognised") % (spec, str(ln)))
+                
+                for c, d in value.items():
+                    #c, d = list(value.items())[0]
+                    del hold[spec][c]
+                    
+                    if c in namevariants:
+                        c = namevariants[c]
+                    else: 
+                        sys.exit(("Error: context name %s on line %s is ",
+                                 "not recognised") % (c, str(ln)))
+                    if str_is_int(d):
+                        d = int(d)
+                    else:
+                        sys.exit(("Error: overlap %s for name %s on line ",
+                                  "%s is not an integer") % 
+                                 (d, c, str(ln)))
+                    hold[spec][c] = d
+                
+            elif spec in ['overlapmaxdistance', 'searchdistance']:
+                # MaxContextDistance, SearchDistance, 
+                # should all be > 0 integers
+                if not str_is_int(value):
+                    sys.exit("Error: value %s for %s on line %s is not an integer" %
+                             ( value, spec, str(ln) ))
+                value = int(value)
+                if value < 1:
+                    sys.exit("Error: value %s for %s on line %s is not greater than 0" %
+                             ( value, spec, str(ln) ))
+                
+                hold[spec] = value
+            elif spec == 'alignbody':
+                # AlignBody should be a positive integer for start and a 
+                # negative integer for stop
+                if (str_is_int(value) and (
+                        (end == 'start' and int(value) >= 0) 
+                        or (end == 'stop' and int(value) <= 0))):
+                    hold[spec] = int(value)
+                else:
+                    sys.exit(("Error: value %s for %s on line %s is not",
+                              "zero or a %s integer") % 
+                             (value, spec, str(ln), 
+                              'positive' if end == 'start' else 'negative')
+                             )
+                
+            elif spec == 'searchcode':
+                # Search code should be a single character A or N
+                    if value not in 'AN' or len(value) != 1:
+                        sys.exit("Error: value %s for %s on line %s is not A or N" %
+                                 ( value, spec, str(ln) ))
+                 
+            elif spec == 'searchsequence':
+                # SearchSequence should be list of characters from one of
+                # two sets of possibilities for A or N respectively
+                if 'searchcode' not in hold:
+                    sys.exit("Error: searchcode is required for searchsequence")
+                if type(value) is not list:
+                    value = [value]
+                    hold[spec] = value
+                allchar = list(''.join(value))
+                testchar = 'GPAVLIMCFYWHKRQNEDST*' 
+                if hold['searchcode'] == 'A': testchar = 'ATGC'
+                fails = [c for c in allchar if c not in testchar]
+                if len(fails) > 0:
+                    sys.exit("Error: character(s) %s for %s on line %s are not valid" % 
+                             ( ', '.join(fails), spec, str(ln) ))
+                    
+            elif spec == 'searchreadframe':
+                # SearchReadFrame should be 1, 2 ,3 or *, and is irrelevant
+                # if using SearchCode A
+                if 'searchcode' not in hold:
+                    sys.exit("Error: searchcode is required for searchsequence")
+                if value not in '123*' or len(value) > 1:
+                    sys.exit("Error: value %s for %s on line %s is not valid" %
+                             ( value, spec, str(ln) ))
+                if hold['searchcode'] == 'A':
+                    sys.stderr.write("Warning: searchreadframe is redundant for searchcode A on line %s")
+                if str_is_int(value):
+                    hold[spec] = int(value)
+                    
+            elif spec == 'searchmultiselect':
+                # SearchMultiSelect should be one of five specific strings
+                if value not in ['F', 'FC', 'C', 'LC', 'L'] :
+                    sys.exit("Error: value %s for %s on line %s is not valid" %
+                             ( value, spec, str(ln) ))
+                    
+            else:
+                sys.exit("Error: column %s is not recognised" %
+                         (spec))
+        
+        # Initialise subdict if not already
+        if(name not in specs): specs[name] = dict()
+        
+        # Input holding dict into main dict
+        specs[name][end] = hold
+        
+    
+    sh.close()
+    # Parse the alignment files if present
+    
+    if alignpath is not None:
+        sys.stdout.write("Parsing alignment file %s\n" % (alignpath))
+        
+        sh = open(alignpath, 'r')
+        
+        ln = 0
         for line in sh:
             #line = sh.readline()
             
@@ -105,256 +261,17 @@ def parsespecs(path, alignpath, namevariants):
                 name = namevariants[items[0].upper()]
             
             if name is None:
-                sys.exit(("Error: gene name %s in first column of line %s is ", 
-                          "not recognised") % (items[0], str(ln)) )
-            
-            # Check start/stop column
-            if items[1] not in ['start', 'stop']:
-                sys.exit(("Error: end specification %s in second column of ",
-                          "line %s is not recognised") % (items[1], str(ln)) )
-            end = items[1]
-            
-            # Generate holding dict for this line's specs
-            
-            hold = dict()
-            
-            # Work through specifications
-            for spec, value in zip(header[2:], items[2:]):
-                #spec, value = [header[2], items[2]]
+                sys.exit("Error: gene name %s on line %s is not recognised" %
+                         ( items[0], str(ln) ))
                 
-                # Do not record if value is empty
-                if value == '':continue
-                
-                # If a list specification, generate list
-                if '/' in value: 
-                    value = value.split('/')
-                
-                # If a dict specification, generate dict
-                if (type(value) is list and ',' in value[0] or 
-                    type(value) is str and ',' in value):
-                    
-                    if (type(value) is list):
-                        value = [v.split(',') for v in value]
-                    else:
-                        value = [value.split(',')]
-                    
-                    value = {k:v for k, v in value}
-                
-                # Add to specs dict
-                
-                hold[spec] = value
-                
+            elif name not in specs:
+                sys.exit("Error: gene name %s on line %s is not in %s" %
+                         ( name, str(ln), path))
             
-            # Do input checking
-            for spec, value in hold.items():
-                #spec = 'alignbody'
-                #value = hold[spec]
-                if spec == 'overlap':
-                    # Overlap should be dict of recognised context names and 
-                    # integer distances
-                    if type(value) is not dict:
-                        sys.exit(("Error: specification for %s on line %s is ",
-                                 "not recognised") % (spec, str(ln)))
-                    
-                    for c, d in value.items():
-                        #c, d = list(value.items())[0]
-                        del hold[spec][c]
-                        
-                        if c in namevariants:
-                            c = namevariants[c]
-                        else: 
-                            sys.exit(("Error: context name %s on line %s is ",
-                                     "not recognised") % (c, str(ln)))
-                        if str_is_int(d):
-                            d = int(d)
-                        else:
-                            sys.exit(("Error: overlap %s for name %s on line ",
-                                      "%s is not an integer") % 
-                                     (d, c, str(ln)))
-                        hold[spec][c] = d
-                    
-                elif spec in ['overlapmaxdistance', 'searchdistance']:
-                    # MaxContextDistance, SearchDistance, 
-                    # should all be > 0 integers
-                    if not str_is_int(value):
-                        sys.exit("Error: value %s for %s on line %s is not an integer" %
-                                 ( value, spec, str(ln) ))
-                    value = int(value)
-                    if value < 1:
-                        sys.exit("Error: value %s for %s on line %s is not greater than 0" %
-                                 ( value, spec, str(ln) ))
-                    
-                    hold[spec] = value
-                elif spec == 'alignbody':
-                    # AlignBody should be a positive integer for start and a 
-                    # negative integer for stop
-                    if (str_is_int(value) and (
-                            (end == 'start' and int(value) >= 0) 
-                            or (end == 'stop' and int(value) <= 0))):
-                        hold[spec] = int(value)
-                    else:
-                        sys.exit(("Error: value %s for %s on line %s is not",
-                                  "zero or a %s integer") % 
-                                 (value, spec, str(ln), 
-                                  'positive' if end == 'start' else 'negative')
-                                 )
-                    
-                elif spec == 'searchcode':
-                    # Search code should be a single character A or N
-                        if value not in 'AN' or len(value) != 1:
-                            sys.exit("Error: value %s for %s on line %s is not A or N" %
-                                     ( value, spec, str(ln) ))
-                     
-                elif spec == 'searchsequence':
-                    # SearchSequence should be list of characters from one of
-                    # two sets of possibilities for A or N respectively
-                    if 'searchcode' not in hold:
-                        sys.exit("Error: searchcode is required for searchsequence")
-                    if type(value) is not list:
-                        value = [value]
-                        hold[spec] = value
-                    allchar = list(''.join(value))
-                    testchar = 'GPAVLIMCFYWHKRQNEDST*' 
-                    if hold['searchcode'] == 'A': testchar = 'ATGC'
-                    fails = [c for c in allchar if c not in testchar]
-                    if len(fails) > 0:
-                        sys.exit("Error: character(s) %s for %s on line %s are not valid" % 
-                                 ( ', '.join(fails), spec, str(ln) ))
-                        
-                elif spec == 'searchreadframe':
-                    # SearchReadFrame should be 1, 2 ,3 or *, and is irrelevant
-                    # if using SearchCode A
-                    if 'searchcode' not in hold:
-                        sys.exit("Error: searchcode is required for searchsequence")
-                    if value not in '123*' or len(value) > 1:
-                        sys.exit("Error: value %s for %s on line %s is not valid" %
-                                 ( value, spec, str(ln) ))
-                    if hold['searchcode'] == 'A':
-                        sys.stderr.write("Warning: searchreadframe is redundant for searchcode A on line %s")
-                    if str_is_int(value):
-                        hold[spec] = int(value)
-                        
-                elif spec == 'searchmultiselect':
-                    # SearchMultiSelect should be one of five specific strings
-                    if value not in ['F', 'FC', 'C', 'LC', 'L'] :
-                        sys.exit("Error: value %s for %s on line %s is not valid" %
-                                 ( value, spec, str(ln) ))
-                        
-                else:
-                    sys.exit("Error: column %s is not recognised" %
-                             (spec))
-            
-            # Initialise subdict if not already
-            if(name not in specs): specs[name] = dict()
-            
-            # Input holding dict into main dict
-            specs[name][end] = hold
-            
-    
-    # Parse the alignment files if present
-    
-    if alignpath is not None:
-        sys.stdout.write("Parsing alignment file %s\n" % (alignpath))
+            specs[name]['apath'] = items[1]
+        sh.close()
         
-        with open(alignpath, 'r') as sh:
-            #sh = open(alignpath, 'r')
-            
-            ln = 0
-            for line in sh:
-                #line = sh.readline()
-                
-                ln += 1
-                
-                # Extract the values of the row and split to list
-                items = line.strip().split('\t')
-                
-                # Get correct gene name
-                name = None
-                if items[0].upper() in namevariants:
-                    name = namevariants[items[0].upper()]
-                
-                if name is None:
-                    sys.exit("Error: gene name %s on line %s is not recognised" %
-                             ( items[0], str(ln) ))
-                    
-                elif name not in specs:
-                    sys.exit("Error: gene name %s on line %s is not in %s" %
-                             ( name, str(ln), path))
-                
-                specs[name]['apath'] = items[1]
-    
-    # TODO: come back to this?
-# =============================================================================
-#     # Generate a guide of what has full specifications, i.e. is to be done
-#     
-#     guide = dict()
-#     
-#     # List the required specifications for each category
-#     speccat = {'overlap':   ['overlapmaxdistance',
-#                              'overlap'],
-#                'search':    ['searchdistance',
-#                              'searchcode',
-#                              'searchsequence',
-#                              'searchmultiselect'],
-#                'alignment': ['alignmentsearchdistance',
-#                              'alignmentsegment',
-#                              'apath']
-#                }
-#     
-#     for target in specs:
-#         guide[target] = dict()
-#         # For each category, find the number of required specs
-#         for cat, names in speccat.items():
-#             n = len(names)
-#             guideval = []
-#             for e, v in specs[target]:
-#                 # Count the number present for this target and end
-#                 speccount = len([s for s in v if s in names])
-#                 # If there are no specifications or if the number equals or 
-#                 # exceeds the required number, record if this target/end is
-#                 # to be processed, otherwise error out
-#                 if speccount == 0 or speccount >= n:
-#                     guideval.extend(speccount >= n)
-#                 else:
-#                     sys.exit("Error: %s specifications for %s %s are incomplete")
-#             guide[target][cat] = any(guideval)
-# =============================================================================
     return(specs)
-
-def start_statsfile(outdir):
-    
-    # Open file
-    stats = open(os.path.join(outdir, "filtering_results.tsv"), 'w')
-    statwrite = csv.writer(stats, delimiter = '\t', quotechar = '', 
-                               quoting = csv.QUOTE_NONE, escapechar = '')
-    # Write header
-    statwrite.writerow((['file', 'sequence_name', 'annotation_name',
-                        'start_position', 'end_position', 'length', 
-                        'start_match', 'end_match', 'reading_frame', 
-                        'reading_frame_relative_to_original', 
-                        'internal_stop_count']
-                        + ["%s_%s_distance" % (t, e)
-                           for e in ['start', 'end'] 
-                           for t in ['overlap', 'consensus', 'body']]
-                        + ['consensus_agreements', 'deletions', 
-                           'insertions', 'final_score', 'selected']
-                        ))
-    
-    # Return the handle and writer object
-    return(stats, statwrite)
-
-
-
-def get_file_details(filepath):
-    sys.stdout.write("Starting work on genbank file %s\n" % (filepath))
-    handle = SeqIO.parse(filepath, 'genbank')
-    name = os.path.basename(filepath) 
-    return(handle, name, 0)
-
-def write_genbank_file(seqrecords, outdir, filename):
-    outfile = os.path.join(outdir, filename)
-    SeqIO.write(seqrecords, outfile, 'genbank')
-    return([])
 
 def get_features(seqrecord, namevariants):
     
@@ -398,14 +315,15 @@ def get_features(seqrecord, namevariants):
     
     # Log
     unfeat = len(unidentifiable_features) > 0
-    log = '1. Undentifiable features'
+    log = 'Undentifiable features: '
     if unfeat:
-        log += '\n'
+        loguf = []
         for f in unidentifiable_features:
-            log += "\t\t%s: %s-%sbp\n" % (f.type, str(f.location.start),
-                                          str(f.location.end))
+            loguf.append("%s %s-%sbp" % (f.type, str(f.location.start),
+                                           str(f.location.end)))
+        log += ', '.join(loguf) + "\n"
     else:
-        log += ': NONE\n'
+        log += 'NONE\n'
     return(features, unrecognised_names, unfeat,
            other_features + unidentifiable_features, log)
 
@@ -432,7 +350,7 @@ def clean_features(features, types):
 def check_targets(clean, targets):
     #clean, targets, log =[cleanfeats, specs.keys(), log]
     absent, present, duplicate = [[], [], []]
-    log = ''
+    log = []
     
     for target in targets:
         if target in clean:
@@ -443,12 +361,9 @@ def check_targets(clean, targets):
         else:
             absent.append(target)
     
-    for n, t, i in zip([2, 3], ['Absent', 'Duplicate'], [absent, duplicate]):
-        log += "%s. %s target features" % (str(n), t)
-        if(len(i) > 0):
-            log += "\n\t%s\n" % (', '.join(i))
-        else:
-            log += ': NONE\n'
+    for t, i in zip(['Absent', 'Duplicate'], [absent, duplicate]):
+        r = ', '.join(i) if len(i) > 0 else 'NONE'
+        log.append("%s target features: %s\n" % (t, r))
     
     return(present, log)
 
@@ -574,7 +489,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
     if len(absent) > 0:
         logstring.append("%s not present" % (', '.join(absent)) )
     
-    log = '\t\tOverlap positions: %s\n' % (', '.join(logstring))
+    log = 'Overlap positions: %s\n' % (', '.join(logstring))
     
     return(output, log)
 
@@ -591,7 +506,7 @@ def get_regions(initpos, adjpos, rf, specs, strand, seqrecord, table):
     
     #Set up output
     output = dict()
-    
+    log = dict()
     for i, end in enumerate(['start', 'stop']):
         #i, end = list(enumerate(specs.keys()))[1]
         
@@ -610,8 +525,6 @@ def get_regions(initpos, adjpos, rf, specs, strand, seqrecord, table):
         
         # Flip if strand is reverse
         regpos = regpos[::strand]
-        
-        
         # Truncate if exceeds the other end of the annotation
         # If end is start and, on positive strand, the existing end is before 
         # (less than) the search end, or on strand is negative, the search end
@@ -636,7 +549,7 @@ def get_regions(initpos, adjpos, rf, specs, strand, seqrecord, table):
         sequence = subject_feat.extract(seqrecord.seq)
         if specs[end]['searchcode'] == 'A':
             sequence = sequence.translate(table=table)
-        
+        log[end] = "%s %sbp-%sbp" % (end, str(min(regpos)), str(max(regpos)))
         rfcodes = [0, 1, 2]
         # SEQquence, POSition of each base in contig, Position Codon Position
         # of each base relative to annotation reading frame
@@ -645,8 +558,9 @@ def get_regions(initpos, adjpos, rf, specs, strand, seqrecord, table):
                                    )[::strand][:-1],
                        'pcp': repeat_series(rfcodes, reglen, 
                                             rfcodes.index(regrf))}
-    
-    return(output, '')
+    log = ', '.join([log[e] for e in ['start', 'stop']])
+    log = "Search regions: %s\n" % (log)
+    return(output, log)
 
 
 def find_all(a_str, sub):
@@ -661,7 +575,7 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
     # regions, adjpos, specs, strand, table, ff = [searchregions, contextpos, specifications[target], feat.location.strand, args.translationtable, args.framefree]
     
     results = dict()
-    truncated = ''
+    trunc = ''
     
     # Work through ends and specs
     for end in ['start', 'stop']:
@@ -687,9 +601,9 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
         # If region appears to be truncated at the start, add further results
         if end == 'start' and regions[end]['pos'][0] in [0, len(seqrecord)]:
             localresults.update( {0: [i, 1] for i in [0,1,2]} )
-            truncated = 'start'
+            trunc = 'start is'
         
-        # If region appears to be truncated at the stop, remove short matches
+        # If region appears to be trunc at the stop, remove short matches
         # and add a match at the end
         if (not ff and end == 'stop' 
             and regions[end]['pos'][-1] in [0, len(seqrecord)]
@@ -697,7 +611,7 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
             
             localresults = {i: l for i, l in localresults.items if l[1] >= 3}
             localresults[regions[end]['pos'][-1]] = 1
-            truncated = 'stop' if not truncated else 'startstop'
+            trunc = 'stop is' if not trunc else 'both start and stop are'
         
         # TODO: add in default locations around existing initial positions?
         
@@ -722,7 +636,7 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
         # If a stop region, remove all matches after the first >= 3 match if 
         # the largest match is >=3, on a frame-by-frame basis, unless the 
         # search sequences are not inframe (i.e. freeframe is on)
-        if not ff and end == 'stop' and not truncated:
+        if not ff and end == 'stop' and not trunc:
             for prf in [0, 1, 2]:
                 #prf = 1
                 res_prf = ({k: v for k, v in outresults.items() 
@@ -737,6 +651,11 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
                                 del outresults[k]
         
         results[end] = outresults
+    
+    # Log so far
+    log = ["%s hits at %s" % (str(len(results[e])), e) 
+           for e in ['start', 'stop']]
+    log = "Query search: found %s" % (' and '.join(log))
     
     # Generate the sequence records for all combinations
     options = []
@@ -769,7 +688,7 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
             # Set the positions to be truncated if necessary
             for i, e in enumerate(['start', 'stop']):
                 # For each truncated end, apply the appropriate position type
-                if e in truncated:
+                if e in trunc:
                     # Set as 
                     # BeforePosition if start and forward or stop and reverse
                     # AfterPosition if stop and forward or start and reverse
@@ -779,7 +698,6 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
             
             
             # Calculate the distance from the overlap position
-            # TODO: Check correct in -ve strand - should be!
             overlapdist = [p -a for a, p in zip(adjpos, pos)]
             
             # Make the feature
@@ -817,35 +735,56 @@ def get_search_results(regions, adjpos, specs, seqrecord, strand, table, ff):
                             'lens': [d['len'] for d in [startdet, stopdet]],
                             'inst': intstops, 'tmst': termstops,
                             'nt': ntseq, 'aa': aaseq,
-                            'adjd': overlapdist})
+                            'adjd': overlapdist, 'reject': None})
             
-            # TODO some logging here?
     
-    return(options, '')
+    log += ", generating %s possible result regions" % (str(len(options)))
+    log += '; ' + trunc + ' truncated\n' if trunc else '\n'
+    return(options, log)
 
 def filter_searchresults(results):
     #results = searchresults
-    
+    resultsremain = len(results)
     # Filter out any with more than the minimum number of internal stops
     intstops = [r['inst'] for r in results]
     minintstop = min(intstops)
-    minintstop = 0 if minintstop > 3 else minintstop
-    results = [r for r in results if r['inst'] == minintstop]
+    maxis = 0 if minintstop > 3 else minintstop
+    intstoprejects = 0
+    for r in results:
+        if r['inst'] > maxis:
+            r['reject'] = "intstop > " + str(minintstop)
+            intstoprejects += 1
+            resultsremain -=1
+    log = ("Filtering: %s results removed for > %s internal stops, " % 
+           (str(intstoprejects), str(minintstop)))
     
     # Filter out those with the lowest overlap score. Always retain a minimum
-    # number of results, plus a proportion of the remainder, removing the rest
+    # number of results, plus a proportion of the remainder, up to a maximum
     overlapscore = [sum([abs(a) for a in r['adjd']]) for r in results]
-    retentionthresh = 6
+    retentionthresh = 5
     retentionprop = 0.51
-    if (len(overlapscore) > retentionthresh + round(retentionprop)):
-        nretain = round(retentionprop * (len(overlapscore) - retentionthresh))
-        maxval = sorted(overlapscore)[retentionthresh + nretain - 1]
-        results = [r for r, s in zip(results, overlapscore) if s <= maxval]
-    
+    retentionmax = 20
+    overlapscorerejects = 0
+    if resultsremain > retentionthresh + round(retentionprop):
+        # Calculate the number to retain
+        noverthresh = resultsremain - retentionthresh
+        noverthreshretain = round(retentionprop * noverthresh)
+        nretain = retentionthresh + noverthreshretain
+        nretain = retentionmax if nretain > retentionmax else nretain
+        # Find the maximum overlap score to retain
+        maxval = sorted(overlapscore)[nretain - 1]
+        for r, s in zip(results, overlapscore):
+            if s > maxval and not r['reject']:
+                r['reject'] = "overlapscore >" + str(maxval)
+                overlapscorerejects += 1
+                resultsremain -= 1
+        log += ("%s results removed for > %s overlap score, " % (
+                                                      str(overlapscorerejects),
+                                                      str(maxval)))
     # TODO: more filtering? Perhaps rf based?
     
-    # TODO some logging here?
-    return(results, '')
+    log += "%s results remain \n" % (str(resultsremain))
+    return(results, log)
 
 
 def ungapped_distance(seq, value, ref):
@@ -877,27 +816,30 @@ def gapped_distance(seq, value, dist):
     return(out)
 
 def align_and_analyse(results, args, specs, target, seqname, temp):
-    # results, specs, aligntype = [filterresults, specifications[target], args.alignmenttype]
+    # results, specs, seqname, aligntype = [filterresults, specifications[target], seqrecord.name, args.alignmenttype]
     
     # Align and generate alignment scores
     for result in results:
-        #result = results[0]
-        
+        #result = results[-3]
+        # Fill with blank stats if already rejected
+        if result['reject']:
+            result.update({'cond': ['',''], 'bodd': ['',''],
+                           'ccts': ['','',''], 'slen': len(result['nt']),
+                           'score': ''})
+            continue
         # Set up the filenames for input and output
-        
         name = "%s_%s_%s-%s" % (seqname, target, 
                                 int(result['feat'].location.start) + 1,
                                 int(result['feat'].location.end))
         suffixes = ['_result.fasta', '_align.fasta']
         files = [os.path.join(temp, name + s) for s in suffixes]
-        
         # Generate a temporary fasta
         outrecord = SeqRecord.SeqRecord(seq=result[args.alignmenttype], 
                                         id=name, description='')
         SeqIO.write(outrecord, files[0], 'fasta')
-        
         # Build and run the mafft command:
             # Generate the commands
+            # TODO: add --anysymbol if using amino acid alignments
         arguments = ("mafft --quiet --6merpair --addfragments".split(' ') 
                      + [files[0], specs['apath']])
             # Open the output file for writing
@@ -908,25 +850,20 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
                              universal_newlines = True)
             # Wait to finish
             p.communicate()
-        
         # Read the alignment
         alignment = AlignIO.read(files[1], 'fasta')
-        
         # Find consensus
         alignment_summary = AlignInfo.SummaryInfo(alignment)
         consensus = str(alignment_summary.gap_consensus())
-        
         # Find target sequence
         ntalign = str(alignment[-1].seq)
-        
         # Delete the files
         os.remove(files[0])
         if not args.keepalignments: os.remove(files[1])
-        
         # Find start and stop positions 
         seqss = dict()
         conss = dict()
-        
+        # Search for start and stop positions of the sequence and consensus
         for e, r in zip(['start', 'stop'], ["^-*", "-*$"]):
             #e, r = list(zip(['start', 'stop'], ["^-*", "-*$"]))[0]
             s, c = [len(re.search(r, seq).group()) 
@@ -934,17 +871,14 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
             if e == 'stop':
                 s, c = [len(consensus) - v for v in [s, c]]
             seqss[e], conss[e] = [s, c]
-        
         # Generate standard body distances
         stdist = {e: specs[e]['alignbody'] for e in ['start', 'stop']}
-        #stdist = {'start': 0, 'stop': -4} # COX1
         bodyss = {e: gapped_distance(consensus, conss[e], v) for 
                   e, v in stdist.items()}
-        
         # Determine distances
         cond = [0, 0]
         bodd = [0, 0]
-        
+        #Find the distances for the sequence
         for i, e in enumerate(['start', 'stop']):
             # i, e = list(enumerate(['start', 'stop']))[1]
             if (e == 'start' and seqss[e] > conss[e] or 
@@ -952,7 +886,6 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
                 cond[i] = ungapped_distance(consensus, seqss[e], conss[e])
             else:
                 cond[i] = ungapped_distance(ntalign, seqss[e], conss[e])
-            
             if (e == 'start' and seqss[e] > bodyss[e] or 
                 e == 'stop' and seqss[e] < bodyss[e]):
                 bodd[i] = (ungapped_distance(consensus, seqss[e], bodyss[e])
@@ -960,12 +893,23 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
             else:
                 bodd[i] = (ungapped_distance(ntalign, seqss[e], bodyss[e])
                              + stdist[e])
-        
-        diserr = cond, bodd
+        # cond, bodd = two lists, each containing start and stop error for the 
+        # consensus and the body respectively
         if args.alignmenttype == 'AA':
-            diserr = [[i * 3 for i in j] for j in diserr]
-        
-        
+            cond, bodd = [[i * 3 for i in j] for j in [cond, bodd]]
+        # Generate a score for each end of the annotation
+        endscore = [None, None]
+        for i in [0, 1]:
+            # TODO - step through this manually because it's giving strange
+            # values...
+            
+            # Generate the weighted average of the alignment distances
+            alignscore = (abs(cond[i]) * args.alignmentweight
+                          + abs(bodd[i]) * (1 - args.alignmentweight)) / 2
+            
+            # Generate the weighted average of the overlap dist and alignscore
+            endscore[i] = (abs(result['adjd'][i]) * args.overlapweight
+                           + alignscore * (1 - args.overlapweight)) / 2
         # Determine agreement, deletion or insertion for each of the positions
         # of the ntseq after trimming terminal gaps
         cid = []
@@ -977,37 +921,39 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
                 cid.append('d')
             elif n != '-' and c == '-':
                 cid.append('i')
-        
+        # Generate list holding counts of agreements, deletions and insertions
         ccts = [cid.count(c) for c in '-di']
-        
-        
-        # Generate a score for each end of the annotation
-        endscore = [None, None]
-        for i in [0, 1]:
-            
-            # TODO - step through this manually because it's giving strange
-            # values...
-            
-            # Generate the weighted average of the alignment distances
-            alignscore = (abs(ccts[i]) * args.alignmentweight
-                          + abs(bodd[i]) * (1 - args.alignmentweight)) / 2
-            
-            # Generate the weighted average of the overlap dist and alignscore
-            endscore[i] = (abs(result['adjd'][i]) * args.overlapweight
-                           + alignscore * (1 - args.overlapweight)) / 2
-        
-         # Compile
+        # Compile
         result.update({'cond': cond, 'bodd': bodd, 'ccts': ccts, 
-                       'slen': len(result['nt']), 'score': sum(endscore) / 2})
+                       'slen': len(result['nt']),
+                       'score': round(sum(endscore) / 2, 2)})
     
     # Find the minimum score and mark the selection in the results
-    minscore = min([r['score'] for r in results])
+    scores = [r['score'] for r in results if r['score'] is not '']
+    minscore = min(scores) if len(scores) > 0 else ''
+    selected = []
     for r in results:
-        r['select'] = r['score'] == minscore
+        if r['score'] is not '':
+            if r['score'] > minscore:
+                out = 'score > ' + str(round(minscore,2))
+                r['reject'] = out
+            else:
+                selected.append("result region %sbp-%sbp" %
+                                    (str(int(r['feat'].location.start) + 1),
+                                     str(int(r['feat'].location.end))))
+    log = "Alignment: "
+    if len(scores) < 1:
+        log += "no results remain to align and analyse\n"
+    elif len(selected) < 1:
+        log += "selected no regions from %s results\n" % (str(len(scores)))
+    else:
+        log += "selected %s of %s" % (', '.join(selected), str(len(scores)))
+        log += " results with minimum combined overlap and alignment score of "
+        log += "%s\n" % (str(minscore))
     
-    return(results, '')
+    return(results, log)
 
-def write_detailed_results(results, gbname, seqname, target, sw=None):
+def write_detailed_results(results, gbname, seqname, target):
     # results = alignresults
     # Start output list
     
@@ -1029,11 +975,8 @@ def write_detailed_results(results, gbname, seqname, target, sw=None):
                   + [result[k][i] for i in [0, 1] 
                    for k in ['adjd', 'cond', 'bodd']]
                   + result['ccts'] 
-                  + [result['score'], result['select']])
-        if sw:
-            sw.write(stats)
-        else:
-            statl.append(stats)
+                  + [result['score'], result['reject']])
+        statl.append(stats)
     
     return(statl)
 
@@ -1042,6 +985,7 @@ def generate_output_target(results, target, args):
     resultfeats = list()
     
     for result in results:
+        
         if args.potentialfeatures:
             
             #result = results[0]
@@ -1049,9 +993,11 @@ def generate_output_target(results, target, args):
             # Extract the feature
             feat = result['feat']
             
+            # Generate outcome
+            outcome = result['reject'] if result['reject'] else "selected"
             # Generate name for this result
-            name = "%s_%s-%s" % (target, int(feat.location.start) + 1,
-                                 int(feat.location.end))
+            name = "%s_%s-%s: %s" % (target, int(feat.location.start) + 1,
+                                 int(feat.location.end), outcome)
             
             # Give the feature the name and a type
             feat.qualifiers['gene'] = name
@@ -1061,7 +1007,7 @@ def generate_output_target(results, target, args):
             # Add the feature to the outputs
             resultfeats.append(feat)
             
-        elif result['select']:
+        elif not result['reject']:
             
             feat = result['feat']
             
@@ -1076,7 +1022,6 @@ def generate_output_target(results, target, args):
             
     
     return(resultfeats)
-
 
 def initialise(args):
     
@@ -1098,30 +1043,23 @@ def initialise(args):
     if not os.path.exists(temp):
         os.makedirs(temp)
     
-    log = (open(os.path.join(args.logfile), 'w') 
-        if args.logfile else open(os.devnull, 'w'))
+    sys.stdout.write("Completed initialisation, starting processing\n")
     
-    # Start an output file for writing statistics if args.detailedresults
-    if args.detailedresults:
-        stath, statw = start_statsfile(args.outputdirectory)
-    
-    return(namevariants, annotypes, specs, temp, log, stath, statw)
+    return((namevariants, annotypes, specs, temp))
 
-def prepare_seqrecord(seqn, seqrecord, gbname, namevariants, annotypes,
-                      specifications):
-    
+def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes, 
+                      specifications, pid, logq):
+    start = time.perf_counter()
     issues = defaultdict(set)
     
-    log = '##### Sequence %s from file %s #####\n' % (seqrecord.name, gbname)
-    
-    sys.stdout.write("Correcting sequence %s: %s\n" % (seqn, seqrecord.name))
+    log = 'PID%s file %s sequence %s' % (pid, gbname, seqrecord.name)
     
     # Extract target feature types from the record, other features, and 
     # variables for any issues encountered. Record any issues to the log
     
     features, unnames, unfeat, ofeats, flog = get_features(seqrecord, 
                                                           namevariants)
-    
+    logq.put(log + flog)
     if len(unnames) > 0: issues['unrecnames'].add(unnames)
     if unfeat: issues['hasunidfeats'].add(seqrecord.name)
     
@@ -1131,20 +1069,28 @@ def prepare_seqrecord(seqn, seqrecord, gbname, namevariants, annotypes,
     
     # Establish which of the features specified by the user are present
     present, clog = check_targets(cleanfeats, specifications.keys())
-    log +=  flog + clog + '4. Target features'
+    for c in clog:
+        logq.put(log + c)
+    
+    # Generate target log
+    tlog =  'Target features: '
     if len(present) == 0:
-         log += 'NONE\n'
+        tlog += 'NONE\n'
+    else:
+        tlog += "%s present to process\n" % (str(len(present)))
     
     # Append the non-target feats to the ofeats
     ofeats.extend([c for n, cs in cleanfeats.items() 
                    for c in list(cs) 
                    if n not in present])
     
-    return(present, cleanfeats, ofeats, issues, log)
+    logq.put(log + elapsed_time(start) + tlog)
+    return(present, cleanfeats, ofeats, issues)
 
 def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, 
-                    temp, target):
-    # specifications, target = [specs, present[6]]
+                    temp, pid, logq, target):
+    
+    # specifications, target = [specs, present[0]]
     
     # TODO: something to ensure original annotation is always part of the
     # results list
@@ -1153,9 +1099,8 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     feat = list(cleanfeats[target])[0]
     
     # Set up log and stats
-    log = "\n\t%s\n" % (target) 
     statl = []
-    
+    log = "PID%s %s %s" % (pid, seqrecord.name, target)
     # Determine the start and stop positions of the current annotation,
     # slicing by strand (1 or -1) makes order correct
     initpos = [int(feat.location.start),
@@ -1170,16 +1115,19 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
         rf = [0, 2, 1][cs-1]
     
     # Get context adjustments
+    start = time.perf_counter()
     contextpos, clog = overlap(initpos, feat.location.strand, cleanfeats,
                                specifications[target], seqrecord)
-    
+    logq.put(log + elapsed_time(start) + clog)
     # Determine and extract the search regions
+    start = time.perf_counter()
     searchregions, rlog = get_regions(initpos, contextpos, rf,
                                       specifications[target], 
                                       feat.location.strand,
                                       seqrecord, args.translationtable)
-    
+    logq.put(log + elapsed_time(start) + rlog)
     # Find possible start and stop positions
+    start = time.perf_counter()
     searchresults, slog = get_search_results(searchregions,
                                              contextpos,
                                              specifications[target],
@@ -1187,24 +1135,20 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
                                              feat.location.strand,
                                              args.translationtable,
                                              args.framefree)
-    
+    logq.put(log + elapsed_time(start) + slog)
     # Make an empty list, the default output if no result
     result = []
-    flog, alog = ['', '']
     if len(searchresults) > 0:
-        
         # Filter results
+        start = time.perf_counter()
         filterresults, flog = filter_searchresults(searchresults)
-        
-        # Align the filtered results and generate alignment stats
-        if len(filterresults) > 0:
-            alignresults, alog = align_and_analyse(filterresults, args,
-                                                   specifications[target],
-                                                   target, seqrecord.name, 
-                                                   temp)
-        else:
-            alignresults, alog = [filterresults, '']
-        
+        logq.put(log + elapsed_time(start) + flog)
+        # Align and generate alignment stats
+        start = time.perf_counter()
+        alignresults, alog = align_and_analyse(filterresults, args,
+                                               specifications[target],
+                                               target, seqrecord.name, temp)
+        logq.put(log + elapsed_time(start) + alog)
         if args.detailedresults:
             # Output a list of features to write to the contig
             # Write a table of filter results
@@ -1215,16 +1159,293 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
         # TODO: selection of single result if equal scores
         result = generate_output_target(alignresults, target, args)
         
-        
-        
         if args.potentialfeatures or len(result) == 0:
             result.append(feat)
-    
     
     if len(result) == 0:
          # TODO: generate list of two features, target type and gene based on input feat
         result = [feat]
     
-    
     # Extend outfeats with these
-    return(result, [log + clog + rlog + slog + flog + alog], statl)
+    return(result, statl)
+
+def get_seqrecords(filepaths, onefile):
+    '''Generator outputting the file name and seqrecord for each entry in each
+       input file'''
+    # filepaths, onefile = [args.genbank, args.onefile]
+    fpiter = iter(filepaths)
+    count = 0
+    currfile = next(fpiter, None)
+    while currfile:
+        # If expecting to output to one file overall, keep the count iterating
+        # across input files; otherwise, reset the count for each input file
+        if not onefile: count = 0
+        # Check to see if the current file is the last one
+        nextfile = next(fpiter, None)
+        # Set up to iterate on the current input file
+        sriter = SeqIO.parse(currfile, 'genbank')
+        # Set the name for this file
+        outname = onefile if onefile else currfile
+        # Get the first record from this file
+        currrecord = next(sriter, None)
+        # Work through the records
+        while currrecord:
+            count +=1
+            # Check to see if the current record is the last one by attempting
+            # to get the next one
+            nextrecord = next(sriter, None)
+            # If we have reached the final seqrecord for the current file, and 
+            # either we are outputting file by file or we are outputting in one
+            # file and we've finished the last file, set the value of  count to
+            # the total number of seqrecords to output for the relevant output 
+            # file, otherwise 0 denoting we still don't know the total number
+            filecount = 0 
+            if not nextrecord and (not onefile or (onefile and not nextfile)):
+                filecount = count
+            # Yield a tuple containing the file name to output to, the record
+            # and the count for this filename
+            yield(currfile, outname, currrecord, filecount)
+            # Move the next record to the current record for the next iteration
+            currrecord = nextrecord
+            
+        # Move the next file to the current file for the next iteration
+        currfile = nextfile
+
+def write_stats(outdir, statq):
+    # Open file handles
+    stats = open(os.path.join(outdir, "filtering_results.tsv"), 'w')
+    statwrite = csv.writer(stats, delimiter = '\t', quotechar = '', 
+                               quoting = csv.QUOTE_NONE, escapechar = '')
+    # Write header
+    statwrite.writerow((['file', 'sequence_name', 'annotation_name',
+                        'start_position', 'end_position', 'length', 
+                        'start_match', 'end_match', 'reading_frame', 
+                        'reading_frame_relative_to_original', 
+                        'internal_stop_count']
+                        + ["%s_%s_distance" % (t, e)
+                           for e in ['start', 'end'] 
+                           for t in ['overlap', 'consensus', 'body']]
+                        + ['consensus_agreements', 'deletions', 
+                           'insertions', 'final_score', 'outcome']
+                        ))
+    stats.flush()
+    # Wait on items from queue and write them as received
+    while 1:
+        queueitem = statq.get()
+        if queueitem == 'kill': break
+        for l in queueitem:
+            statwrite.writerow(l)
+        stats.flush()
+    stats.close()
+
+def write_log(outdir, logfile, logq):
+    # Set up the logging output handle
+    logh = None
+    if logfile:
+        logh = open(os.path.join(outdir, logfile), 'w')
+    # Start a constant process that waits to receive data in the form of a file
+    # specifying the source of the seqrecord, and the new seqrecord
+    while 1:
+        logline = logq.get()
+        if logline == 'kill': break
+        if logfile:
+            logh.write(logline)
+            logh.flush()
+    if logfile: logh.close()
+
+def write_genbanks(outdir, filepaths, onefile, seqq):
+    '''Sets up the output file writing handles then waits to receive data
+       requesting printing of log info and seqrecord to the specified file'''
+    #outdir, filepaths, onefile, queueitem = [args.outputdirectory, args.genbank, args.onefile, (outname, seqrecord, filetotal)]
+    # Set up the gbhands dict to work whether all sequences are to be output
+    # to the same file or different files.
+    gbh = dict()
+    if onefile:
+        outh = open(os.path.join(outdir, onefile), 'w')
+        gbh[onefile] = {'h': outh,
+                        'c': 0,
+                        't': 0}
+    else:
+        for file in filepaths:
+            outpath = os.path.join(outdir, file)
+            # For multiple files, for each file set up dict with handle, 
+            # counter and total number of seqrecords to expect.
+            gbh[file] = {'h': open(outpath, 'w'),
+                         'c': 0,
+                         't': 0}
+    # Start a constant process that waits to receive data in the form of a file
+    # specifying the source of the seqrecord, and the new seqrecord
+    while 1:
+        queueitem = seqq.get()
+        if queueitem == 'kill': break
+        file, seqrecord, filetotal = queueitem
+        # Filetotal will be either 0 or the total number of seqrecords for
+        # this file. Each time a seqrecord is received, increment the count
+        # The total will only be the correct value once the one seqrecord
+        # carrying the total arrives (the last one read), and the handle
+        # will only close when the counter equals the total
+        gbh[file]['h'].write(seqrecord.format("genbank"))
+        gbh[file]['h'].flush()
+        gbh[file]['c'] += 1
+        gbh[file]['t'] += filetotal
+        if gbh[file]['c'] == gbh[file]['t']:
+            gbh[file]['h'].close()
+
+def print_terminal(filenames, prinq):
+    #filenames = args.genbank
+    # Get total
+    tot = 0
+    for file in filenames:
+        with open(file, 'r') as fh:
+            for line in fh:
+                if re.search('^LOCUS', line):
+                    tot += 1
+    # Set up to print
+    start = time.perf_counter()
+    done = 0
+    remain = "unknown time"
+    current = ''
+    run = True
+    # Print
+    while run:
+        line = ("\rCorrected %s of %s total records, %s remaining%s" % 
+                (done, tot, remain, current))
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        queueitem = prinq.get()
+        if queueitem == 'kill': break
+        done += 1
+        now = time.perf_counter()
+        elapsed = now-start
+        remain = round((elapsed/done) * (tot - done))
+        remain = "approx " + str(datetime.timedelta(seconds=remain))
+        #current = ", currently processing " + queueitem
+    now = time.perf_counter()
+    elapsed = round(now-start)
+    elapsed = str(datetime.timedelta(seconds=elapsed))
+    elapsedper = str(datetime.timedelta(seconds=elapsed/done))
+    line = "\nFinished in %s, %s per record\n" % (elapsed, elapsedper)
+    sys.stdout.write(line)
+    sys.stdout.flush()
+    run = False
+
+
+
+#def print_terminal(filenames, prinq):
+#    #filenames = args.genbank
+#    # Count the number of expected seqrecords
+#    ctr = dict()
+#    for file in filenames:
+#        ctr[file] = [0, 0, 0, 0, 0] # Done, total, proportion, pbarw, %
+#        with open(file, 'r') as fh:
+#            for line in fh:
+#                ctr[file][1] += 1 if re.search('^LOCUS', line) else 0
+#    # Calculate the total
+#    tot = sum([v[1] for k, v in ctr.items()])
+#    
+#    
+##    # Set up the counter
+##    stdscr = curses.initscr()
+##    curses.noecho()
+##    curses.cbreak()
+#    
+#    start = time.perf_counter()
+#    done = 0
+##    barw = 15
+#    while 1:
+#        # Get the incoming completed file part and check
+#        file = prinq.get()
+#        if not file:
+#            break
+#        done += 1
+#        # Calculate timings
+#        now = time.perf_counter()
+#        elapsed = round(now-start)
+#        #elapstr = str(datetime.timedelta(seconds=elapsed))
+#        remain = (elapsed/done) * (tot - done)
+#        remainstr = str(datetime.timedelta(secords=remain))
+##        # Iterate the revelant file counter
+##        ctr[file][0] += 1
+##        ctr[file][2] = (ctr[file][0]/ctr[file][1])
+##        ctr[file][3] = round(ctr[file][2] * barw)
+##        ctr[file][4] = round(ctr[file][2] * 100)
+##        # Build the screen
+##        line = "Total processed: {0}. Elapsed time: {1}. \
+##                Approx time remaining: {3}".format(done, elapstr, remainstr)
+##        stdscr.addstr(0, 0, line)
+##        for i, f in enumerate(ctr.keys()):
+##            l = "{0} : [{4:" + str(4 + barw) + "}] {1}/{2} ({3}%)".format(
+##                    f, ctr[f][0], ctr[f][1], ctr[f][4], "#" * ctr[f][3])
+##            stdscr.addstr(i + 1, 0, l)
+##        stdscr.refresh()
+#        sys.stdout.write("Done %s of %s, approx %s remaining\r" % (done, tot,
+#                                                                   remainstr))
+#        sys.stdout.flush()
+#    curses.echo()
+#    curses.nocbreak()
+#    curses.endwin()
+
+
+def start_writers(pool, manager, args):
+    
+    seqq = manager.Queue()
+    statq = manager.Queue() if args.detailedresults else None
+    logq = manager.Queue()
+    prinq = manager.Queue()
+    
+    seqwatch = pool.apply_async(functools.partial(write_genbanks,
+                                                  args.outputdirectory,
+                                                  args.genbank,
+                                                  args.onefile),
+                                (seqq,))
+    
+    if args.detailedresults:
+        statwatch = pool.apply_async(functools.partial(write_stats, 
+                                                       args.outputdirectory),
+                                     (statq,))
+    
+    logwatch = pool.apply_async(functools.partial(write_log,
+                                                  args.outputdirectory,
+                                                  args.logfile),
+                                    (logq,))
+    
+    printwatch = pool.apply_async(functools.partial(print_terminal, 
+                                                    args.genbank),
+                                  (prinq,))
+    
+    return(seqq, statq, logq, prinq, 
+           (seqwatch, statwatch, logwatch, printwatch))
+
+def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
+    #
+    # indata = next(seqrecordgen)
+    gbname, outname, seqrecord, filetotal = indata
+    namevars, annotypes, specs, temp = utilityvars
+    #seqq, statq = queues
+    pid = os.getpid()
+    # Extract the necessary items from the seqrecord and clean
+    present, cleanfeats, ofeats, issues = prepare_seqrecord(seqrecord, gbname,
+                                                            namevars, 
+                                                            annotypes, specs, 
+                                                            pid, logq)
+    
+    # Process the present cleanfeatures
+    if len(present) > 0:
+        outfeats = []  
+        for target in present:
+            outfeat, statl = correct_feature(cleanfeats, specs, gbname,
+                                             seqrecord, args, temp, pid, 
+                                             logq, target)
+            outfeats.extend(outfeat)
+            if args.detailedresults: statq.put(statl)
+        
+        # Replace all features with the new ones and add on the others
+        if len(outfeats) > 0:
+            seqrecord.features = outfeats + ofeats
+    else:
+        seqrecord.features = seqrecord.features
+        # TODO log that no target features found and that the sequence is
+        # being output as-is
+    
+    seqq.put((outname, seqrecord, filetotal))
+    prinq.put(gbname)
