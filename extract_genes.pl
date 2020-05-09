@@ -102,6 +102,8 @@ Arguments:
 	     reqregion:  A list of regions that must be present in a sequence for it to output anything
 	   regiontypes:  One or more region types to extract, currently CDS rRNA and/or tRNA
 	     showgenes:  Prints the hardcoded conversions for region naming variants
+	      organism:  Prints the organism name, if retreivable, instead of the LOCUS
+	 writeunknowns:  Writes out fastas for unidentifiable annotations anyway
 	     keepframe:  Removes excess out-of-frame bases at the beginning of truncated annotations
 	          help:  Prints out this helpful message
 
