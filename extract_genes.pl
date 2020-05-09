@@ -19,6 +19,7 @@ my @reqregion;
 my @regiontypes = ('CDS');
 my $keepframe;
 my $organism;
+my $writeunknowns;
 
 my $dontchecknames;
 my $showgenes;
@@ -116,6 +117,7 @@ GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "regiontypes=s{1,3}"	=> \@regiontypes,
 	   "showgenes"		=> \$showgenes,
 	   "organism"		=> \$organism,
+	   "writeunknowns"	=> \$writeunknowns,
 	   "keepframe"		=> \$keepframe,
 	   "help"		=> \$help) or die "\nError getting options\n\n";
 
@@ -202,6 +204,12 @@ foreach my $gbp (@gbpaths){
 					)){
 				#print "extracting\n";
 				
+				# If unrecognised
+				if( not ${$genesort}{$gene}){
+					push @{$unrec_genes{$gene}}, $seqname;
+					$checked_features++ and next unless $writeunknowns;
+				}
+				
 				# Make a new output object for this gene if needed
 				if(! $faobjs{$gene}){
 					$faobjs{$gene} = Bio::SeqIO->new(-file => ">${outdir}/$gene.fa",
@@ -229,8 +237,6 @@ foreach my $gbp (@gbpaths){
 				
 				$found_genes{$gene} = $outseq;
 				
-				# Add to unrecognised genes if unrecognised
-				push @{$unrec_genes{$gene}}, $seqname unless ${$genesort}{$gene};
 			} else {
 				#print "skipping\n";
 			}
