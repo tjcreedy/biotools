@@ -163,8 +163,11 @@ foreach my $gbp (@gbpaths){
 		
 		# Extract sequence name and species name
 		my $seqname = $seq->display_id;
-		my $species = $seq->species->node_name;
-		$species =~ tr/ /_/;
+		my $species;
+		if($organism){
+			$species = $seq->species->node_name;
+			$species =~ tr/ /_/;
+		}
 		# Get all features with sufficient identification from object
 		my @all_feats = grep {$_->has_tag('gene') or $_->has_tag('product') or $_->has_tag('label')} ($seq->get_SeqFeatures);
 		
