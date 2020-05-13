@@ -580,7 +580,7 @@ def find_all(a_str, sub):
         start += 1
 
 def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff):
-    # regions, specs, strand, table, ff = [searchregions, specifications[target], feat.location.strand, args.translationtable, args.framefree]
+    # regions, adjustment, specs, strand, table, ff = [searchregions, (contextpos, change), specifications[target], feat.location.strand, args.translationtable, args.framefree]
     # Adjustment is tuple containing adjpos and change
     
     results = dict()
@@ -611,19 +611,25 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
         # Convert localresults to list
         localresults = [[i]+v for i, v in localresults.items()]
         
+        # Define the posible positions for a search region to start or stop on
+        # in order to determine the feature to be truncated. Note these include
+        # 1 position within the contig to deal with indexes not matching
+        truncpos = [0, 1, len(seqrecord) - 1, len(seqrecord)]
+        
         # If region appears to be truncated at the start, add further results
-        if end == 'start' and regions[end]['pos'][0] in [0, len(seqrecord)]:
+        if end == 'start' and regions[end]['pos'][0] in truncpos:
             localresults += [[0, i, 1] for i in [0, 1, 2]]
             trunc = 'start is'
         
         # If region appears to be trunc at the stop, remove short matches
-        # and add a match at the end
+        # and add a match at the end. Truncation is defined by the last position
         if (not ff and end == 'stop' 
-            and regions[end]['pos'][-1] in [0, len(seqrecord)]
+            and regions[end]['pos'][-1] in truncpos
             and sspecs['searchcode'] is 'N'):
             
             localresults = [[i, c, l] for i, c, l in localresults if l >= 3]
-            localresults += [regions[end]['pos'][-1], cs, 1]
+            endpos = len(regions[end]['seq'])-1
+            localresults += [[endpos, i, 1] for i in [0, 1, 2]]
             trunc = 'stop is' if not trunc else 'both start and stop are'
         
         # TODO: add in default locations around existing initial positions?
@@ -652,7 +658,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
         if not ff and end == 'stop' and not 'stop' in trunc:
             fixresults = []
             for prf in [0, 1, 2]:
-                #prf = 2
+                #prf = 0
                 res_prf = [[k, v] for k, v in outresults if v['arf'] == prf ]
                 if len(res_prf) > 0:
                     maxmatch = max([v['len'] for k, v in res_prf])
@@ -662,6 +668,8 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
                         for k, v in outresults:
                             if v['li'] <= firsti and v['arf'] == prf:
                                 fixresults.append([k,v])
+                    else:
+                        fixresults.extend(res_prf)
             outresults = fixresults
         
         results[end] = outresults
@@ -676,7 +684,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
     for startpos, startdet in results['start']:
         for stoppos, stopdet in results['stop']:
             #startpos, startdet = results['start'][1]
-            #stoppos, stopdet = results['stop'][58]
+            #stoppos, stopdet = results['stop'][-1]
             
             # Correct the stop position by the length
             stoppos = stoppos + stopdet['len'] * strand
@@ -714,7 +722,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
             # overlap position is a true overlap adjustment - if there has been
             # no movement, return 0 in all cases
             adjpos, change = adjustment
-            overlapdist = [p - a if c else 0 
+            overlapdist = [p - a if c is not None else 0 
                            for a, p, c in zip(adjpos, pos, change)]
             
             # Make the feature
@@ -1444,7 +1452,7 @@ def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
     # indata = next(seqrecordgen)
     gbname, outname, seqrecord, filetotal = indata
     namevars, annotypes, specs, temp = utilityvars
-    #seqq, statq = queues
+    
     pid = os.getpid()
     # Extract the necessary items from the seqrecord and clean
     present, cleanfeats, ofeats, issues = prepare_seqrecord(seqrecord, gbname,

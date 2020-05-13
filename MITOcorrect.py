@@ -78,7 +78,7 @@ if __name__ == "__main__":
     
     arglist = re.sub('dir', '/home/thomas/MITOcorrect_testing',
             """-s dir/MITOcorrect_specs.tsv
-               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD00010.gb
+               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD01692.gb
                -l dir/testlog.txt
                -a dir/aaalignfile.tsv
                -o dir/testout/ 
