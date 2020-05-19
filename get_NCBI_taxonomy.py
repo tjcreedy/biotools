@@ -226,7 +226,7 @@ if __name__ == "__main__":
     #arglist = "-i otus_nt_blast-MEGAN.txt -l pyNCBI.db -o otus_MEGAN_tax.tsv -n tjc_ncbi_authentication.txt".split(' ')
     #args = parser.parse_args(arglist)
     #os.chdir('/home/thomas/Documents/NHM_postdoc/Sequencing/NHMMar2019')
-    args = parser.parse_args(['-h'])
+    
     # Parse the input file to dict
     data = parse_inputfile(args.input)
     
