@@ -970,18 +970,16 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
                                     (str(int(r['feat'].location.start) + 1),
                                      str(int(r['feat'].location.end))))
     log = "Alignment: "
-    success = False
     if len(scores) < 1:
         log += "no results remain to align and analyse\n"
     elif len(selected) < 1:
         log += "selected no regions from %s results\n" % (str(len(scores)))
     else:
-        success = True
         log += "selected %s of %s" % (', '.join(selected), str(len(scores)))
         log += " results with minimum combined overlap and alignment score of "
         log += "%s\n" % (str(minscore))
     
-    return(results, success, log)
+    return(results, log)
 
 def write_detailed_results(results, gbname, seqname, target):
     # results = alignresults
