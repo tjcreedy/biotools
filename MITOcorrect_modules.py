@@ -845,7 +845,7 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
     
     # Align and generate alignment scores
     for result in results:
-        #result = results[-3]
+        #result = results[0]
         # Fill with blank stats if already rejected
         if result['reject']:
             result.update({'cond': ['',''], 'bodd': ['',''],
@@ -896,14 +896,14 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
             s, c = [len(re.search(r, seq).group()) 
                     for seq in [targetalign, consensus]]
             if e == 'stop':
-                s, c = [len(consensus) - v for v in [s, c]]
+                s, c = [len(consensus) - v - 1 for v in [s, c]]
             seqss[e], conss[e] = [s, c]
         # Generate standard body distances
         stdist = {e: specs[e]['alignbody'] for e in ['start', 'stop']}
+        if args.alignmenttype == 'aa':
+            stdist = {e: round(v/3) for e, v in stdist.items()}
         bodyss = {e: gapped_distance(consensus, conss[e], v) for 
                   e, v in stdist.items()}
-        if args.alignmenttype == 'aa': 
-            bodyss = {e: round(v/3) for e, v in bodyss.items()}
         # Determine distances
         cond = [0, 0]
         bodd = [0, 0]
@@ -924,7 +924,7 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
                              + stdist[e])
         # cond, bodd = two lists, each containing start and stop error for the 
         # consensus and the body respectively
-        if args.alignmenttype == 'AA':
+        if args.alignmenttype == 'aa':
             cond, bodd = [[i * 3 for i in j] for j in [cond, bodd]]
         # Generate a score for each end of the annotation
         endscore = [None, None]
@@ -932,11 +932,11 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
             
             # Generate the weighted average of the alignment distances
             alignscore = (abs(cond[i]) * args.alignmentweight
-                          + abs(bodd[i]) * (1 - args.alignmentweight)) / 2
+                          + abs(bodd[i]) * (1 - args.alignmentweight))
             
             # Generate the weighted average of the overlap dist and alignscore
             endscore[i] = (abs(result['adjd'][i]) * args.overlapweight
-                           + alignscore * (1 - args.overlapweight)) / 2
+                           + alignscore * (1 - args.overlapweight))
             
         # Determine agreement, deletion or insertion for each of the positions
         # of the ntseq after trimming terminal gaps
@@ -970,16 +970,18 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
                                     (str(int(r['feat'].location.start) + 1),
                                      str(int(r['feat'].location.end))))
     log = "Alignment: "
+    success = False
     if len(scores) < 1:
         log += "no results remain to align and analyse\n"
     elif len(selected) < 1:
         log += "selected no regions from %s results\n" % (str(len(scores)))
     else:
+        success = True
         log += "selected %s of %s" % (', '.join(selected), str(len(scores)))
         log += " results with minimum combined overlap and alignment score of "
         log += "%s\n" % (str(minscore))
     
-    return(results, log)
+    return(results, success, log)
 
 def write_detailed_results(results, gbname, seqname, target):
     # results = alignresults
@@ -1009,8 +1011,9 @@ def write_detailed_results(results, gbname, seqname, target):
     return(statl)
 
 def generate_output_target(results, target, args):
+    #results = alignresults
     
-    resultfeats = list()
+    resultfeats = []
     
     for result in results:
         
@@ -1119,7 +1122,7 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
                     temp, pid, logq, target):
     
     # specifications, target = [specs, present[0]]
-    # specifications, target = [specs, 'ND4']
+    # specifications, target = [specs, 'CYTB']
     
     # TODO: something to ensure original annotation is always part of the
     # results list
@@ -1166,6 +1169,7 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
                                              args.translationtable,
                                              args.framefree)
     logq.put(log + elapsed_time(start) + slog)
+    
     # Make an empty list, the default output if no result
     result = []
     if len(searchresults) > 0:
@@ -1191,8 +1195,7 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
         
         if args.potentialfeatures or len(result) == 0:
             result.append(feat)
-    
-    if len(result) == 0:
+    else:
          # TODO: generate list of two features, target type and gene based on input feat
         result = [feat]
     

@@ -76,16 +76,15 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    arglist = re.sub('dir', '/home/thomas/MITOcorrect_testing',
-            """-s dir/MITOcorrect_specs.tsv
-               -g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD01692.gb
-               -l dir/testlog.txt
-               -a dir/aaalignfile.tsv
-               -o dir/testout/ 
-               -t 2 -b 5 -c aa -r -1 out.gb""").split()
+    arglist = ("-s MITOcorrect_specs.tsv "
+              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD00949.gb "
+              "-l testlog.txt "
+              "-a aaalignfile.tsv "
+              "-o testout/ "
+              "-t 2 -b 5 -c aa -r -1 out.gb").split()
     #-g dir/test_multigenbank.gb
     #-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/CCCP00094.gb
-    #os.chdir('/home/thomas/MITOcorrect_testing')
+    #os.chdir('/home/thomas/seqtesting/MITOcorrect_testing')
     #args = parser.parse_args(arglist)
     
     # Parse the arguments into the main utility variables
