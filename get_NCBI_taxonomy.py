@@ -34,6 +34,13 @@ class MultilineFormatter(argparse.HelpFormatter):
 
 # Function definitions
 
+def str_is_int(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
 def parse_inputfile(path):
     data = dict()
     with open(path, 'r') as fh:
@@ -42,9 +49,11 @@ def parse_inputfile(path):
             ln += 1
             items = line.strip().split('\t')
             if len(items) < 2:
-                sys.stderr.write(f"Line number {ln} in {path} does not have",
-                                 "at least 2 tab-separated elements")
-                exit()
+                sys.exit(f"Line number {ln} in {path} does not have at least "
+                          "2 tab-separated elements")
+            if not str_is_int(items[1]):
+                sys.exit(f"\"{items[1]}\" on line number {ln} in {path} isn't "
+                          "a number, column 2 should be NCBI taxon IDs")
             data[items[0]] = items[1]
     return(data)
 
@@ -122,18 +131,16 @@ def chunker(seq, size):
 def retrieve_ncbi_remote(taxids, chunksize, auth):
     """Search NCBI for lineage information given a tax id.
     """
-    #taxids, auth = [absent, get_authentication(args.ncbiauth)]
+    #taxids, auth = [['143734'], get_authentication(args.ncbiauth)]
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
     
     out = dict()
     
     for taxidset in chunker(taxids, chunksize):
-        query = '&'.join(taxidset)
-        handle = Entrez.efetch(db="taxonomy", id=query)
+        handle = Entrez.efetch(db="taxonomy", id=taxidset)
         records = Entrez.read(handle)
         handle.close()
-        query.count('&')
         
         for r in records:
             out[r['TaxId']] = r
@@ -150,9 +157,10 @@ def write_new_local(newdb, database):
         json.dump(newdb, fp)
 
 def get_standard_lineage(record, ranks):
-    
+    # record = db[i]
     names = {r['Rank']: r['ScientificName'] for r in record['LineageEx'] 
              if r['Rank'] != 'no rank'}
+    names[record['Rank']] = record['ScientificName']
     
     return([names[r] if r in names else '' for r in ranks])
 
@@ -235,7 +243,6 @@ if __name__ == "__main__":
     
     # Retrieve taxonomy from local if available
     taxonomy, absent, local = retrieve_ncbi_local(taxids, args.localdb)
-    
     
     # If any absent, get from ncbi remote
     if len(absent) > 0:
