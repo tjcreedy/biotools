@@ -68,8 +68,8 @@ parser.add_argument('-k', '--keepalignments', default = False, action = 'store_t
 parser.add_argument('-r', '--detailedresults', default = False, action = 'store_true')
 parser.add_argument('-p', '--potentialfeatures', default = False, action = 'store_true')
 parser.add_argument('-1', '--onefile', type = str) # Output all input gb files in one output file, given as argument
-parser.add_argument('-i', '--alignmentweight', default = 0.5)
-parser.add_argument('-j', '--overlapweight', default = 0.5)
+parser.add_argument('-i', '--alignmentweight', type = float, default = 0.5)
+parser.add_argument('-j', '--overlapweight', type = float, default = 0.5)
 
 # Main
 if __name__ == "__main__":
