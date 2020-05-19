@@ -11,7 +11,6 @@ import os
 import re
 import argparse
 import time
-import pickle
 import json
 from Bio import Entrez
 
@@ -34,17 +33,6 @@ class MultilineFormatter(argparse.HelpFormatter):
         return multiline_text
 
 # Function definitions
-
-
-def required_multiple(multiple):
-    class RequiredMultiple(argparse.Action):
-        def __call__(self, parser, args, values, option_string=None):
-            if not len(values) % multiple == 0:
-                msg = 'argument "{f}" requires a multiple of {multiple} values'
-                msg = msg.format(f=self.dest, multiple=multiple)
-                raise argparse.ArgumentTypeError(msg)
-            setattr(args, self.dest, values)
-    return RequiredMultiple
 
 def parse_inputfile(path):
     data = dict()
@@ -131,7 +119,7 @@ def chunker(seq, size):
         seq = list(seq)
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
-def retrieve_ncbi_remote(taxids, auth):
+def retrieve_ncbi_remote(taxids, chunksize, auth):
     """Search NCBI for lineage information given a tax id.
     """
     #taxids, auth = [absent, get_authentication(args.ncbiauth)]
@@ -140,7 +128,7 @@ def retrieve_ncbi_remote(taxids, auth):
     
     out = dict()
     
-    for taxidset in chunker(taxids, 200):
+    for taxidset in chunker(taxids, chunksize):
         query = '&'.join(taxidset)
         handle = Entrez.efetch(db="taxonomy", id=query)
         records = Entrez.read(handle)
@@ -204,14 +192,15 @@ and api key. This is only necessary if your local database isn't complete.
 Supply a file containing this information to --ncbiauth. The script will output
  an example file if NCBI authentication is required but absent.
 |n
+By default, the script will send 200 id numbers to NCBI in each request. If this seems to cause errors, set --chunksize to a lower value.
+|n
 The taxonomy information will be output in a table with the first two columns 
 providing the input sequence ids and taxonomy ids. The subsequent columns will 
 provide values for the standard seven taxonomic ranks. Cells will be blank if 
 the given taxid is higher than the lowest taxonomic rank or if no taxonomy 
 could be retrieved; in the latter case, a warning will also be printedt to 
 terminal. A custom set of taxonomic ranks can be supplied to --ranks or -r in 
-the format \'rank,rank,rank\'.""",
-                                 formatter_class=MultilineFormatter)
+the format \'rank,rank,rank\'.""", formatter_class=MultilineFormatter)
 
 parser._optionals.title = "arguments"
 
@@ -226,7 +215,9 @@ parser.add_argument('-n', '--ncbiauth', help='ncbi authentication path',
 parser.add_argument('-r', '--ranks', help='comma-separated list of ranks',
                     metavar='rank,rank,rank',
                     default='superkingdom,kingdom,phylum,class,order,family,'\
-                             + 'genus,species')
+                            + 'genus,species')
+parser.add_argument('-c', '--chunksize', help='number of ids per request',
+                    type=int, metavar = '', default=200)
 
 # Main
 
@@ -235,7 +226,7 @@ if __name__ == "__main__":
     #arglist = "-i otus_nt_blast-MEGAN.txt -l pyNCBI.db -o otus_MEGAN_tax.tsv -n tjc_ncbi_authentication.txt".split(' ')
     #args = parser.parse_args(arglist)
     #os.chdir('/home/thomas/Documents/NHM_postdoc/Sequencing/NHMMar2019')
-    
+    args = parser.parse_args(['-h'])
     # Parse the input file to dict
     data = parse_inputfile(args.input)
     
@@ -249,7 +240,7 @@ if __name__ == "__main__":
     # If any absent, get from ncbi remote
     if len(absent) > 0:
         if not args.ncbiauth: absent_authentication()
-        ncbi, ncbiabsent = retrieve_ncbi_remote(absent, 
+        ncbi, ncbiabsent = retrieve_ncbi_remote(absent, args.chunksize,
                                              get_authentication(args.ncbiauth))
         
         if len(ncbi) > 0:
