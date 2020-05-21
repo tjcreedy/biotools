@@ -835,8 +835,8 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
         # Fill with blank stats if already rejected
         if result['reject']:
             result.update({'cond': ['',''], 'bodd': ['',''],
-                           'ccts': ['','',''], 'slen': len(result['nt']),
-                           'score': ''})
+                           'ccts': {'start': ['','',''], 'stop': ['','','']},
+                           'slen': len(result['nt']), 'score': ''})
             continue
         # Set up the filenames for input and output
         name = "%s_%s_%s-%s" % (seqname, target, 
@@ -986,7 +986,6 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
 def write_detailed_results(results, gbname, seqname, target):
     # results = alignresults
     # Start output list
-    
     statl = []
     for result in results:
         # result = results[0]
@@ -994,21 +993,20 @@ def write_detailed_results(results, gbname, seqname, target):
         feat = result['feat']
         score = '' if result['score'] == '' else round(result['score'], 3)
         # Construct a line to write to the stats file
-        stats = ([gbname, seqname, target,
-                  str(feat.location.start + 1),
-                  str(feat.location.end),
-                  result['slen'],
-                  str(result['nt'][:result['lens'][0]]),
-                  str(result['nt'][-result['lens'][1]:]),
-                  feat.qualifiers['codon_position'],
-                  str(result['arf'] + 1),
-                  result['inst']]
-                  + [result[k][i] for i in [0, 1] 
-                   for k in ['adjd', 'cond', 'bodd']]
-                  + result['ccts'] 
-                  + [score, result['reject']])
+        stats = ([gbname, seqname, target]
+                 + [str(feat.location.start + 1),
+                    str(feat.location.end)][::feat.location.strand]
+                 + [result['slen'],
+                    str(result['nt'][:result['lens'][0]]),
+                    str(result['nt'][-result['lens'][1]:]),
+                    feat.qualifiers['codon_position'],
+                    str(result['arf'] + 1),
+                    result['inst']]
+                 + [result[k][i] for i in [0, 1] 
+                      for k in ['adjd', 'cond', 'bodd']]
+                 + [c for e in ['start', 'stop'] for c in result['ccts'][e]] 
+                 + [score, result['reject']])
         statl.append(stats)
-    
     return(statl)
 
 def generate_output_target(results, target, args):
@@ -1248,12 +1246,14 @@ def write_stats(outdir, statq):
                         'start_match', 'end_match', 'reading_frame', 
                         'reading_frame_relative_to_original', 
                         'internal_stop_count']
-                        + ["%s_%s_distance" % (t, e)
+                        + ["%s_%s_distance" % (e, t)
                            for e in ['start', 'end'] 
                            for t in ['overlap', 'consensus', 'body']]
-                        + ['consensus_agreements', 'deletions', 
-                           'insertions', 'final_score', 
-                           'outcome']
+                        + ["%s_%s" % (e, t)
+                           for e in ['start', 'end'] 
+                           for t in ['consensus_agreements', 'deletions',
+                                     'insertions']]
+                        + [ 'final_score', 'outcome']
                         ))
     stats.flush()
     # Wait on items from queue and write them as received
