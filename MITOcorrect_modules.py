@@ -180,7 +180,7 @@ def parse_specs(path, alignpath, namevariants):
                     sys.exit("Error: value %s for %s on line %s is not greater than 0" %
                              ( value, spec, str(ln) ))
                 hold[spec] = value
-            elif spec in ['alignmentweight', 'overlapweight', 'indelweight']:
+            elif spec in ['alignweight', 'overlapweight', 'indelweight']:
                 if not str_is_float(value):
                     sys.exit("Error: value %s for %s on line %s is not a number" %
                              ( value, spec, str(ln) ))
