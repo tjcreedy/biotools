@@ -68,8 +68,6 @@ parser.add_argument('-k', '--keepalignments', default = False, action = 'store_t
 parser.add_argument('-r', '--detailedresults', default = False, action = 'store_true')
 parser.add_argument('-p', '--potentialfeatures', default = False, action = 'store_true')
 parser.add_argument('-1', '--onefile', type = str) # Output all input gb files in one output file, given as argument
-parser.add_argument('-i', '--alignmentweight', type = float, default = 0.5)
-parser.add_argument('-j', '--overlapweight', type = float, default = 0.5)
 
 # Main
 if __name__ == "__main__":
@@ -77,7 +75,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/BIOD00949.gb "
+              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-19_current/BIOD00519.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "

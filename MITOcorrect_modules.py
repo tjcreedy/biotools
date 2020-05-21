@@ -61,7 +61,18 @@ def str_is_int(s):
     except ValueError:
         return False
 
-def parsespecs(path, alignpath, namevariants):
+def str_is_float(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+def halve(lis):
+    midi = len(lis) // 2
+    return((lis[:midi], lis[midi:]))
+
+def parse_specs(path, alignpath, namevariants):
     #path, alignpath = [args.specifications, args.alignmentpaths]
     
     # Parse the master specifications file
@@ -142,7 +153,6 @@ def parsespecs(path, alignpath, namevariants):
                 if type(value) is not dict:
                     sys.exit(("Error: specification for %s on line %s is ",
                              "not recognised") % (spec, str(ln)))
-                
                 for c, d in value.items():
                     #c, d = list(value.items())[0]
                     del hold[spec][c]
@@ -159,7 +169,6 @@ def parsespecs(path, alignpath, namevariants):
                                   "%s is not an integer") % 
                                  (d, c, str(ln)))
                     hold[spec][c] = d
-                
             elif spec in ['overlapmaxdistance', 'searchdistance']:
                 # MaxContextDistance, SearchDistance, 
                 # should all be > 0 integers
@@ -170,7 +179,15 @@ def parsespecs(path, alignpath, namevariants):
                 if value < 1:
                     sys.exit("Error: value %s for %s on line %s is not greater than 0" %
                              ( value, spec, str(ln) ))
-                
+                hold[spec] = value
+            elif spec in ['alignmentweight', 'overlapweight', 'indelweight']:
+                if not str_is_float(value):
+                    sys.exit("Error: value %s for %s on line %s is not a number" %
+                             ( value, spec, str(ln) ))
+                value = float(value)
+                if value < 0:
+                    sys.exit("Error: value %s for %s on line %s should greater than 0" %
+                             ( value, spec, str(ln) ))
                 hold[spec] = value
             elif spec == 'alignbody':
                 # AlignBody should be a positive integer for start and a 
@@ -185,13 +202,11 @@ def parsespecs(path, alignpath, namevariants):
                              (value, spec, str(ln), 
                               'positive' if end == 'start' else 'negative')
                              )
-                
             elif spec == 'searchcode':
                 # Search code should be a single character A or N
                     if value not in 'AN' or len(value) != 1:
                         sys.exit("Error: value %s for %s on line %s is not A or N" %
                                  ( value, spec, str(ln) ))
-                 
             elif spec == 'searchsequence':
                 # SearchSequence should be list of characters from one of
                 # two sets of possibilities for A or N respectively
@@ -220,12 +235,6 @@ def parsespecs(path, alignpath, namevariants):
                     sys.stderr.write("Warning: searchreadframe is redundant for searchcode A on line %s")
                 if str_is_int(value):
                     hold[spec] = int(value)
-                    
-            elif spec == 'searchmultiselect':
-                # SearchMultiSelect should be one of five specific strings
-                if value not in ['F', 'FC', 'C', 'LC', 'L'] :
-                    sys.exit("Error: value %s for %s on line %s is not valid" %
-                             ( value, spec, str(ln) ))
                     
             else:
                 sys.exit("Error: column %s is not recognised" %
@@ -479,6 +488,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
     outpos = [0, 0]
     outchange = [None, None]
     for i, e in enumerate(['start', 'stop']):
+        # i, e = [1, 'stop']
         c = changes[i]
         mlog = ''
         if c:
@@ -492,7 +502,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
         if len(absent[e]) > 0:
             elog.append("%s not present" % (', '.join(absent[e])))
         if len(overdist[e]) > 0:
-            elog.append("%s over distance" % (', '.join(absent[e])))
+            elog.append("%s over distance" % (', '.join(overdist[e])))
         if len(elog) > 0:
             mlog += (" (%s)" % ('; '.join(elog)))
         logstring.append(mlog)
@@ -582,19 +592,16 @@ def find_all(a_str, sub):
 def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff):
     # regions, adjustment, specs, strand, table, ff = [searchregions, (contextpos, change), specifications[target], feat.location.strand, args.translationtable, args.framefree]
     # Adjustment is tuple containing adjpos and change
-    
+    adjpos, change = adjustment
     results = dict()
     trunc = ''
-    
     # Work through ends and specs
     for end in ['start', 'stop']:
         #end = 'start'
         #end = 'stop'
         sspecs = specs[end]
-        
         # Set default codon_start for hits
         cs = 0
-        
         # Find locations of query relative to query frame and positions
         localresults = dict()
         for q in sspecs['searchsequence']:
@@ -607,33 +614,28 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
                 if (i not in localresults or 
                     (i in localresults and len(q) > localresults[i][1])):
                     localresults[i] = [cs, len(q)]
-        
         # Convert localresults to list
         localresults = [[i]+v for i, v in localresults.items()]
-        
         # Define the posible positions for a search region to start or stop on
         # in order to determine the feature to be truncated. Note these include
         # 1 position within the contig to deal with indexes not matching
         truncpos = [0, 1, len(seqrecord) - 1, len(seqrecord)]
-        
         # If region appears to be truncated at the start, add further results
-        if end == 'start' and regions[end]['pos'][0] in truncpos:
-            localresults += [[0, i, 1] for i in [0, 1, 2]]
+        if (end == 'start' and regions[end]['pos'][0] in truncpos 
+            and not change[0]):
+            localresults = [[0, i, 1] for i in [0, 1, 2]]
             trunc = 'start is'
-        
         # If region appears to be trunc at the stop, remove short matches
         # and add a match at the end. Truncation is defined by the last position
         if (not ff and end == 'stop' 
             and regions[end]['pos'][-1] in truncpos
-            and sspecs['searchcode'] is 'N'):
-            
+            and sspecs['searchcode'] is 'N'
+            and not change[1]):
             localresults = [[i, c, l] for i, c, l in localresults if l >= 3]
             endpos = len(regions[end]['seq'])-1
             localresults += [[endpos, i, 1] for i in [0, 1, 2]]
             trunc = 'stop is' if not trunc else 'both start and stop are'
-        
         # TODO: add in default locations around existing initial positions?
-        
         # Convert locations to contig positions and annotation frame
         outresults = []
         for i, c, l in localresults:
@@ -650,8 +652,6 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
                     # annotation, modified by the codon_start so that start and
                     # stop matches in the correct frame are correctly paired
                     'arf': (regions[end]['pcp'][i] + c) % 3}])
-        
-        
         # If a stop region, remove all matches after the first >= 3 match if 
         # the largest match is >=3, on a frame-by-frame basis, unless the 
         # search sequences are not inframe (i.e. freeframe is on)
@@ -673,28 +673,23 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
             outresults = fixresults
         
         results[end] = outresults
-    
     # Log so far
     log = ["%s hits at %s" % (str(len(results[e])), e) 
            for e in ['start', 'stop']]
     log = "Query search: found %s" % (' and '.join(log))
-    
     # Generate the sequence records for all combinations
     options = []
     for startpos, startdet in results['start']:
         for stoppos, stopdet in results['stop']:
-            #startpos, startdet = results['start'][1]
-            #stoppos, stopdet = results['stop'][-1]
-            
+            #startpos, startdet = results['start'][7]
+            #stoppos, stopdet = results['stop'][1]
             # Correct the stop position by the length
             stoppos = stoppos + stopdet['len'] * strand
                 # This shouldn't be theoretically possible, but just in case...
             if stoppos < 0: stoppos = 0
             if stoppos > len(seqrecord): stoppos = len(seqrecord)
-            
             # Set up a list of start and stop positions
             pos = [startpos, stoppos]
-            
             # Skip the combination if:
                 # the start position is not less than the stop position (or vice
                 # versa on reverse strand)
@@ -706,7 +701,6 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
                 # sequences are not expected to be in frame (i.e. freeframe on)
                 or (not ff and startdet['arf'] != stopdet['arf'])):
                 continue
-            
             # Set the positions to be truncated if necessary
             for i, e in enumerate(['start', 'stop']):
                 # For each truncated end, apply the appropriate position type
@@ -717,52 +711,40 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
                     pos[i] = (SeqFeature.BeforePosition(pos[i]) 
                               if strand == [1, -1][i]
                               else SeqFeature.AfterPosition(pos[i]))
-            
             # Calculate the distance from the overlap position as long as the 
             # overlap position is a true overlap adjustment - if there has been
             # no movement, return 0 in all cases
-            adjpos, change = adjustment
             overlapdist = [p - a if c is not None else 0 
                            for a, p, c in zip(adjpos, pos, change)]
-            
             # Make the feature
             pos = pos[::strand]
             newfeat = SeqFeature.SeqFeature(
                     SeqFeature.FeatureLocation(pos[0], pos[1], strand=strand))
             newfeat.qualifiers['codon_position'] = startdet['cs'] + 1
-            
             # Extract the nucleotide sequence
             ntseq = newfeat.extract(seqrecord.seq)
-            
-            # Check the length and end
-            trail = len(ntseq) % 3
-            
-            # Pad the sequence for amino acid extraction
-            transseq = ntseq
-            
+            # Generate the sequence for amino acid extraction
+            transseq = ntseq[startdet['cs']:]
+            # Check the length and end, pad if necessary
+            trail = len(transseq) % 3
             if trail > 0:
                 trailbases = str(ntseq[-trail:])
                 pad = 'A' if trailbases == ['T','TA'][trail-1] else 'N'
                 transseq += Seq.Seq(pad * (3 - trail))
-            
             # Extract the amino acids
             aaseq = transseq.translate(table = table)
-            
             # Count stops
             aastring = str(aaseq)
             internal = re.sub("\**$", '', aastring)
             intstops = internal.count('*')
             termstops = re.findall("\**$", aastring)[0]
             termstops = 0 if len(termstops) == 0 else len(termstops[0])
-            
             # Gather data and append
             options.append({'arf': startdet['arf'], 'feat': newfeat,
                             'lens': [d['len'] for d in [startdet, stopdet]],
                             'inst': intstops, 'tmst': termstops,
                             'nt': ntseq, 'aa': aaseq,
                             'adjd': overlapdist, 'reject': None})
-            
-    
     log += ", generating %s possible result regions" % (str(len(options)))
     log += '; ' + trunc + ' truncated\n' if trunc else '\n'
     return(options, log)
@@ -845,7 +827,7 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
     
     # Align and generate alignment scores
     for result in results:
-        #result = results[0]
+        #result = results[-1]
         # Fill with blank stats if already rejected
         if result['reject']:
             result.update({'cond': ['',''], 'bodd': ['',''],
@@ -926,35 +908,51 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
         # consensus and the body respectively
         if args.alignmenttype == 'aa':
             cond, bodd = [[i * 3 for i in j] for j in [cond, bodd]]
-        # Generate a score for each end of the annotation
-        endscore = [None, None]
-        for i in [0, 1]:
-            
-            # Generate the weighted average of the alignment distances
-            alignscore = (abs(cond[i]) * args.alignmentweight
-                          + abs(bodd[i]) * (1 - args.alignmentweight))
-            
-            # Generate the weighted average of the overlap dist and alignscore
-            endscore[i] = (abs(result['adjd'][i]) * args.overlapweight
-                           + alignscore * (1 - args.overlapweight))
-            
         # Determine agreement, deletion or insertion for each of the positions
-        # of the ntseq after trimming terminal gaps
+        # within the region shared by both the consensus and target sequence.
+        # Note using shared region to prevent overruns/underruns affecting the
+        # score - should be about internal insertions/deletions
         cid = []
-        for n, c in zip(targetalign[seqss['start']:seqss['stop']], 
-                        consensus[seqss['start']:seqss['stop']]):
+        share = [max(seqss['start'], conss['start']), 
+                  min(seqss['stop'], conss['stop'])]
+        for n, c in zip(targetalign[share[0]:share[1] + 1], 
+                        consensus[share[0]:share[1] + 1]):
             if n == c or (n != '-' and c != '-'):
                 cid.append('-')
             elif n == '-' and c != '-':
                 cid.append('d')
             elif n != '-' and c == '-':
                 cid.append('i')
+        # Split the region in two for start and stop end
+        ccts = {e : [i.count(c) for c in '-di'] 
+                for e, i in zip(['start', 'stop'], halve(cid))}
         # Generate list holding counts of agreements, deletions and insertions
-        ccts = [cid.count(c) for c in '-di']
+        if args.alignmenttype == 'aa':
+            ccts = {e : [c * 3 for c in i] for e, i in ccts.items()}
+        # Generate a score for each end of the annotation
+        endscore = [None, None]
+        for i, e in enumerate(['start', 'stop']):
+            scores = {
+                        # Generate the average of the alignment distances
+                        'align': (abs(cond[i]) + abs(bodd[i])) / 2,
+                        # Generate the indel score
+                        'indel': sum(ccts[e][1:3]),
+                        # Get the overlapscore
+                        'overlap': result['adjd'][i]}
+            # Retreive and standardise scores
+            weights = [specs[e][k + 'weight'] for k in scores.keys()]
+            weightstd = 3 / sum(weights)
+            weights = [w * weightstd for w in weights]
+            # Convert scores
+            scores = [scores[k] for k in scores.keys()]
+            # Generate weighted score
+            endscore[i] = sum(s * w for s, w in zip(scores, weights))
+        # Generate a final score
+        finalscore = sum(endscore) / 2
         # Compile
         result.update({'cond': cond, 'bodd': bodd, 'ccts': ccts, 
                        'slen': len(result['nt']),
-                       'score': round(sum(endscore) / 2, 2)})
+                       'score': finalscore})
     
     # Find the minimum score and mark the selection in the results
     scores = [r['score'] for r in results if r['score'] is not '']
@@ -963,7 +961,7 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
     for r in results:
         if r['score'] is not '':
             if r['score'] > minscore:
-                out = 'score > ' + str(round(minscore,2))
+                out = 'score > ' + str(round(minscore, 2))
                 r['reject'] = out
             else:
                 selected.append("result region %sbp-%sbp" %
@@ -1003,7 +1001,7 @@ def write_detailed_results(results, gbname, seqname, target):
                   + [result[k][i] for i in [0, 1] 
                    for k in ['adjd', 'cond', 'bodd']]
                   + result['ccts'] 
-                  + [result['score'], result['reject']])
+                  + [round(result['score'], 3), result['reject']])
         statl.append(stats)
     
     return(statl)
@@ -1064,7 +1062,7 @@ def initialise(args):
         annotypes.update(moretypes)
     
     # Read in and parse specifications table to a dict 
-    specs = parsespecs(args.specifications, args.alignmentpaths, 
+    specs = parse_specs(args.specifications, args.alignmentpaths, 
                                     namevariants)
     
     # Make output directory and temporary directory, open logfile
@@ -1120,14 +1118,13 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
                     temp, pid, logq, target):
     
     # specifications, target = [specs, present[0]]
-    # specifications, target = [specs, 'CYTB']
+    # specifications, target = [specs, 'ND6']
     
     # TODO: something to ensure original annotation is always part of the
     # results list
     
     # Extract the CDS
     feat = list(cleanfeats[target])[0]
-    
     # Set up log and stats
     statl = []
     log = "PID%s %s %s" % (pid, seqrecord.name, target)
@@ -1135,7 +1132,6 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     # slicing by strand (1 or -1) makes order correct
     initpos = [int(feat.location.start),
                int(feat.location.end)][::feat.location.strand]
-    
     # Determine the reading frame of the current annotation if present
     # Reading frame is 0 indexed internally
     rf = 0
@@ -1143,7 +1139,6 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
         cs = feat.qualifiers['codon_position']
         cs = cs[0] if type(rf) is list else cs
         rf = [0, 2, 1][cs-1]
-    
     # Get context adjustments
     start = time.perf_counter()
     contextpos, change, clog = overlap(initpos, feat.location.strand,
@@ -1167,36 +1162,31 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
                                              args.translationtable,
                                              args.framefree)
     logq.put(log + elapsed_time(start) + slog)
+    # Filter results
+    start = time.perf_counter()
+    filterresults, flog = filter_searchresults(searchresults)
+    logq.put(log + elapsed_time(start) + flog)
+    # Align and generate alignment stats
+    start = time.perf_counter()
+    alignresults, alog = align_and_analyse(filterresults, args,
+                                           specifications[target],
+                                           target, seqrecord.name, temp)
+    logq.put(log + elapsed_time(start) + alog)
     
-    # Make an empty list, the default output if no result
-    result = []
-    if len(searchresults) > 0:
-        # Filter results
-        start = time.perf_counter()
-        filterresults, flog = filter_searchresults(searchresults)
-        logq.put(log + elapsed_time(start) + flog)
-        # Align and generate alignment stats
-        start = time.perf_counter()
-        alignresults, alog = align_and_analyse(filterresults, args,
-                                               specifications[target],
-                                               target, seqrecord.name, temp)
-        logq.put(log + elapsed_time(start) + alog)
-        if args.detailedresults:
-            # Output a list of features to write to the contig
-            # Write a table of filter results
-            statl = write_detailed_results(alignresults, gbname,
-                                                   seqrecord.name, target)
-        
-        # Output final result(s)
-        # TODO: selection of single result if equal scores
-        result = generate_output_target(alignresults, target, args)
-        
-        if args.potentialfeatures or len(result) == 0:
-            result.append(feat)
+    if args.detailedresults:
+        # Output a list of features to write to the contig
+        # Write a table of filter results
+        statl = write_detailed_results(alignresults, gbname,
+                                               seqrecord.name, target)
+    
+    # Output final result(s)
+    # TODO: selection of single result if equal scores
+    result = generate_output_target(alignresults, target, args)
+    if args.potentialfeatures or len(result) == 0:
+        result.append(feat)
     else:
          # TODO: generate list of two features, target type and gene based on input feat
         result = [feat]
-    
     # Extend outfeats with these
     return(result, statl)
 
@@ -1257,7 +1247,8 @@ def write_stats(outdir, statq):
                            for e in ['start', 'end'] 
                            for t in ['overlap', 'consensus', 'body']]
                         + ['consensus_agreements', 'deletions', 
-                           'insertions', 'final_score', 'outcome']
+                           'insertions', 'final_score', 
+                           'outcome']
                         ))
     stats.flush()
     # Wait on items from queue and write them as received
