@@ -989,9 +989,10 @@ def write_detailed_results(results, gbname, seqname, target):
     
     statl = []
     for result in results:
+        # result = results[0]
         # Extract the feature
         feat = result['feat']
-        
+        score = '' if result['score'] == '' else round(result['score'], 3)
         # Construct a line to write to the stats file
         stats = ([gbname, seqname, target,
                   str(feat.location.start + 1),
@@ -1005,7 +1006,7 @@ def write_detailed_results(results, gbname, seqname, target):
                   + [result[k][i] for i in [0, 1] 
                    for k in ['adjd', 'cond', 'bodd']]
                   + result['ccts'] 
-                  + [round(result['score'], 3), result['reject']])
+                  + [score, result['reject']])
         statl.append(stats)
     
     return(statl)
