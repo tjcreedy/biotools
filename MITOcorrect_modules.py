@@ -248,6 +248,10 @@ def parse_specs(path, alignpath, namevariants):
         
     
     sh.close()
+    
+    # TODO check for presence of all required variables, add defaults if not
+    # present
+    
     # Parse the alignment files if present
     
     if alignpath is not None:
