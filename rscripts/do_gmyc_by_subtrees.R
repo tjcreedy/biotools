@@ -80,12 +80,14 @@ get_subtrees <- function(tree, n = NULL, k = NULL){
   return(subtrees)
 }
 
+
+
+
 # Set up and read options -------------------------------------------------
 
 spec <- matrix(c(
   'tree'     , 'n', 1, 'character',
   'outdir'   , 'o', 1, 'character',
-  'nsubtrees', 'k', 2, 'integer',
   'subsize'  , 's', 2, 'integer',
   'threads'  , 't', 2, 'integer',
   'help'     , 'h', 0, 'logical'
@@ -94,10 +96,10 @@ spec <- matrix(c(
 
 opt <- getopt(spec)
 
-opt$tree = "upgma_tree.nwk"
-opt$threads = 2
-opt$outdir = "test/"
-opt$nsubtrees = 4
+# opt$tree = "test.nwk"
+# opt$threads = 2
+# opt$outdir = "test/"
+# opt$subsize = 25
 
 # Parse options -----------------------------------------------------------
 
@@ -147,9 +149,21 @@ for(tr in subtrees){
 
 gmycresults <- foreach(i = 1:length(subtreesrun)) %dopar% gmyc(subtreesrun[[i]])
 
-saveRDS(gmycresults, file = paste0(opt$outdir, "/allgmycresults.RDS"))
-
 # Concatenate and output statistics and groupings -------------------------
+
+speclist <- do.call("rbind", lapply(1:length(gmycresults), function(i) {
+  tryCatch(cbind(subtree = i, spec.list(gmycresults[[i]])), 
+           error = function(x)NULL)
+}))
+if(! all(1:length(gmycresults) %in% speclist$subtree)){
+  stop("Error: subtree size is too small to effectively run GMYC")
+}
+speclist1 <- do.call("rbind", lapply(1:length(subtrees1), function(i){
+  c(subtree = length(subtreesrun) + 1,
+    GMYC_spec = 1,
+    sample_name = subtrees1[[i]]$tip.label)
+}))
+write.csv(rbind(speclist, speclist1), file = paste0(opt$outdir, "/speclist.csv"), row.names = F, quote = F)
 
 summaries <- do.call("rbind", lapply(1:length(gmycresults), function(i) {
   sumgmyc <- capture.output(summary(gmycresults[[i]]))
@@ -161,13 +175,5 @@ summaries <- do.call("rbind", lapply(1:length(gmycresults), function(i) {
 write.csv(summaries, paste0(opt$outdir, "/summaries.csv"), row.names = F, quote = F)
 rm(summaries)
 
-speclist <- do.call("rbind", lapply(1:length(gmycresults), function(i) {
-  cbind(subtree = i, spec.list(gmycresults[[i]]))
-}))
-speclist1 <- do.call("rbind", lapply(1:length(subtrees1), function(i){
-  c(subtree = length(subtreesrun) + 1,
-    GMYC_spec = 1,
-    sample_name = subtrees1[[i]]$tip.label)
-}))
 
-write.csv(rbind(speclist, speclist1), file = paste0(opt$outdir, "/speclist.csv"), row.names = F, quote = F)
+saveRDS(gmycresults, file = paste0(opt$outdir, "/allgmycresults.RDS"))
