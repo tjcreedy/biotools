@@ -15,6 +15,7 @@ import subprocess
 import functools
 import time
 import datetime
+import copy
 from collections import defaultdict
 from math import ceil, copysign
 from Bio import Seq, SeqFeature, SeqRecord, SeqIO, AlignIO
@@ -685,7 +686,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
     options = []
     for startpos, startdet in results['start']:
         for stoppos, stopdet in results['stop']:
-            #startpos, startdet = results['start'][7]
+            #startpos, startdet = results['start'][1]
             #stoppos, stopdet = results['stop'][1]
             # Correct the stop position by the length
             stoppos = stoppos + stopdet['len'] * strand
@@ -979,7 +980,7 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
     else:
         log += "selected %s of %s" % (', '.join(selected), str(len(scores)))
         log += " results with minimum combined overlap and alignment score of "
-        log += "%s\n" % (str(minscore))
+        log += "%s\n" % (str(round(minscore, 2)))
     
     return(results, log)
 
@@ -1118,7 +1119,7 @@ def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes,
     return(present, cleanfeats, ofeats, issues)
 
 def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, 
-                    temp, pid, logq, target):
+                    temp, pid, logq, statq, target):
     
     # specifications, target = [specs, present[0]]
     # specifications, target = [specs, 'ND6']
@@ -1167,29 +1168,25 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     logq.put(log + elapsed_time(start) + slog)
     # Filter results
     start = time.perf_counter()
-    filterresults, flog = filter_searchresults(searchresults)
+    filterresults, flog = filter_searchresults(copy.deepcopy(searchresults))
     logq.put(log + elapsed_time(start) + flog)
     # Align and generate alignment stats
     start = time.perf_counter()
-    alignresults, alog = align_and_analyse(filterresults, args,
+    alignresults, alog = align_and_analyse(copy.deepcopy(filterresults), args,
                                            specifications[target],
                                            target, seqrecord.name, temp)
     logq.put(log + elapsed_time(start) + alog)
     
     if args.detailedresults:
-        # Output a list of features to write to the contig
-        # Write a table of filter results
-        statl = write_detailed_results(alignresults, gbname,
-                                               seqrecord.name, target)
+        statq.put(write_detailed_results(alignresults, gbname, seqrecord.name,
+                                         target))
+        
     
     # Output final result(s)
     # TODO: selection of single result if equal scores
     result = generate_output_target(alignresults, target, args)
     if args.potentialfeatures or len(result) == 0:
         result.append(feat)
-    else:
-         # TODO: generate list of two features, target type and gene based on input feat
-        result = [feat]
     # Extend outfeats with these
     return(result, statl)
 
@@ -1461,11 +1458,9 @@ def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
     if len(present) > 0:
         outfeats = []  
         for target in present:
-            outfeat, statl = correct_feature(cleanfeats, specs, gbname,
-                                             seqrecord, args, temp, pid, 
-                                             logq, target)
+            outfeat = correct_feature(cleanfeats, specs, gbname, seqrecord,
+                                      args, temp, pid, logq, statq, target)
             outfeats.extend(outfeat)
-            if args.detailedresults: statq.put(statl)
         
         # Replace all features with the new ones and add on the others
         if len(outfeats) > 0:
