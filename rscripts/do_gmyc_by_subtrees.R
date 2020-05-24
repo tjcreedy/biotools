@@ -76,12 +76,9 @@ get_subtrees <- function(tree, n = NULL, k = NULL){
   nodes = get_subtree_nodes(tree, n)
   subtrees <- lapply(nodes, function(node) {
     keep.tip(tree, listdescendants(tree, node, nodes = F, inc.n = T))
-  })
-  return(subtrees)
+  }) 
+  return(do.call(c, subtrees))
 }
-
-
-
 
 # Set up and read options -------------------------------------------------
 
@@ -96,7 +93,7 @@ spec <- matrix(c(
 
 opt <- getopt(spec)
 
-# opt$tree = "test.nwk"
+# opt$tree = "~/Documents/NHM_postdoc/Supervision/ZichenZ/demo_upgma_zz.nwk"
 # opt$threads = 2
 # opt$outdir = "test/"
 # opt$subsize = 25
@@ -126,7 +123,7 @@ tree <- read.tree(opt$tree)
 
 # Get subtree list --------------------------------------------------------
 
-subtrees <- list()
+subtrees <- NULL
 if( !is.null(opt$nsubtrees) ){
   subtrees <- get_subtrees(tree, k = opt$nsubtrees)
 } else {
@@ -135,15 +132,12 @@ if( !is.null(opt$nsubtrees) ){
 
 # Extract subtrees with only 1 tip ----------------------------------------
 
-subtrees1 <- list()
-subtreesrun <- list()
-for(tr in subtrees){
-  if(tr$Nnode == 1){
-    subtrees1[[length(subtrees1)+1]] <- tr
-  } else {
-    subtreesrun[[length(subtreesrun)+1]] <- tr
-  }
-}
+onetip <- sapply(subtrees, function(tr) tr$Nnode == 1)
+subtrees1 <- subtrees[onetip]
+subtreesrun <- subtrees[!onetip]
+
+write.tree(subtrees1, paste0(opt$outdir, "/subtrees_singletons.nwk"))
+write.tree(subtreesrun, paste0(opt$outdir, "/subtrees_forgmyc.nwk"))
 
 # Perform GMYC on subtrees in parallel ------------------------------------
 
