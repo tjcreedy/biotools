@@ -75,7 +75,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-19_current/GBDL00250.gb "
+              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-23_current/GBDL00250.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "

@@ -1130,7 +1130,6 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     # Extract the CDS
     feat = list(cleanfeats[target])[0]
     # Set up log and stats
-    statl = []
     log = "PID%s %s %s" % (pid, seqrecord.name, target)
     # Determine the start and stop positions of the current annotation,
     # slicing by strand (1 or -1) makes order correct
@@ -1187,8 +1186,9 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     result = generate_output_target(alignresults, target, args)
     if args.potentialfeatures or len(result) == 0:
         result.append(feat)
-    # Extend outfeats with these
-    return(result, statl)
+    
+    
+    return(result)
 
 def get_seqrecords(filepaths, onefile):
     '''Generator outputting the file name and seqrecord for each entry in each
@@ -1300,6 +1300,7 @@ def write_genbanks(outdir, filepaths, onefile, seqq):
     # Start a constant process that waits to receive data in the form of a file
     # specifying the source of the seqrecord, and the new seqrecord
     while 1:
+        #queueitem = (outname, seqrecord, filetotal)
         queueitem = seqq.get()
         if queueitem == 'kill': break
         file, seqrecord, filetotal = queueitem
@@ -1352,7 +1353,7 @@ def print_terminal(filenames, prinq):
     line = "\nFinished in %s, %s per record\n" % (elapsed, elapsedper)
     sys.stdout.write(line)
     sys.stdout.flush()
-    run = False
+#    run = False
 
 
 
@@ -1456,7 +1457,7 @@ def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
     
     # Process the present cleanfeatures
     if len(present) > 0:
-        outfeats = []  
+        outfeats = []
         for target in present:
             outfeat = correct_feature(cleanfeats, specs, gbname, seqrecord,
                                       args, temp, pid, logq, statq, target)
