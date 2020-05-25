@@ -725,7 +725,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
             pos = pos[::strand]
             newfeat = SeqFeature.SeqFeature(
                     SeqFeature.FeatureLocation(pos[0], pos[1], strand=strand))
-            newfeat.qualifiers['codon_position'] = startdet['cs'] + 1
+            newfeat.qualifiers['codon_start'] = startdet['cs'] + 1
             # Extract the nucleotide sequence
             ntseq = newfeat.extract(seqrecord.seq)
             # Generate the sequence for amino acid extraction
@@ -828,11 +828,13 @@ def gapped_distance(seq, value, dist):
     return(out)
 
 def align_and_analyse(results, args, specs, target, seqname, temp):
-    # results, specs, seqname, aligntype = [filterresults, specifications[target], seqrecord.name, args.alignmenttype]
+    # results, specs, seqname, aligntype = [copy.deepcopy(filterresults), specifications[target], seqrecord.name, args.alignmenttype]
+    [i for i, r in enumerate(results) if r['adjd'] == [-63, -77]]
+    
     
     # Align and generate alignment scores
     for result in results:
-        #result = results[-1]
+        #result = results[100]
         # Fill with blank stats if already rejected
         if result['reject']:
             result.update({'cond': ['',''], 'bodd': ['',''],
@@ -937,21 +939,21 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
         # Generate a score for each end of the annotation
         endscore = [None, None]
         for i, e in enumerate(['start', 'stop']):
+            # i, e = [0, 'start']
             scores = {
                         # Generate the average of the alignment distances
                         'align': (abs(cond[i]) + abs(bodd[i])) / 2,
                         # Generate the indel score
                         'indel': sum(ccts[e][1:3]),
                         # Get the overlapscore
-                        'overlap': result['adjd'][i]}
+                        'overlap': abs(result['adjd'][i])}
             # Retreive and standardise scores
-            weights = [specs[e][k + 'weight'] for k in scores.keys()]
-            weightstd = 3 / sum(weights)
-            weights = [w * weightstd for w in weights]
-            # Convert scores
-            scores = [scores[k] for k in scores.keys()]
+            # TODO: this could be done when reading specs
+            weights = {k: specs[e][k + 'weight'] for k in scores.keys()}
+            weightstd = 3 / sum(weights.values())
+            weights = {k: w * weightstd for k, w in weights.items()}
             # Generate weighted score
-            endscore[i] = sum(s * w for s, w in zip(scores, weights))
+            endscore[i] = sum([scores[s] * weights[s] for s in scores.keys()])
         # Generate a final score
         finalscore = sum(endscore) / 2
         # Compile
@@ -1000,7 +1002,7 @@ def write_detailed_results(results, gbname, seqname, target):
                  + [result['slen'],
                     str(result['nt'][:result['lens'][0]]),
                     str(result['nt'][-result['lens'][1]:]),
-                    feat.qualifiers['codon_position'],
+                    feat.qualifiers['codon_start'],
                     str(result['arf'] + 1),
                     result['inst']]
                  + [result[k][i] for i in [0, 1] 
@@ -1122,7 +1124,7 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
                     temp, pid, logq, statq, target):
     
     # specifications, target = [specs, present[0]]
-    # specifications, target = [specs, 'ND6']
+    # specifications, target = [specs, 'COX1']
     
     # TODO: something to ensure original annotation is always part of the
     # results list
@@ -1138,10 +1140,11 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     # Determine the reading frame of the current annotation if present
     # Reading frame is 0 indexed internally
     rf = 0
-    if 'codon_position' in feat.qualifiers:
-        cs = feat.qualifiers['codon_position']
-        cs = cs[0] if type(rf) is list else cs
-        rf = [0, 2, 1][cs-1]
+    if 'codon_start' in feat.qualifiers:
+        cs = feat.qualifiers['codon_start']
+        cs = cs[0] if type(cs) is list else cs
+        if str_is_int(cs):
+            rf = [0, 2, 1][int(cs)-1]
     # Get context adjustments
     start = time.perf_counter()
     contextpos, change, clog = overlap(initpos, feat.location.strand,

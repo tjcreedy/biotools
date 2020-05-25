@@ -75,7 +75,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-23_current/GBDL00250.gb "
+              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-23_current/BIOD00347.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "
@@ -86,6 +86,7 @@ if __name__ == "__main__":
     #args = parser.parse_args(arglist)
     
     # Parse the arguments into the main utility variables
+    # TODO: stop if weights are equal, have default weights
     utilityvars = mcm.initialise(args)
     
     # Initialise the queue manager and pool
