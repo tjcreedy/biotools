@@ -627,8 +627,8 @@ def get_search_results(regions, adjustment, specs, seqrecord, strand, table, ff)
         truncpos = [0, 1, len(seqrecord) - 1, len(seqrecord)]
         # If region appears to be truncated at the start, add further results
         if (end == 'start' and regions[end]['pos'][0] in truncpos 
-            and not change[0]):
-            localresults = [[0, i, 1] for i in [0, 1, 2]]
+            and change[0] is None):
+            localresults.extend([0, i, 1] for i in [0, 1, 2])
             trunc = 'start is'
         # If region appears to be trunc at the stop, remove short matches
         # and add a match at the end. Truncation is defined by the last position
