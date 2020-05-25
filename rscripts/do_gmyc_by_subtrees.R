@@ -95,7 +95,7 @@ opt <- getopt(spec)
 
 # opt$tree = "~/Documents/NHM_postdoc/Supervision/ZichenZ/demo_upgma_zz.nwk"
 # opt$threads = 2
-# opt$outdir = "test/"
+# opt$outdir = "./"
 # opt$subsize = 25
 
 # Parse options -----------------------------------------------------------
@@ -123,6 +123,8 @@ tree <- read.tree(opt$tree)
 
 # Get subtree list --------------------------------------------------------
 
+message("Starting subtree division")
+
 subtrees <- NULL
 if( !is.null(opt$nsubtrees) ){
   subtrees <- get_subtrees(tree, k = opt$nsubtrees)
@@ -130,32 +132,41 @@ if( !is.null(opt$nsubtrees) ){
   subtrees <- get_subtrees(tree, n = opt$subsize)
 }
 
+message(paste0("Generated ", length(subtrees), " subtrees"))
+
 # Extract subtrees with only 1 tip ----------------------------------------
 
-onetip <- sapply(subtrees, function(tr) tr$Nnode == 1)
-subtrees1 <- subtrees[onetip]
-subtreesrun <- subtrees[!onetip]
+onenode <- sapply(subtrees, function(tr) tr$Nnode == 1)
+subtrees1 <- subtrees[onenode]
+subtreesrun <- subtrees[!onenode]
 
 write.tree(subtrees1, paste0(opt$outdir, "/subtrees_singletons.nwk"))
 write.tree(subtreesrun, paste0(opt$outdir, "/subtrees_forgmyc.nwk"))
 
 # Perform GMYC on subtrees in parallel ------------------------------------
 
-gmycresults <- foreach(i = 1:length(subtreesrun)) %dopar% gmyc(subtreesrun[[i]])
+message(paste0("Running GMYC on ", length(subtreesrun), " subtrees with >2 tips"))
+
+gmycresults <- foreach(i = 1:length(subtreesrun)) %dopar% tryCatch(gmyc(subtreesrun[[i]]), error = function(x) NULL)
+gmycresults <- gmycresults[! sapply(gmycresults, is.null)]
+
+message(paste0("GMYC succeeded for ", length(gmycresults), " subtrees"))
+
+saveRDS(gmycresults, file = paste0(opt$outdir, "/allgmycresults.RDS"))
 
 # Concatenate and output statistics and groupings -------------------------
-
 speclist <- do.call("rbind", lapply(1:length(gmycresults), function(i) {
   tryCatch(cbind(subtree = i, spec.list(gmycresults[[i]])), 
-           error = function(x)NULL)
+           error = function(x) NULL)
 }))
-if(! all(1:length(gmycresults) %in% speclist$subtree)){
-  stop("Error: subtree size is too small to effectively run GMYC")
-}
+
+slsucceed <- sum(1:length(gmycresults) %in% speclist$subtree)
+message(paste0("Species delimitation succeeded for ", slsucceed, " GMYC results"))
 speclist1 <- do.call("rbind", lapply(1:length(subtrees1), function(i){
-  c(subtree = length(subtreesrun) + 1,
-    GMYC_spec = 1,
-    sample_name = subtrees1[[i]]$tip.label)
+  tips <- subtrees1[[i]]$tip.label
+  data.frame(subtree = length(subtreesrun) + i,
+             GMYC_spec = 1:length(tips),
+             sample_name = tips)
 }))
 write.csv(rbind(speclist, speclist1), file = paste0(opt$outdir, "/speclist.csv"), row.names = F, quote = F)
 
@@ -168,6 +179,3 @@ summaries <- do.call("rbind", lapply(1:length(gmycresults), function(i) {
 }))
 write.csv(summaries, paste0(opt$outdir, "/summaries.csv"), row.names = F, quote = F)
 rm(summaries)
-
-
-saveRDS(gmycresults, file = paste0(opt$outdir, "/allgmycresults.RDS"))
