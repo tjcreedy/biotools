@@ -1029,10 +1029,12 @@ def write_detailed_results(results, gbname, seqname, target):
     statl = []
     
     # Sort results
-    results = sorted(results, key=lambda k: (k['score'], k['inst']))
+    results = sorted(results, key=lambda k: (k['score'], 
+                                             sum(abs(s) for s in k['adjd']),
+                                             k['inst']))
     
     for result in results:
-        # result = results[35]
+        # result = results[0]
         feat = result['feat']
         # Start the statistics line
         stats = ([gbname, seqname, target]
@@ -1056,7 +1058,8 @@ def write_detailed_results(results, gbname, seqname, target):
                                            'total']]
                       + [result[k] for k in ['uwscore', 'score']])
         else:
-            stats += [''] * 12 + [''] * 16 + [''] * 2
+            stats += ([[result['adjd'][i]] + [''] * 5 for i in [0,1]] 
+                      + [''] * 16 + [''] * 2)
         statl.append(stats)
     return(statl)
 
