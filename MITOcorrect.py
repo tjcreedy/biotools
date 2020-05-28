@@ -61,13 +61,14 @@ parser.add_argument('-a', '--alignmentpaths') # Optional?, alignments file
 parser.add_argument('-l', '--logfile') # Optional, log file
 parser.add_argument('-g', '--genbank', nargs = '+') # Required, one or more genbank files
 parser.add_argument('-b', '--translationtable')
-parser.add_argument('-f', '--framefree', default = False, action = 'store_true')# Optional - flag to say that search strings do not start in frame.
+parser.add_argument('-e', '--framefree', default = False, action = 'store_true')# Optional - flag to say that search strings do not start in frame.
 parser.add_argument('-c', '--alignmenttype') # aa or nt
 parser.add_argument('-o', '--outputdirectory')
 parser.add_argument('-k', '--keepalignments', default = False, action = 'store_true')
 parser.add_argument('-r', '--detailedresults', default = False, action = 'store_true')
 parser.add_argument('-p', '--potentialfeatures', default = False, action = 'store_true')
 parser.add_argument('-m', '--maxinternalstops', default = 0, type = int)
+parser.add_argument('-f', '--faster', action = 'store_true', default = False)
 parser.add_argument('-1', '--onefile', type = str) # Output all input gb files in one output file, given as argument
 
 # Main
@@ -76,7 +77,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-23_current/BIOD02825.gb "
+              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-28_current/BIOD02825.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "
@@ -87,7 +88,6 @@ if __name__ == "__main__":
     #args = parser.parse_args(arglist)
     
     # Parse the arguments into the main utility variables
-    # TODO: stop if weights are equal, have default weights
     utilityvars = mcm.initialise(args)
     
     # Initialise the queue manager and pool

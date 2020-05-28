@@ -88,7 +88,8 @@ def parse_specs(path, alignpath, namevariants):
     # Extract the header row and split to list
     header = sh.readline().strip().split('\t')
     
-    # TODO: check for duplicate headers
+    if len(set(header)) < len(header):
+        sys.exit(f"Error: duplicate headers in {path}")
     
     ln = 1
     for line in sh:
@@ -229,6 +230,8 @@ def parse_specs(path, alignpath, namevariants):
             else:
                 sys.exit("Error: column {spec} is not recognised")
         
+        del hold['end']
+        
         # Initialise subdict if not already
         if name not in specs: specs[name] = dict()
         
@@ -241,8 +244,40 @@ def parse_specs(path, alignpath, namevariants):
     
     sh.close()
     
-    # TODO check for presence of all required variables, add defaults if not
-    # present. also weights
+    defaults = {'overlap': None,
+                'overlapmaxdistance': 50,
+                'searchcode': None,
+                'searchsequence': None,
+                'searchdistance': 30,
+                'alignbody': 0,
+                'alignweight': 1.01,
+                'overlapweight': 1,
+                'indelweight': 0.5,
+            }
+    
+    for name, specd in specs.items():
+        #name, specd = list(specs.items())[0]
+        for end in ['start', 'stop']:
+            #end = 'start'
+            for d, dv in defaults.items():
+                if d not in specd[end]:
+                    if dv:
+                        specd[end][d] = dv
+                    else:
+                        sys.exit(f"Error: {d} specification is missing for "
+                                 f"{name} {end} with no default ")
+            
+            weights = [w for k, w in specd[end].items() if 'weight' in k]
+            if len(set(weights)) == 1:
+                sys.exit(f"Error: weights for {name} {end} cannot be equal")
+            
+            #TODO: uncomment to standardise weights here
+            #weightstd = 3 / sum(weights)
+            #specd[end] = {k: v * weightstd if 'weight' in k else v 
+            #               for k, v in specd[end]}
+            
+        specs[name] = specd
+        
     
     # Parse the alignment files if present
     
@@ -752,7 +787,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, feat, table, ff):
     return(options, log)
 
 def filter_searchresults(results, args):
-    #results = searchresults
+    #results = copy.deepcopy(searchresults)
     resultsremain = len(results)
     # Filter out any with more than the minimum number of internal stops
     intstops = [r['inst'] for r in results]
@@ -767,31 +802,6 @@ def filter_searchresults(results, args):
     log = ("Filtering: %s results removed for > %s internal stops, " % 
            (str(intstoprejects), str(minintstop)))
     
-    # Filter out those with the worst overlap score. Always retain a minimum
-    # number of results, plus a proportion of the remainder, up to a maximum
-#    overlapscore = [sum([abs(a) for a in r['adjd']]) for r in results]
-#    retentionthresh = 5
-#    retentionprop = 0.51
-#    retentionmax = 20
-#    overlapscorerejects = 0
-#    if resultsremain > retentionthresh + round(retentionprop):
-#        # Calculate the number to retain
-#        noverthresh = resultsremain - retentionthresh
-#        noverthreshretain = round(retentionprop * noverthresh)
-#        nretain = retentionthresh + noverthreshretain
-#        nretain = retentionmax if nretain > retentionmax else nretain
-#        # Find the maximum overlap score to retain
-#        maxval = sorted(overlapscore)[nretain - 1]
-#        for r, s in zip(results, overlapscore):
-#            if s > maxval and not r['reject']:
-#                r['reject'] = "overlapscore >" + str(maxval)
-#                overlapscorerejects += 1
-#                resultsremain -= 1
-#        log += ("%s results removed for > %s overlap score, " % (
-#                                                      str(overlapscorerejects),
-#                                                      str(maxval)))
-#    # TODO: more filtering? Perhaps rf based?
-#    
     log += "%s results remain \n" % (str(resultsremain))
     return(results, log)
 
@@ -826,17 +836,34 @@ def gapped_distance(seq, value, dist):
 
 def align_and_analyse(results, args, specs, target, seqname, temp):
     # results, specs, seqname, aligntype = [copy.deepcopy(filterresults), specifications[target], seqrecord.name, args.alignmenttype]
-   # [i for i, r in enumerate(results) if not r['reject'] ]
-   # [i for i, r in enumerate(results) if r['adjd'] == [-63, -77]]
+    # [i for i, r in enumerate(results) if not r['reject'] ]
+    # [i for i, r in enumerate(results) if r['adjd'] == [-63, -77]]
     
+     # Sort the results
+    results = sorted(results, key=lambda k: sum(abs(s) for s in k['adjd']))
+    [i for i, r in enumerate(results) if not r['reject']]
     
     # Align and generate alignment scores
+    minscore = float('inf')
     for result in results:
-        #result = results[35]
+        #result = results[7]
+        
         # Skip if already rejected
         if result['reject']:
             result['score'] = float('inf')
             continue
+        
+        # Skip if this result cannot generate a better score than the current
+        # minimum score (i.e. given the overlap changes, the alignment scores
+        # would have to be less than zero)
+        if args.faster and minscore <= float('inf'):
+            weights = [specs[e]['overlapweight'] for e in ['start', 'stop']]
+            oscore = sum(w * abs(s) for w, s in zip(weights, result['adjd']))
+            if minscore - oscore < 0:
+                result['score'] = float('inf')
+                result['reject'] = 'fastscore > ' + str(round(minscore, 2))
+                continue
+        
         # Set up the filenames for input and output
         name = "%s_%s_%s-%s" % (seqname, target, 
                                 int(result['feat'].location.start) + 1,
@@ -949,8 +976,8 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
             # Retreive and standardise scores
             # TODO: this could be done when reading specs
             weights = {k: specs[e][k + 'weight'] for k in scoretypes}
-            weightstd = 3 / sum(weights.values())
-            weights = {k: w * weightstd for k, w in weights.items()}
+            #weightstd = 3 / sum(weights.values())
+            #weights = {k: w * weightstd for k, w in weights.items()}
             # Generate weighted score
             wscores[e] = {k: scores[e][k] * weights[k] for k in scoretypes}
             wscores[e]['total'] = sum(wscores[e].values())
@@ -961,22 +988,23 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
         result.update({'cond': cond, 'bodd': bodd, 'ccts': ccts,
                        'scores': scores, 'wscores': wscores, 
                        'score': score, 'uwscore': uwscore})
+        
+        # Set as minscore if less than current
+        if score < minscore: minscore = score
+        
     
     # Find the minimum score and mark the selection in the results
-    scores = [r['score'] for r in results]
-    minscore = min(scores) if len(scores) > 0 else ''
     selected = []
     for r in results:
         if not r['reject']:
             if r['score'] > minscore:
-                out = 'score > ' + str(round(minscore, 2))
-                r['reject'] = out
+                r['reject'] = 'score > ' + str(round(minscore, 2))
             else:
                 selected.append("result region %sbp-%sbp" %
                                     (str(int(r['feat'].location.start) + 1),
                                      str(int(r['feat'].location.end))))
     log = "Alignment: "
-    if len(scores) < 1:
+    if minscore == float('inf'):
         log += "no results remain to align and analyse\n"
     elif len(selected) < 1:
         log += "selected no regions from %s results\n" % (str(len(scores)))
