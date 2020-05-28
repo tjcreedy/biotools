@@ -67,6 +67,7 @@ parser.add_argument('-o', '--outputdirectory')
 parser.add_argument('-k', '--keepalignments', default = False, action = 'store_true')
 parser.add_argument('-r', '--detailedresults', default = False, action = 'store_true')
 parser.add_argument('-p', '--potentialfeatures', default = False, action = 'store_true')
+parser.add_argument('-m', '--maxinternalstops', default = 0, type = int)
 parser.add_argument('-1', '--onefile', type = str) # Output all input gb files in one output file, given as argument
 
 # Main
@@ -75,11 +76,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-23_current/BIOD00094.gb "
+              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-23_current/BIOD02825.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "
-              "-t 2 -b 5 -c aa -r -1 out.gb").split()
+              "-t 2 -b 5 -c aa -r -1 out.gb -m 0").split()
     #-g dir/test_multigenbank.gb
     #-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/CCCP00094.gb
     #os.chdir('/home/thomas/seqtesting/MITOcorrect_testing')
