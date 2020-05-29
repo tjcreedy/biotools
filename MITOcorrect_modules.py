@@ -1286,6 +1286,7 @@ def get_seqrecords(filepaths, onefile):
         currfile = nextfile
 
 def write_stats(outdir, statq):
+    #outdir = args.outputdirectory
     # Open file handles
     stats = open(os.path.join(outdir, "filtering_results.tsv"), 'w')
     statwrite = csv.writer(stats, delimiter = '\t', quotechar = '', 
@@ -1303,7 +1304,7 @@ def write_stats(outdir, statq):
                                      'align_body_distance',
                                      'consensus_agreements',
                                      'deletions', 'insertions']]
-                        + ["%s_%s_%s_score" % (e, t)
+                        + ["%s_%s_%s_score" % (s, e, t)
                            for s in ['unweighted', 'weight']
                            for e in ['start', 'end'] 
                            for t in ['position', 'alignment', 'indel', 
