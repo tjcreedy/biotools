@@ -176,7 +176,7 @@ def parse_specs(path, alignpath, namevariants):
                 if value < 1:
                     sys.exit(f"{err} is not greater than 0")
                 hold[spec] = value
-            elif spec in ['alignweight', 'overlapweight', 'indelweight',
+            elif spec in ['alignweight', 'positionweight', 'indelweight',
                           'lengthvariation']:
                 if not str_is_float(value):
                     sys.exit(f"{err} is not a number")
@@ -228,7 +228,7 @@ def parse_specs(path, alignpath, namevariants):
                 if str_is_int(value):
                     hold[spec] = int(value)
             else:
-                sys.exit("Error: column {spec} is not recognised")
+                sys.exit(f"Error: column {spec} is not recognised")
         
         del hold['end']
         
@@ -251,7 +251,7 @@ def parse_specs(path, alignpath, namevariants):
                 'searchdistance': 30,
                 'alignbody': 0,
                 'alignweight': 1.01,
-                'overlapweight': 1,
+                'positionweight': 1,
                 'indelweight': 0.5,
             }
     
@@ -659,14 +659,12 @@ def get_search_results(regions, adjustment, specs, seqrecord, feat, table, ff):
         # If region appears to be truncated at the start, add further results
         if (end == 'start' and regions[end]['pos'][0] in truncpos 
             and change[0] is None and trunc != ''):
-            localresults.extend([0, i, 1] for i in [0, 1, 2])
+            localresults = [[0, i, 1] for i in [0, 1, 2]]
             trunc = 'start is'
         # If region appears to be trunc at the stop, remove short matches
         # and add a match at the end. Truncation is defined by the last position
-        if (not ff and end == 'stop' 
-            and regions[end]['pos'][-1] in truncpos
-            and sspecs['searchcode'] is 'N'
-            and not change[1] 
+        if (not ff and end == 'stop' and regions[end]['pos'][-1] in truncpos
+            and sspecs['searchcode'] is 'N' and change[1] is None 
             and trunc != ''):
             localresults = [[i, c, l] for i, c, l in localresults if l >= 3]
             endpos = len(regions[end]['seq'])-1
@@ -781,7 +779,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, feat, table, ff):
                             'lens': [d['len'] for d in [startdet, stopdet]],
                             'inst': intstops, 'tmst': termstops,
                             'nt': ntseq, 'aa': aaseq, 'slen': len(ntseq),
-                            'adjd': overlapdist, 'reject': None})
+                            'qod': overlapdist, 'reject': None})
     log += ", generating %s possible result regions" % (str(len(options)))
     log += '; ' + trunc + ' truncated\n' if trunc else '\n'
     return(options, log)
@@ -837,30 +835,46 @@ def gapped_distance(seq, value, dist):
 def align_and_analyse(results, args, specs, target, seqname, temp):
     # results, specs, seqname, aligntype = [copy.deepcopy(filterresults), specifications[target], seqrecord.name, args.alignmenttype]
     # [i for i, r in enumerate(results) if not r['reject'] ]
-    # [i for i, r in enumerate(results) if r['adjd'] == [-63, -77]]
+    # [i for i, r in enumerate(results) if r['qod'] == [-63, -77]]
+    
+    # Initialise scoretypes
+    scoretypes = ['position', 'align', 'indel', 'total']
+    # Get weights
+    weights = {s: [specs[e][s + 'weight'] for e in ['start', 'stop']] 
+              for s in scoretypes[:3]}
+    
     
      # Sort the results
-    results = sorted(results, key=lambda k: sum(abs(s) for s in k['adjd']))
-    [i for i, r in enumerate(results) if not r['reject']]
+    results = sorted(results, key=lambda k: sum(abs(s) for s in k['qod']))
+    toalign = [i for i, r in enumerate(results) if not r['reject']]
     
     # Align and generate alignment scores
     minscore = float('inf')
     for result in results:
-        #result = results[7]
+        #result = results[4]
+        
+        # Add empty results
+        scorekeys = [p + t + 'score' for p in ['', 'w'] for t in scoretypes]
+        for s in ['ced', 'bcced', 'savc', 'sdvc', 'sivc'] + scorekeys:
+            result[s] = ['','']
+        for s in ['score', 'wscore']:
+            result[s] = float('inf')
+        
+        # Calculate position scores
+        result['positionscore'] = [abs(v) for v in result['qod']]
+        result['wpositionscore'] = [v * w for v, w in zip(weights['position'],
+                                                      result['positionscore'])]
         
         # Skip if already rejected
         if result['reject']:
-            result['score'] = float('inf')
             continue
         
         # Skip if this result cannot generate a better score than the current
         # minimum score (i.e. given the overlap changes, the alignment scores
         # would have to be less than zero)
-        if args.faster and minscore <= float('inf'):
-            weights = [specs[e]['overlapweight'] for e in ['start', 'stop']]
-            oscore = sum(w * abs(s) for w, s in zip(weights, result['adjd']))
-            if minscore - oscore < 0:
-                result['score'] = float('inf')
+        if args.faster and minscore < float('inf'):
+            wpscore = sum(result['wpositionscore'])
+            if minscore - wpscore < 0:
                 result['reject'] = 'fastscore > ' + str(round(minscore, 2))
                 continue
         
@@ -876,7 +890,6 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
         SeqIO.write(outrecord, files[0], 'fasta')
         # Build and run the mafft command:
             # Generate the commands
-            # TODO: add --anysymbol if using amino acid alignments
         arguments = "mafft --quiet --6merpair --addfragments"
         arguments = arguments.split(' ') + [files[0]]
         if args.alignmenttype == 'aa': arguments += ['--anysymbol'] 
@@ -916,28 +929,28 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
             stdist = {e: round(v/3) for e, v in stdist.items()}
         bodyss = {e: gapped_distance(consensus, conss[e], v) for 
                   e, v in stdist.items()}
-        # Determine distances
-        cond = [0, 0]
-        bodd = [0, 0]
-        #Find the distances for the sequence
+        # Determine distances for the sequence
         for i, e in enumerate(['start', 'stop']):
             # i, e = list(enumerate(['start', 'stop']))[1]
-            if (e == 'start' and seqss[e] > conss[e] or 
-                e == 'stop' and seqss[e] < conss[e]):
-                cond[i] = ungapped_distance(consensus, seqss[e], conss[e])
-            else:
-                cond[i] = ungapped_distance(targetalign, seqss[e], conss[e])
-            if (e == 'start' and seqss[e] > bodyss[e] or 
-                e == 'stop' and seqss[e] < bodyss[e]):
-                bodd[i] = (ungapped_distance(consensus, seqss[e], bodyss[e])
-                             - stdist[e])
-            else:
-                bodd[i] = (ungapped_distance(targetalign, seqss[e], bodyss[e])
-                             + stdist[e])
+            for reftype, ref in zip(['ced', 'bcced'], [conss[e], bodyss[e]]):
+                corr = 0 if reftype == 'ced' else stdist[e]
+                out = 0
+                if (e == 'start' and seqss[e] > ref or 
+                    e == 'stop' and seqss[e] < ref):
+                    out = ungapped_distance(consensus,seqss[e], ref) - corr
+                else:
+                    out = ungapped_distance(targetalign, seqss[e], ref) + corr
+                if args.alignmenttype == 'aa': out *= 3
+                result[reftype][i] = out
         # cond, bodd = two lists, each containing start and stop error for the 
         # consensus and the body respectively
-        if args.alignmenttype == 'aa':
-            cond, bodd = [[i * 3 for i in j] for j in [cond, bodd]]
+        
+        # Calculate the alignment score and weighted score
+        result['alignscore'] = [(abs(c) + abs(e)) / 2 for c, e 
+                                        in zip(result['ced'], result['bcced'])]
+        result['walignscore'] = [v * w for v, w in zip(weights['align'],
+                                                       result['alignscore'])]
+        
         # Determine agreement, deletion or insertion for each of the positions
         # within the region shared by both the consensus and target sequence.
         # Note using shared region to prevent overruns/underruns affecting the
@@ -953,51 +966,34 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
                 cid.append('d')
             elif n != '-' and c == '-':
                 cid.append('i')
-        # Split the region in two for start and stop end
-        ccts = [[i.count(c) for c in '-di'] for i in halve(cid)]
-        # Generate list holding counts of agreements, deletions and insertions
-        if args.alignmenttype == 'aa':
-            ccts = [[c * 3 for c in i] for i in ccts]
-        # Generate a score for each end of the annotation
-        scoretypes = ['align', 'indel', 'overlap']
-        scores = dict()
-        wscores = dict()
-        for i, e in enumerate(['start', 'stop']):
-            
-            # i, e = [0, 'start']
-            scores[e] = {k: v for k, v in zip(scoretypes, [
-                        # Generate the average of the alignment distances
-                        (abs(cond[i]) + abs(bodd[i])) / 2,
-                        # Generate the indel score
-                        sum(ccts[i][1:3]),
-                        # Get the overlapscore
-                        abs(result['adjd'][i])])}
-            scores[e]['total'] = sum(scores[e].values())
-            # Retreive and standardise scores
-            # TODO: this could be done when reading specs
-            weights = {k: specs[e][k + 'weight'] for k in scoretypes}
-            #weightstd = 3 / sum(weights.values())
-            #weights = {k: w * weightstd for k, w in weights.items()}
-            # Generate weighted score
-            wscores[e] = {k: scores[e][k] * weights[k] for k in scoretypes}
-            wscores[e]['total'] = sum(wscores[e].values())
-        # Generate final scores
-        uwscore = sum(v['total'] for v in scores.values()) / 2
-        score = sum(v['total'] for v in wscores.values()) / 2
-        # Compile
-        result.update({'cond': cond, 'bodd': bodd, 'ccts': ccts,
-                       'scores': scores, 'wscores': wscores, 
-                       'score': score, 'uwscore': uwscore})
+        # Split the region in two and count agreements, deletions insertions
+        ccts = [[ch.count(c) for c in '-di'] for ch in halve(cid)]
+        for ci, s in enumerate(['savc', 'sivc', 'sdvc']):
+            for ei in [0, 1]:
+                mult = 3 if args.alignmenttype else 1
+                result[s][ei] = ccts[ei][ci] * mult
+        # Caculate the indel score and weighted score
+        result['indelscore'] = [i + d for i, d in zip(result['sivc'],
+                                                      result['sdvc'])]
+        result['windelscore'] = [v * w for v, w in zip(weights['indel'],
+                                                       result['indelscore'])]
+        
+        # Calculate the by-end and overall total scores
+        for p in ['', 'w']:
+            scores = zip(*[result[p + s + 'score'] for s in scoretypes[:3]])
+            scoresums = [sum(i for i in s) for s in scores]
+            result[p + 'totalscore'] = scoresums
+            result[p + 'score'] = sum(scoresums)
         
         # Set as minscore if less than current
-        if score < minscore: minscore = score
+        if result['wscore'] < minscore: minscore = result['wscore']
         
     
     # Find the minimum score and mark the selection in the results
     selected = []
     for r in results:
         if not r['reject']:
-            if r['score'] > minscore:
+            if r['wscore'] > minscore:
                 r['reject'] = 'score > ' + str(round(minscore, 2))
             else:
                 selected.append("result region %sbp-%sbp" %
@@ -1009,7 +1005,7 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
     elif len(selected) < 1:
         log += "selected no regions from %s results\n" % (str(len(scores)))
     else:
-        log += "selected %s of %s" % (', '.join(selected), str(len(scores)))
+        log += "selected %s of %s" % (', '.join(selected), str(len(toalign)))
         log += " results with minimum combined overlap and alignment score of "
         log += "%s\n" % (str(round(minscore, 2)))
     
@@ -1024,17 +1020,21 @@ def make_iterable(obj):
         return obj
 
 def write_detailed_results(results, gbname, seqname, target):
-    # results = alignresults
+    # results, seqname = [alignresults, seqrecord.name]
+    
     # Start output list
     statl = []
+    prescores = ['qod', 'ced', 'bcced', 'savc', 'sivc', 'sdvc']
+    scores = ['position', 'align', 'indel', 'total']
     
     # Sort results
-    results = sorted(results, key=lambda k: (k['score'], 
-                                             sum(abs(s) for s in k['adjd']),
-                                             k['inst']))
+    results = sorted(results, key=lambda k: (k['inst'], 
+                                             sum(abs(s) for s in k['qod']),
+                                             k['score']))
     
     for result in results:
         # result = results[0]
+        # result = results[-1]
         feat = result['feat']
         # Start the statistics line
         stats = ([gbname, seqname, target]
@@ -1045,21 +1045,14 @@ def write_detailed_results(results, gbname, seqname, target):
                     str(result['nt'][-result['lens'][1]:]),
                     feat.qualifiers['codon_start'],
                     str(result['arf'] + 1),
-                    result['inst']])
-        # Extract statistics if aligned and analysed
-        # TODO: output nothing for overlap score if no context
-        if result['score'] < float('inf'):
-            stats += ([v for i in [0, 1] 
-                         for k in ['adjd', 'cond', 'bodd', 'ccts']
-                         for v in make_iterable(result[k][i])]
-                      + [vd[st] for k in ['scores', 'wscores']
-                                for e, vd in result[k].items()
-                                for st in ['overlap', 'align', 'indel', 
-                                           'total']]
-                      + [result[k] for k in ['uwscore', 'score']])
-        else:
-            stats += ([[result['adjd'][i]] + [''] * 5 for i in [0,1]] 
-                      + [''] * 16 + [''] * 2)
+                    result['inst']]
+                 + [result[k][i] for i in [0, 1] for k in prescores]
+                 + [result[p + s + 'score'][i] for p in ['', 'w']
+                                                   for i in [0, 1]
+                                                       for s in scores]
+                 + [s if s < float('inf') else '' for s in 
+                    [result[p + 'score'] for p in ['', 'w']]]
+                 + [result['reject']])
         statl.append(stats)
     return(statl)
 
@@ -1287,6 +1280,13 @@ def get_seqrecords(filepaths, onefile):
 
 def write_stats(outdir, statq):
     #outdir = args.outputdirectory
+    prescores = ['query-overlap_distance', 'consensus_distance', 
+                 'body-corrected_consensus_distance', 
+                 'alignment_agreements', 
+                 'alignment_insertions', 
+                 'alignment_deletions']
+    scores = ['position', 'align', 'indel', 'total']
+    
     # Open file handles
     stats = open(os.path.join(outdir, "filtering_results.tsv"), 'w')
     statwrite = csv.writer(stats, delimiter = '\t', quotechar = '', 
@@ -1297,19 +1297,13 @@ def write_stats(outdir, statq):
                         'start_match', 'end_match', 'reading_frame', 
                         'reading_frame_relative_to_original', 
                         'internal_stop_count']
-                        + ["%s_%s_distance" % (e, t)
-                           for e in ['start', 'end'] 
-                           for t in ['overlap_distance', 
-                                     'align_consensus_distance', 
-                                     'align_body_distance',
-                                     'consensus_agreements',
-                                     'deletions', 'insertions']]
-                        + ["%s_%s_%s_score" % (s, e, t)
-                           for s in ['unweighted', 'weight']
-                           for e in ['start', 'end'] 
-                           for t in ['position', 'alignment', 'indel', 
-                                     'total']]
-                        + ['final_unweighted_score', 'final_weighted_score']
+                        + [f"{e}_{k}" for e in ['start', 'end']
+                                          for k in prescores]
+                        + [f"{w}{e}_{s}_score" for w in ['', 'weighted_']
+                                              for e in ['start', 'end']
+                                                  for s in scores]
+                        + ['final_unweighted_score', 'final_weighted_score',
+                           'rejection_reason']
                         ))
     stats.flush()
     # Wait on items from queue and write them as received
