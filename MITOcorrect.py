@@ -8,6 +8,7 @@
 
 import os
 import re
+import json
 import argparse
 import textwrap as _textwrap
 import MITOcorrect_modules as mcm
@@ -77,7 +78,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-28_current/BIOD00001.gb "
+              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-28_current/QINL059.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "
@@ -99,10 +100,13 @@ if __name__ == "__main__":
     
     # Do the work
     seqrecordgen = mcm.get_seqrecords(args.genbank, args.onefile)
-    out = pool.map(functools.partial(mcm.process_seqrecord, args, utilityvars, 
-                                     seqq, statq, logq, prinq),
-                   seqrecordgen)
+    issues = pool.map(functools.partial(mcm.process_seqrecord, args,
+                                        utilityvars, seqq, statq, logq, prinq),
+                      seqrecordgen)
     
+    
+    with open("issues_dict.json", 'w') as fp:
+        json.dump(issues, fp)
     
     # TODO: Process issues dict
     

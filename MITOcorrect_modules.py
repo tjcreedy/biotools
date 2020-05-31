@@ -422,7 +422,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
     
     # Work through the ends
     for i, end in enumerate(['start', 'stop']):
-        # i, end = list(enumerate(specs.keys()))[1]
+        # i, end = list(enumerate(['start', 'stop']))[1]
         # Extract the relevant specifications
         snames = ['overlapmaxdistance', 'overlap']
         maxdist, cspecs = [0, 0]
@@ -449,7 +449,7 @@ def overlap(initpos, strand, feats, specs, seqrecord):
         
         # Work through the specified context annotations
         for context in contexts:
-            # context = contexts[1]
+            # context = contexts[0]
             cname, cfeat, specdist = context
             
             # Extract the feature locations
@@ -1168,7 +1168,7 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
                     temp, pid, logq, statq, target):
     
     # specifications, target = [specs, present[0]]
-    # specifications, target = [specs, 'COX1']
+    # specifications, target = [specs, 'ND5']
     
     # TODO: something to ensure original annotation is always part of the
     # results list
@@ -1526,3 +1526,106 @@ def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
     
     seqq.put((outname, seqrecord, filetotal))
     prinq.put(gbname)
+    
+    return(issues)
+
+filtering_results_explainer = """
+file:                                    the name of the file from which this sequence was read
+sequence_name:                           the name of the sequence
+annotation_name:                         the name of the annotation
+start_position:                          the first base of the start searchsequence
+end_position:                            the last base of the stop searchsequence
+length:                                  the total number of bases for this potential
+start_match:                             the matching start searchsequence
+end_match:                               the matching end searchsequence
+
+reading_frame:                           the reading frame of the potential annotation relative to the
+                                          start of the potential annotation
+reading_frame_relative_to_original:      the reading frame of the potential annotation relative to the
+                                          start of the original annotation
+internal_stop_count:                     the number of stops in the amino acid translation of the
+                                           sequence of the potential annotation, not including 1 or
+                                           more stops at the end of the translation
+
+start_query-overlap_distance:            the distance between the start_position and the position
+                                           determined by the specified overlap with a context
+                                           annotation. If no context annotation found, this will be 0
+start_consensus_distance:                the distance between the start_position and the start of the
+                                           consensus of the profile alignment, ignoring gaps where 
+                                           relevant, in nucleotides
+start_body-corrected_consensus_distance: the distance betwene the start_position and the start of the
+                                           consensus of the profile alignment, corrected using the
+                                           specified internal reference point, ignoring gaps where
+                                           relevant, in nucleotides
+start_alignment_agreements:              in the first half of the sequence region shared by both the
+                                           potential annotation and the consensus, the number of
+                                           positions where the potential annotation and the consensus
+                                           did not have gaps, in nucleotides
+start_alignment_insertions:              in the first half of the shared sequence region (as above),
+                                           the number of positions where the potential annotation
+                                           had a base/amino acid, but the consensus did not, in
+                                           nucleotides
+start_alignment_deletions:               in the first half of the shared sequence region (as above),
+                                           the number of positions where the potential annotation had
+                                           a gap but the consensus did not, in nucleotides
+
+end_query-overlap_distance:              as above, but for the end of the potential annotation
+end_consensus_distance:                  as above, but for the end of the potential annotation
+end_body-corrected_consensus_distance:   as above, but for the end of the potential annotation
+end_alignment_agreements:                as above, but for the end of the potential annotation
+end_alignment_insertions:                as above, but for the end of the potential annotation
+end_alignment_deletions:                 as above, but for the end of the potential annotation
+
+start_position_score:                    the absolute value of the start_query-overlap_distance
+start_align_score:                       the sum of the absolute values of the start_consensus_distance
+                                           and the start_body-corrected_consensus_distance, divided by
+                                           two
+start_indel_score:                       the sum of the start_alignment_insertions and 
+                                           start_alignment_deletions values
+start_total_score:                       the sum of the start_position_score, start_align_score and
+                                           start_indel_score values
+
+end_position_score:                      as above, but for the end of the potential annotation
+end_align_score:                         as above, but for the end of the potential annotation
+end_indel_score:                         as above, but for the end of the potential annotation
+end_total_score:                         as above, but for the end of the potential annotation
+
+weighted_start_position_score:           the product of the specified start positionweight and the start_position_score
+weighted_start_align_score:              the product of the specified start alignweight and the 
+                                           start_align_score
+weighted_start_indel_score:              the product of the specified start indelscore and the 
+                                           start_indel_score
+weighted_start_total_score:              the sum of the weighted_start_position_score, the
+                                           weighted_start_align_score and the 
+                                           weighted_start_indel_score
+
+weighted_end_position_score:             as above, but for the end of the potential annotation
+weighted_end_align_score:                as above, but for the end of the potential annotation
+weighted_end_indel_score:                as above, but for the end of the potential annotation
+weighted_end_total_score:                as above, but for the end of the potential annotation
+
+final_unweighted_score:                  the sum of the start_total_score and the end_total_score
+                                           values
+final_weighted_score:                    the sum of the weighted_start_total_score and the
+                                           weighted_end_total_score values
+
+rejection_reason:                        the reason the potential annotation was not selected (blank if
+                                           selected). 
+                                         If "intstop > x", the potential annotation was rejected
+                                           because the number of external stops exceeded x, where x is
+                                           either the minimum value of internal stops across all
+                                           potential annotations, or the value passed to 
+                                           --maxinternalstops, whichever is lower. 
+                                         If "fastscore > y", the potential annotation was rejected
+                                           because the sum of the weighted_start_position_score and
+                                           weighted_end_position_score values exceeded y, where y was
+                                           the lowest (i.e. best) final_weighted_score of all potential
+                                           annotations considered prior to this potential annotation,
+                                           meaning that alignment was redundant as even perfect
+                                           weighted alignment and indel scores  (i.e. 0, 0) would not
+                                           make this potential annotation a candidate for selection.
+                                         If "score > z", the potential annotation was rejected after
+                                           alignment because the final_weighted_score was greater than
+                                           the minimum final_weighted_score of all potential
+                                           annotations.
+"""
