@@ -5,10 +5,7 @@
 """
 
 # Imports
-
 import os
-import re
-import json
 import argparse
 import textwrap as _textwrap
 import MITOcorrect_modules as mcm
@@ -78,14 +75,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-05-28_current/QINL059.gb "
+              "-g gbmaster_2020-05-31_current/BIOD00001.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "
               "-t 2 -b 5 -c aa -r -1 out.gb -m 0 -f").split()
     #-g dir/test_multigenbank.gb
     #-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/CCCP00094.gb
-    #os.chdir('/home/thomas/seqtesting/MITOcorrect_testing')
+    #os.chdir('/home/thomas/Documents/NHM_postdoc/MMGdatabase/')
     #args = parser.parse_args(arglist)
     
     # Parse the arguments into the main utility variables
@@ -96,6 +93,8 @@ if __name__ == "__main__":
     pool =  multiprocessing.Pool(args.threads + 4)
     
     # Start the writers first in their own threads
+    # TODO: if outputing filtering results, add file with selected score of each
+    # gene present, plus total average score
     seqq, statq, logq, prinq, watch = mcm.start_writers(pool, manager, args)
     
     # Do the work
@@ -104,9 +103,6 @@ if __name__ == "__main__":
                                         utilityvars, seqq, statq, logq, prinq),
                       seqrecordgen)
     
-    
-    with open("issues_dict.json", 'w') as fp:
-        json.dump(issues, fp)
     
     # TODO: Process issues dict
     

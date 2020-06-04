@@ -329,16 +329,16 @@ def get_features(seqrecord, namevariants):
     for feat in seqrecord.features:
         #feat = seqrecord.features[1]
         # Remove any translations
-        if('translation' in feat.qualifiers.keys()):
+        if 'translation' in feat.qualifiers.keys():
             del(feat.qualifiers['translation'])
         
         # Extract the tag that contains the feature name
         featname = None
         
-        if(feat.type in othertypes):
+        if feat.type in othertypes:
             other_features.append(feat)
             continue
-        elif(any(t in feat.qualifiers.keys() for t in nametags)):
+        elif any(t in feat.qualifiers.keys() for t in nametags):
             for t in nametags:
                 if( t in feat.qualifiers.keys()):
                     featname = feat.qualifiers[t][0].upper()
@@ -348,7 +348,7 @@ def get_features(seqrecord, namevariants):
             continue
         
         # Find the standard name
-        if(featname in namevariants):
+        if featname in namevariants:
             features[namevariants[featname]].append(feat)
         else:
             unrecognised_names.add(featname)
@@ -843,6 +843,14 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
     weights = {s: [specs[e][s + 'weight'] for e in ['start', 'stop']] 
               for s in scoretypes[:3]}
     
+    # TODO: output a summary file containing alignments of each 
+    # consensus-potential pair only (not the rest of the alignment) all in one 
+    # file
+    
+    # TODO: assess alignments on input to determine variation around each
+    # consensus ends, store this variation and (optionally) use this to weight
+    # the alignment score so that insignificant variations don't beat out
+    # position score in importance.
     
      # Sort the results
     results = sorted(results, key=lambda k: sum(abs(s) for s in k['qod']))
@@ -1126,6 +1134,8 @@ def initialise(args):
 
 def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes, 
                       specifications, pid, logq):
+    #namevariants, specifications = [namevars, specs]
+    
     start = time.perf_counter()
     issues = defaultdict(set)
     
