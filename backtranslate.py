@@ -20,6 +20,8 @@ parser.add_argument("-r","--reading_frame", help = "reading frame, default frame
 
 # Function definitions
 
+#TODO: there's a module in biopython for doing this! https://biopython.org/DIST/docs/api/Bio.codonalign-module.html
+
 # Main
 
 if __name__ == "__main__":
