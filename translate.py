@@ -37,21 +37,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Read nucleotides
-    # source = "/home/thomas/Documents/NHM_postdoc/MMGdatabase/0_NT_profiles_APVrev/COX1.fa"
-    source = sys.stdin
+    # nuc_records = SeqIO.parse("/home/thomas/mitotest/mcrun_2020-06-04_a_nt_raw/COX1.fa", 'fasta')
     
-    try: 
-        nuc_records = AlignIO.read(source, "fasta")
-        aligned = True
-    except ValueError:
-        nuc_records = SeqIO.parse(source, "fasta")
-        aligned = False
+    nuc_records = SeqIO.parse(sys.stdin, "fasta")
+    aligned = False
     
     # Translate nucleotides
     aa_records = list()
     partialfail = dict()
     for nuc_rec in nuc_records:
-        #nuc_rec = list(nuc_records)[0]
+        #nuc_rec = next(nuc_records)
+        # If not certain, check if aligned
+        if not aligned and '-' in str(nuc_rec.seq):
+            aligned = True
+        # Generate the new sequence
         aa_rec = nuc_rec
         # Set the correct nucleotide sequence to translate
         new_seq = nuc_rec.seq[(args.reading_frame-1):]
