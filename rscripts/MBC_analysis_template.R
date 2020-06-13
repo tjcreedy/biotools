@@ -30,9 +30,11 @@ options(stringsAsFactors = F)
   # Load the libraries (packages) you need for your data manipulation and 
   # analysis. Remember, the order of loading is sometimes important.
 
+library(tidyr)
 library(plyr)
 library(dplyr)
 library(reshape2)
+library(stringr)
 library(vegan)
 library(ggplot2)
 library(ape)
@@ -55,6 +57,11 @@ source("rarexplore.R")
 
 reads <- read.table("reads.tsv", header = T, sep = "\t", row.names = 1, comment.char = '')
 
+    # Generally, samples should be rows and species should be columns, so
+    # we transpose the usearch_global --tabbedout reads table
+
+reads <- t(reads)
+
   # Load metadata table (change command if yours is a different format!)
     # Note that here I'm assuming that the first column of the metadata
     # table is the sample names.
@@ -69,21 +76,82 @@ metadata <- read.csv("metadata.csv", row.names = 1)
 
   # Load taxonomy table
     
-  # From SINTAX
-taxonomy <- read.table("taxonomy.tsv", sep = "\t", row.names = 1)
+    # From SINTAX
+taxonomy <- read.table("SINTAXtaxonomy.tsv", sep = "\t", row.names = 1)
 colnames(taxonomy) <- c("taxonomy", "strand", "selected")
+
+    # From MEGAN, after using the script get_NCBI_taxonomy.py
+taxonomy <- read.table("MEGANtaxonomy.tsv", sep = "\t", row.names = 1, header = T)
 
   # Load tree
 tree <- read.tree("otus.nwk")
+
+# Filtering low abundance OTU incidences ----------------------------------
+
+# The filtering done in the metabarcoding pipeline removes whole ASVs that
+# are potentially wrong, but doesn't do anything to filter putatively 
+# incorrect incidences of valid OTUs from samples. This is an area we're 
+# working on, but for now we do this by examining OTU incidence per sample
+
+# Read number filtering 
+  # Set counts less than a certain value to 0 - this isn't recommended
+  # because it doesn't take into account total reads per sample. It also
+  # generates difficulties with some of the accumulation tests later
+
+#MBC_reads[MBC_reads < 2] <- 0
+
+# Read proportion filtering
+  # Set counts that are less than a certain proportion of reads in a 
+  # sample to 0. 
+  
+  # First generate a filtering matrix, which gives the proportion of 
+  # total reads in a sample for each OTU.
+samplewise_p <- apply(reads, 1, function(s) s/sum(s) ) %>% t()
+
+  # Could then explore this matrix. At the simplest level, produce a
+  # histogram showing the distribution of proportion of per-OTU sample
+  # incidences that exceed a threshold value (here 0.5%, i.e. 0.005).
+apply(samplewise_p, 2, function(o) sum(o >= 0.005) / sum(o > 0)) %>% hist()
+
+  # Could also find the maximum proportion for each OTU
+maxprops <- apply(samplewise_p, 2, function(o) max(o)) %>% sort()
+
+  # Can use this to show how many OTUs would be lost completely for 
+  # different thresholds (because maxprops is sorted)
+  # E.g. what value would retain 95% of OTUs:
+maxprops[floor((1 - 0.95) * length(maxprops))]
+  # E.g. what proportion of OTUs would be dropped if drop incidences less
+  # than 0.5%
+sum(maxprops <= 0.000125) / length(maxprops)
+
+  # An important consideration is that no sample should be left without any
+  # OTUs that occur only once, otherwise estimated richness cannot be 
+  # calculated. Given that the minimum >0 proportion of any OTU within a 
+  # sample is likely going to be for OTUs that only have 1 read, we can 
+  # find the maximum threshold that fits this consideration
+apply(samplewise_p, 1, function(s) min(s[s>0])) %>% min()
+
+  # If this value is too low, you could pick a higher value and throw away
+  # samples later. This isn't ideal though...
+
+  # So, pick a threshold. This is very data-dependent. Think carefully
+threshold <- 0.000125
+
+  # Apply the threshold to the reads
+
+reads[samplewise_p < threshold] <- 0
+
+  # Crucially, we now clean up, dropping any samples that no longer have
+  # any reads, and any OTUs that no longer have any reads. 
+reads <- reads[rowSums(reads) > 0, colSums(reads) > 0]
+
+rm(samplewise_p, maxprops, threshold)
 
 # Organise data -----------------------------------------------------------
   # Here we make sure all the data corresponds properly to each other and 
   # any reconfiguration or merging is done as needed.
 
-  # Generally, samples should be rows and species should be columns, so
-  # we transpose the usearch_global --tabbedout reads table
-
-reads <- t(reads)
+# READS
 
   # If we have multiple metabarcoding samples that actually represent the 
   # same ecological sample, here we might merge them together
@@ -106,10 +174,13 @@ metadata <- metadata[row.names(reads), ]
 # TAXONOMY
 
   # The data in the taxonomy table needs to be filtered and separated out
-    # As above
+    # As above, make sure all the OTUs are present then drop any taxonomy
+    # records not present in the reads table
 colnames(reads) %in% row.names(taxonomy)
 taxonomy <- taxonomy[colnames(reads),]
 
+  # Parse and reorganise a SINTAX taxonomy (skip this if using MEGAN)
+{
     # We create a detailed version of the taxonomy table with the scores
     # This code is based on Yige Sun's rewriting of this step, thanks!
       # Add the OTUs as a column
@@ -135,12 +206,17 @@ taxdetailed$level <- factor(levelnames[taxdetailed$level], levels = levelnames)
     # Now we overwrite the original taxonomy table with the detailed one
 taxonomy <- dcast(taxdetailed, otu ~ level, value.var = "taxon")
 
-    # We may only wish to include taxonomy info if it's above a certain score
+    # Alternatively, We may only wish to include taxonomy info if it's above a certain score
 #taxonomy <- dcast(taxdetailed[taxdetailed$score > 0.65, ], otu ~ level, value.var = "taxon", fill = '')
-    
+  
     # Set the row names
 row.names(taxonomy) <- taxonomy$otu
 taxonomy <- subset(taxonomy, select = -otu)    
+}
+
+  # Parse a MEGAN taxonomy
+    # All we need to do here is drop the taxid column
+taxonomy <- subset(taxonomy, select = -taxid)
 
     # Finally, re-sort the taxonomy
 taxonomy <- taxonomy[colnames(reads), ]
@@ -259,4 +335,5 @@ reads <- reads[, colSums(reads) > 0]
     # Remove any dropped samples/OTUs from metadata/taxonomy tables
 metadata <- metadata[rownames(reads), ]
 taxonomy <- taxonomy[colnames(reads), ]
+
 
