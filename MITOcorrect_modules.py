@@ -343,8 +343,10 @@ def get_features(seqrecord, namevariants):
             continue
         elif any(t in feat.qualifiers.keys() for t in nametags):
             for t in nametags:
-                if( t in feat.qualifiers.keys()):
+                if t in feat.qualifiers.keys():
                     featname = feat.qualifiers[t][0].upper()
+                    if t != 'gene':
+                        feat.qualifiers['gene'] = [featname]
                     break
         else:
             unidentifiable_features.append(feat)
