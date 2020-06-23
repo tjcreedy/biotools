@@ -29,6 +29,7 @@ def elapsed_time(start):
 def loadnamevariants(source=None):
     variants = {}
     types = {}
+    products = {}
     # Identify source
     
     if(source is None):
@@ -41,10 +42,11 @@ def loadnamevariants(source=None):
      
     for line in source:
         line = line.decode('utf-8').strip()
-        name = line.split(";")[0]
-        annotype = line.split(":")[0].split(";")[1]
+        meta, listvars = line.split(':')
+        name, annotype, product = meta.split(';')
+        listvars = [name, product.upper()] + listvars.split(',')
         types[name] = annotype
-        listvars = line.split(":")[1].split(",")
+        products[name] = product
         for v in listvars:
             for g in ['', ' ']:
                 v = v.replace(g, '')
@@ -53,7 +55,7 @@ def loadnamevariants(source=None):
      
     # Close handle
     source.close()
-    return(variants, types)
+    return(variants, types, products)
 
 def str_is_int(s):
     try:
@@ -268,8 +270,9 @@ def parse_specs(path, alignpath, namevariants):
                                  f"{name} {end} with no default ")
             
             weights = [w for k, w in specd[end].items() if 'weight' in k]
-            if len(set(weights)) == 1:
-                sys.exit(f"Error: weights for {name} {end} cannot be equal")
+            if len(set(weights)) != 3:
+                sys.exit(f"Error: weights for {name} {end} cannot have any "
+                          "equal values")
             
             #TODO: uncomment to standardise weights here
             #weightstd = 3 / sum(weights)
@@ -664,7 +667,7 @@ def get_search_results(regions, adjustment, specs, seqrecord, feat, table, ff):
         # If region appears to be trunc at the stop, remove short matches
         # and add a match at the end. Truncation is defined by the last position
         if (not ff and end == 'stop' and regions[end]['pos'][-1] in truncpos
-            and sspecs['searchcode'] is 'N' and change[1] is None 
+            and sspecs['searchcode'] == 'N' and change[1] is None 
             and trunc != ''):
             localresults = [[i, c, l] for i, c, l in localresults if l >= 3]
             endpos = len(regions[end]['seq'])-1
@@ -802,6 +805,28 @@ def filter_searchresults(results, args):
     
     log += "%s results remain \n" % (str(resultsremain))
     return(results, log)
+
+def add_genefeatures(features):
+    
+    genefeatures = []
+    
+    for feat in features:
+        gfeat = SeqFeature.SeqFeature(feat.location)
+        gfeat.type = 'gene'
+        gfeat.qualifiers['gene'] = feat.qualifiers['gene']
+        genefeatures.append(gfeat)
+    
+    return(features + genefeatures)
+
+def sort_features(features):
+    #features = outfeats
+    typeorder = ['source', 'CDS', 'rRNA', 'tRNA', 'gene']
+    typeorder = {t:i for i, t in enumerate(typeorder)}
+    
+    return(sorted(features, key = lambda f: (int(f.location.start),
+                                             -int(f.location.end),
+                                             typeorder.get(f.type, 
+                                                           len(typeorder)))))
 
 
 def ungapped_distance(seq, value, ref):
@@ -955,7 +980,7 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
         
         # Calculate the alignment score and weighted score
         result['alignscore'] = [(abs(c) + abs(e)) / 2 for c, e 
-                                        in zip(result['ced'], result['bcced'])]
+                                       in zip(result['ced'], result['bcced'])]
         result['walignscore'] = [v * w for v, w in zip(weights['align'],
                                                        result['alignscore'])]
         
@@ -1004,19 +1029,18 @@ def align_and_analyse(results, args, specs, target, seqname, temp):
             if r['wscore'] > minscore:
                 r['reject'] = 'score > ' + str(round(minscore, 2))
             else:
-                selected.append("result region %sbp-%sbp" %
-                                    (str(int(r['feat'].location.start) + 1),
-                                     str(int(r['feat'].location.end))))
+                selected.append(f"result region "
+                                f"{int(r['feat'].location.start) + 1} bp"
+                                f"-{int(r['feat'].location.end)} bp")
     log = "Alignment: "
     if minscore == float('inf'):
         log += "no results remain to align and analyse\n"
     elif len(selected) < 1:
-        log += "selected no regions from %s results\n" % (str(len(scores)))
+        log += f"selected no regions out of {len(scores)} results\n"
     else:
-        log += "selected %s of %s" % (', '.join(selected), str(len(toalign)))
-        log += " results with minimum combined overlap and alignment score of "
-        log += "%s\n" % (str(round(minscore, 2)))
-    
+        log += (f"selected {', '.join(selected)} out of {len(toalign)} "
+                f"results with minimum combined overlap and alignment score "
+                f"of {round(minscore, 2)}\n")
     return(results, log)
 
 def make_iterable(obj):
@@ -1064,7 +1088,7 @@ def write_detailed_results(results, gbname, seqname, target):
         statl.append(stats)
     return(statl)
 
-def generate_output_target(results, target, args):
+def generate_output_target(results, target, products, args):
     #results = alignresults
     
     resultfeats = []
@@ -1098,9 +1122,9 @@ def generate_output_target(results, target, args):
             
             # Add feat details
             feat.qualifiers['gene'] = target
+            feat.qualifiers['transl_table'] = args.translationtable
+            feat.qualifiers['product'] = products[target]
             feat.type = 'CDS'
-            
-            # TODO: add second feat for gene
             
             # Add the feature to the outputs
             resultfeats.append(feat)
@@ -1111,7 +1135,7 @@ def generate_output_target(results, target, args):
 def initialise(args):
     
     # Read in the namevariants file
-    namevariants, annotypes = loadnamevariants()
+    namevariants, annotypes, products = loadnamevariants()
     
     # Allow user to pass an additional namevariants file
     if args.namevariants:
@@ -1130,7 +1154,7 @@ def initialise(args):
     
     sys.stdout.write("Completed initialisation, starting processing\n")
     
-    return((namevariants, annotypes, specs, temp))
+    return((namevariants, annotypes, products, specs, temp))
 
 def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes, 
                       specifications, pid, logq):
@@ -1141,8 +1165,15 @@ def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes,
     
     log = 'PID%s file %s sequence %s' % (pid, gbname, seqrecord.name)
     
-    # Extract target feature types from the record, other features, and 
-    # variables for any issues encountered. Record any issues to the log
+    # Extract:
+    # Features dict where keys are the standard names from namevariants if
+        # present and values are lists of features from the standard set 
+        # CDS, tRNA, rRNA + gene with that name
+    # Unnames set of names that could not be found in namevariants
+    # Unfeat boolean of whether any features could not be identified
+    # Ofeats list of any features that could not be identified by name or
+        # are not in the standard set of types
+    # flog string to print to log
     
     features, unnames, unfeat, ofeats, flog = get_features(seqrecord, 
                                                           namevariants)
@@ -1151,6 +1182,9 @@ def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes,
     if unfeat: issues['hasunidfeats'].add(seqrecord.name)
     
     # Clean the features to reject any annotations of the non-target type
+    # Parses the feature dict and returns for each name only features of 
+    # the standard set (CDS, rRNA, tRNA), unless none present in which case
+    # takes any 'gene' features and renames them to standard name
     
     cleanfeats = clean_features(features, annotypes)
     
@@ -1166,16 +1200,18 @@ def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes,
     else:
         tlog += "%s present to process\n" % (str(len(present)))
     
-    # Append the non-target feats to the ofeats
-    ofeats.extend([c for n, cs in cleanfeats.items() 
-                   for c in list(cs) 
-                   if n not in present])
+    # Get a list of the clean features that aren't target features and add
+        # gene varints
+    nontargetcleanfeats = [c for n, cs in cleanfeats.items() 
+                             for c in list(cs) 
+                                if n not in present]
+    ofeats.extend(add_genefeatures(nontargetcleanfeats))
     
     logq.put(log + elapsed_time(start) + tlog)
     return(present, cleanfeats, ofeats, issues)
 
 def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, 
-                    temp, pid, logq, statq, target):
+                    temp, pid, logq, statq, target, products):
     
     # specifications, target = [specs, present[0]]
     # specifications, target = [specs, 'ND5']
@@ -1239,10 +1275,10 @@ def correct_feature(cleanfeats, specifications, gbname, seqrecord, args,
     
     # Output final result(s)
     # TODO: selection of single result if equal scores
-    result = generate_output_target(alignresults, target, args)
+    result = generate_output_target(alignresults, target, products, args)
+    
     if args.potentialfeatures or len(result) == 0:
         result.append(feat)
-    
     
     return(result)
 
@@ -1345,6 +1381,7 @@ def write_genbanks(outdir, filepaths, onefile, seqq):
        requesting printing of log info and seqrecord to the specified file'''
     #outdir, filepaths, onefile, queueitem = [args.outputdirectory, args.genbank, args.onefile, (outname, seqrecord, filetotal)]
     # Set up the gbhands dict to work whether all sequences are to be output
+    
     # to the same file or different files.
     gbh = dict()
     if onefile:
@@ -1355,6 +1392,9 @@ def write_genbanks(outdir, filepaths, onefile, seqq):
     else:
         for file in filepaths:
             outpath = os.path.join(outdir, file)
+            dirname = os.path.dirname(outpath)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
             # For multiple files, for each file set up dict with handle, 
             # counter and total number of seqrecords to expect.
             gbh[file] = {'h': open(outpath, 'w'),
@@ -1393,9 +1433,8 @@ def print_terminal(filenames, prinq):
     done = 0
     remain = "unknown time"
     current = ''
-    run = True
     # Print
-    while run:
+    while 1:
         sys.stdout.write("\r%s\r" % (' ' * 70))
         line = ("\rCorrected %s of %s total records, %s remaining%s" % 
                 (done, tot, remain, current))
@@ -1411,9 +1450,9 @@ def print_terminal(filenames, prinq):
         #current = ", currently processing " + queueitem
     now = time.perf_counter()
     elapsed = round(now-start)
-    elapsed = str(datetime.timedelta(seconds=elapsed))
-    elapsedper = str(datetime.timedelta(seconds=elapsed/done))
-    line = "\nFinished in %s, %s per record\n" % (elapsed, elapsedper)
+    elapsedper = datetime.timedelta(seconds=elapsed/done)
+    elapsed = datetime.timedelta(seconds=elapsed)
+    line = f"\nFinished in {elapsed}, {elapsedper} per record\n"
     sys.stdout.write(line)
     sys.stdout.flush()
 #    run = False
@@ -1492,6 +1531,8 @@ def start_writers(pool, manager, args):
         statwatch = pool.apply_async(functools.partial(write_stats, 
                                                        args.outputdirectory),
                                      (statq,))
+    else:
+        statwatch = None
     
     logwatch = pool.apply_async(functools.partial(write_log,
                                                   args.outputdirectory,
@@ -1509,10 +1550,15 @@ def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
     #
     # indata = next(seqrecordgen)
     gbname, outname, seqrecord, filetotal = indata
-    namevars, annotypes, specs, temp = utilityvars
+    namevars, annotypes, products, specs, temp = utilityvars
     
     pid = os.getpid()
     # Extract the necessary items from the seqrecord and clean
+    # Present is list of to-edit feature names from the specs that are present
+    # Cleanfeats is a dict where keys are the feature names and the values are
+        # sets of CDS, tRNA or rRNA features with those names
+    # Ofeats is any feature types not relevant (e.g. source), plus the members
+        # of cleanfeats that are only context features
     present, cleanfeats, ofeats, issues = prepare_seqrecord(seqrecord, gbname,
                                                             namevars, 
                                                             annotypes, specs, 
@@ -1522,13 +1568,18 @@ def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
     if len(present) > 0:
         outfeats = []
         for target in present:
-            outfeat = correct_feature(cleanfeats, specs, gbname, seqrecord,
-                                      args, temp, pid, logq, statq, target)
-            outfeats.extend(outfeat)
+            outfeats.extend(correct_feature(cleanfeats, specs, gbname, 
+                                            seqrecord, args, temp, pid, logq,
+                                            statq, target, products))
         
-        # Replace all features with the new ones and add on the others
+        # Generate the new output feature set
         if len(outfeats) > 0:
-            seqrecord.features = outfeats + ofeats
+            # Add parallel gene features for the new ones
+            outfeats = add_genefeatures(outfeats)
+            # Add the other features from the original set
+            outfeats += ofeats
+            # Re-sort the features and add them to the seqrecord
+            seqrecord.features = sort_features(outfeats)
     else:
         seqrecord.features = seqrecord.features
         # TODO log that no target features found and that the sequence is

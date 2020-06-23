@@ -5,7 +5,6 @@
 """
 
 # Imports
-import os
 import argparse
 import textwrap as _textwrap
 import MITOcorrect_modules as mcm
@@ -75,13 +74,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g gbmaster_2020-05-31_current/BIOD00001.gb "
+              "-g gbmaster_2020-06-17_current/BIOD00001.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "
-              "-t 2 -b 5 -c aa -r -1 out.gb -m 0 -f").split()
+              "-t 2 -b 5 -c aa -r -m 0 -f").split()
     #-g dir/test_multigenbank.gb
     #-g /home/thomas/Documents/NHM_postdoc/MMGdatabase/gbmaster_2020-04-25_current/CCCP00094.gb
+    #import os
     #os.chdir('/home/thomas/Documents/NHM_postdoc/MMGdatabase/')
     #args = parser.parse_args(arglist)
     
@@ -115,7 +115,10 @@ if __name__ == "__main__":
     
     # Delete temporary alignment directory
     if not args.keepalignments:
-        shutil.rmtree(utilityvars[3])
-        # delete output
+        shutil.rmtree(utilityvars[4])
+    
+    
+    for w in watch:
+        w.get()
     
     exit()
