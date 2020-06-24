@@ -1475,6 +1475,7 @@ def print_terminal(filenames, prinq):
     # Set up to print
     start = time.perf_counter()
     done = 0
+    donefeat, meanfeat, totfeat = [0, 1, done]
     remain = "unknown time"
     current = ''
     # Print
@@ -1486,16 +1487,19 @@ def print_terminal(filenames, prinq):
         sys.stdout.flush()
         queueitem = prinq.get()
         if queueitem is None: break
+        donefeat += queueitem
         done += 1
+        meanfeat = donefeat/done
+        totfeat = meanfeat * tot
         now = time.perf_counter()
         elapsed = now-start
-        remain = round((elapsed/done) * (tot - done))
+        remain = round((elapsed/donefeat) * (totfeat - donefeat))
         remain = "approx " + str(datetime.timedelta(seconds=remain))
         #current = ", currently processing " + queueitem
     now = time.perf_counter()
-    elapsed = round(now-start)
-    elapsedper = datetime.timedelta(seconds=elapsed/done)
-    elapsed = datetime.timedelta(seconds=elapsed)
+    elapsed = now-start
+    elapsedper = datetime.timedelta(seconds=round(elapsed/done, 2))
+    elapsed = datetime.timedelta(seconds=round(elapsed))
     line = f"\nFinished in {elapsed}, {elapsedper} per record\n\n"
     sys.stdout.write(line)
     sys.stdout.flush()
@@ -1631,7 +1635,7 @@ def process_seqrecord(args, utilityvars, writers, indata):
         # being output as-is
     
     seqq.put((outname, seqrecord, filetotal))
-    prinq.put(gbname)
+    prinq.put(len(present))
     
     return(issues)
 
