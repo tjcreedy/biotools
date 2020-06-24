@@ -1498,7 +1498,7 @@ def print_terminal(filenames, prinq):
         #current = ", currently processing " + queueitem
     now = time.perf_counter()
     elapsed = now-start
-    elapsedper = datetime.timedelta(seconds=round(elapsed/done, 2))
+    elapsedper = datetime.timedelta(seconds=elapsed/done)
     elapsed = datetime.timedelta(seconds=round(elapsed))
     line = f"\nFinished in {elapsed}, {elapsedper} per record\n\n"
     sys.stdout.write(line)
