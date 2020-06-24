@@ -240,11 +240,12 @@ sub sort_genes{
 	my %genesort;
 	my %generegion;
 	foreach my $line (split("\n", $genenametxt)){
-		my @values = split("[;:,]", $line);
-		push @genenames, $values[0];
-		$generegion{$values[0]} = $values[1];
-		foreach my $var (@values[2..$#values]){
-			$genesort{$var} = $values[0];
+		my ($name, $region, $product, @values) = split("[;:,]", $line);
+		@values = push (@values, ($name, $product);
+		push @genenames, $name;
+		$generegion{$name} = $product;
+		foreach my $var (@values){
+			$genesort{$var} = $name;
 		}
 	}
 	return(\@genenames, \%genesort, \%generegion)
