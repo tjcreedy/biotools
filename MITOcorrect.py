@@ -105,19 +105,21 @@ if __name__ == "__main__":
                                         utilityvars, writers),
                       seqrecordgen)
     
-    
     # Delete temporary alignment directory
     if not args.keepalignments:
         shutil.rmtree(utilityvars[4])
     
+    # Close down the writers and the pools
     for w in writers:
         if w is not None:
             w.put(None)
     pool.close()
     pool.join()
     
+    # Process the issues and write to terminal
     mcm.process_issues(issues)
     
+    # Get any errors in any of the writing processes
     for w in watchers:
         w.get()
     

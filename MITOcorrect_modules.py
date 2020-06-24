@@ -1430,7 +1430,7 @@ def write_genbanks(outdir, filepaths, onefile, seqq):
     gbh = dict()
     if onefile:
         outh = open(os.path.join(outdir, onefile), 'w')
-        gbh[onefile] = {'h': outh,
+        gbh[onefile] = {'h': ['open', outh],
                         'c': 0,
                         't': 0}
     else:
@@ -1439,9 +1439,12 @@ def write_genbanks(outdir, filepaths, onefile, seqq):
             dirname = os.path.dirname(outpath)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-            # For multiple files, for each file set up dict with handle, 
-            # counter and total number of seqrecords to expect.
-            gbh[file] = {'h': open(outpath, 'w'),
+            # For multiple files, for each file set up dict with path, 
+            # counter and total number of seqrecords to expect. Opening file
+            # handle is saved for when the file is actually encountered.
+            # This way the number of open writing files won't exceed the 
+            # number of threads.
+            gbh[file] = {'h': ['closed', outpath],
                          'c': 0,
                          't': 0}
     # Start a constant process that waits to receive data in the form of a file
@@ -1451,17 +1454,20 @@ def write_genbanks(outdir, filepaths, onefile, seqq):
         queueitem = seqq.get()
         if queueitem is None: break
         file, seqrecord, filetotal = queueitem
+        # Check if the file handle is already open for this file
+        if gbh[file]['h'][0] == 'closed':
+            gbh[file]['h'] = ['open', open(gbh[file]['h'][1], 'w')]
         # Filetotal will be either 0 or the total number of seqrecords for
         # this file. Each time a seqrecord is received, increment the count
         # The total will only be the correct value once the one seqrecord
         # carrying the total arrives (the last one read), and the handle
         # will only close when the counter equals the total
-        gbh[file]['h'].write(seqrecord.format("genbank"))
-        gbh[file]['h'].flush()
+        gbh[file]['h'][1].write(seqrecord.format("genbank"))
+        gbh[file]['h'][1].flush()
         gbh[file]['c'] += 1
         gbh[file]['t'] += filetotal
         if gbh[file]['c'] == gbh[file]['t']:
-            gbh[file]['h'].close()
+            gbh[file]['h'][1].close()
 
 def print_terminal(filenames, prinq):
     #filenames = args.genbank
