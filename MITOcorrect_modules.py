@@ -16,7 +16,7 @@ import functools
 import time
 import datetime
 import copy
-from collections import defaultdict
+from collections import defaultdict, Counter
 from math import ceil, copysign
 from Bio import Seq, SeqFeature, SeqRecord, SeqIO, AlignIO
 from Bio.Align import AlignInfo
@@ -360,17 +360,24 @@ def get_features(seqrecord, namevariants):
     
     # Log
     unfeat = len(unidentifiable_features) > 0
-    log = 'Undentifiable features: '
+    log1 = 'Unidentifiable features: '
     if unfeat:
+        types = []
         loguf = []
         for f in unidentifiable_features:
-            loguf.append("%s %s-%sbp" % (f.type, str(f.location.start),
-                                           str(f.location.end)))
-        log += ', '.join(loguf) + "\n"
+            types.append(f.type)
+            loguf.append(f"{f.type} {f.location.start}-{f.location.end} bp")
+        unfeat = Counter(types)
+        log1 += ', '.join(loguf) + "\n"
     else:
-        log += 'NONE\n'
+        log1 += 'NONE\n'
+    log2 = 'Unrecognised names: '
+    if len(unrecognised_names) > 0:
+        log2 += ', '.join(unrecognised_names) + '\n'
+    else:
+        log2 += 'NONE\n'
     return(features, unrecognised_names, unfeat,
-           other_features + unidentifiable_features, log)
+           other_features + unidentifiable_features, [log1, log2])
 
 def clean_features(features, types):
     #features, types = feats, annotypes
@@ -408,7 +415,7 @@ def check_targets(clean, targets):
     
     for t, i in zip(['Absent', 'Duplicate'], [absent, duplicate]):
         r = ', '.join(i) if len(i) > 0 else 'NONE'
-        log.append("%s target features: %s\n" % (t, r))
+        log.append(f"{t} target features: {r}\n")
     
     return(present, log)
 
@@ -1161,11 +1168,10 @@ def initialise(args):
 def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes, 
                       specifications, pid, logq):
     #namevariants, specifications = [namevars, specs]
-    
+    issues = dict()
     start = time.perf_counter()
-    issues = defaultdict(set)
     
-    log = 'PID%s file %s sequence %s' % (pid, gbname, seqrecord.name)
+    log = f"PID {pid} file {gbname} sequence {seqrecord.name} "
     
     # Extract:
     # Features dict where keys are the standard names from namevariants if
@@ -1179,9 +1185,12 @@ def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes,
     
     features, unnames, unfeat, ofeats, flog = get_features(seqrecord, 
                                                           namevariants)
-    logq.put(log + flog)
-    if len(unnames) > 0: issues['unrecnames'].add(unnames)
-    if unfeat: issues['hasunidfeats'].add(seqrecord.name)
+    for l in flog:
+        logq.put(log + l)
+    
+    if len(unnames) > 0 or unfeat:
+        issues['unrecnames'] = unnames
+        issues['unidfeats'] = unfeat
     
     # Clean the features to reject any annotations of the non-target type
     # Parses the feature dict and returns for each name only features of 
@@ -1210,7 +1219,40 @@ def prepare_seqrecord(seqrecord, gbname, namevariants, annotypes,
     ofeats.extend(add_genefeatures(nontargetcleanfeats))
     
     logq.put(log + elapsed_time(start) + tlog)
-    return(present, cleanfeats, ofeats, issues)
+    
+    issues = issues if len(issues) > 0 else None
+    return(present, cleanfeats, ofeats, (seqrecord.name, issues))
+
+def process_issues(issues):
+    
+    unrecnames = set()
+    unidfeats = defaultdict(list)
+    unidseqs = set()
+    
+    for name, idict in issues:
+        if idict is None:
+            continue
+        if len(idict['unrecnames']) > 0:
+            unrecnames = unrecnames.union(idict['unrecnames'])
+        if idict['unidfeats']:
+            unidseqs.add(name)
+            for ftype, n in idict['unidfeats'].items():
+                unidfeats[ftype].append((name, n))
+    
+    if len(unrecnames) > 0:
+        sys.stderr.write(f"Warning: {len(unrecnames)} unique feature names "
+                          "were not recognised, i.e. are not present in "
+                          "the namevariant resources. They were: "
+                         f"{', '.join(unrecnames)}\n")
+    if len(unidfeats) > 0:
+        sys.stderr.write(f"Warning: a total of {len(unidseqs)} records "
+                          "contained features without identifiable name "
+                          "fields. They were:\n")
+        for ftype, seqs in unidfeats.items():
+            seqstr = [f"{name} ({n})" for name, n in seqs]
+            sys.stderr.write(f"\t{ftype.upper()} features\t\n"
+                             f"{', '.join(seqstr)}\n")
+
 
 def correct_feature(cleanfeats, specifications, gbname, seqrecord, args, 
                     temp, pid, logq, statq, target, products):
@@ -1357,7 +1399,7 @@ def write_stats(outdir, statq):
     # Wait on items from queue and write them as received
     while 1:
         queueitem = statq.get()
-        if queueitem == 'kill': break
+        if queueitem is None: break
         for l in queueitem:
             statwrite.writerow(l)
         stats.flush()
@@ -1372,7 +1414,7 @@ def write_log(outdir, logfile, logq):
     # specifying the source of the seqrecord, and the new seqrecord
     while 1:
         logline = logq.get()
-        if logline == 'kill': break
+        if logline is None: break
         if logfile:
             logh.write(logline)
             logh.flush()
@@ -1407,7 +1449,7 @@ def write_genbanks(outdir, filepaths, onefile, seqq):
     while 1:
         #queueitem = (outname, seqrecord, filetotal)
         queueitem = seqq.get()
-        if queueitem == 'kill': break
+        if queueitem is None: break
         file, seqrecord, filetotal = queueitem
         # Filetotal will be either 0 or the total number of seqrecords for
         # this file. Each time a seqrecord is received, increment the count
@@ -1443,7 +1485,7 @@ def print_terminal(filenames, prinq):
         sys.stdout.write(line)
         sys.stdout.flush()
         queueitem = prinq.get()
-        if queueitem == 'kill': break
+        if queueitem is None: break
         done += 1
         now = time.perf_counter()
         elapsed = now-start
@@ -1454,7 +1496,7 @@ def print_terminal(filenames, prinq):
     elapsed = round(now-start)
     elapsedper = datetime.timedelta(seconds=elapsed/done)
     elapsed = datetime.timedelta(seconds=elapsed)
-    line = f"\nFinished in {elapsed}, {elapsedper} per record\n"
+    line = f"\nFinished in {elapsed}, {elapsedper} per record\n\n"
     sys.stdout.write(line)
     sys.stdout.flush()
 #    run = False
@@ -1545,13 +1587,14 @@ def start_writers(pool, manager, args):
                                                     args.genbank),
                                   (prinq,))
     
-    return(seqq, statq, logq, prinq, 
+    return((seqq, statq, logq, prinq), 
            (seqwatch, statwatch, logwatch, printwatch))
 
-def process_seqrecord(args, utilityvars, seqq, statq, logq, prinq, indata):
+def process_seqrecord(args, utilityvars, writers, indata):
     #
     # indata = next(seqrecordgen)
     gbname, outname, seqrecord, filetotal = indata
+    seqq, statq, logq, prinq = writers
     namevars, annotypes, products, specs, temp = utilityvars
     
     pid = os.getpid()

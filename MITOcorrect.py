@@ -74,7 +74,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     arglist = ("-s MITOcorrect_specs.tsv "
-              "-g gbmaster_2020-06-17_current/BIOD00001.gb "
+              "-g gbmaster_2020-06-17_current/GBDL00876.gb "
+                 "gbmaster_2020-06-17_current/GBDL00985.gb "
+                 "gbmaster_2020-06-17_current/GBDL00750.gb "
               "-l testlog.txt "
               "-a aaalignfile.tsv "
               "-o testout/ "
@@ -95,30 +97,29 @@ if __name__ == "__main__":
     # Start the writers first in their own threads
     # TODO: if outputing filtering results, add file with selected score of each
     # gene present, plus total average score
-    seqq, statq, logq, prinq, watch = mcm.start_writers(pool, manager, args)
+    writers, watchers = mcm.start_writers(pool, manager, args)
     
     # Do the work
     seqrecordgen = mcm.get_seqrecords(args.genbank, args.onefile)
     issues = pool.map(functools.partial(mcm.process_seqrecord, args,
-                                        utilityvars, seqq, statq, logq, prinq),
+                                        utilityvars, writers),
                       seqrecordgen)
     
-    
-    # TODO: Process issues dict
-    
-    seqq.put('kill')
-    if args.detailedresults: statq.put('kill')
-    logq.put('kill')
-    prinq.put('kill')
-    pool.close()
-    pool.join()
     
     # Delete temporary alignment directory
     if not args.keepalignments:
         shutil.rmtree(utilityvars[4])
     
+    for w in writers:
+        if w is not None:
+            w.put(None)
+    pool.close()
+    pool.join()
     
-    for w in watch:
+    mcm.process_issues(issues)
+    
+    for w in watchers:
         w.get()
+    
     
     exit()
