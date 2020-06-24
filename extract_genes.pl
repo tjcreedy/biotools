@@ -32,8 +32,6 @@ my $genenames = get 'https://raw.githubusercontent.com/tjcreedy/biotools/master/
 
 my ($known_genes, $genesort, $generegion) = sort_genes($genenames);
 
-print Dumper $genesort;
-exit;
 
 ########################################################
 # USAGE
@@ -245,7 +243,6 @@ sub sort_genes{
 	foreach my $line (split("\n", $genenametxt)){
 		my ($name, $region, $product, @values) = split("[;:,]", $line);
 		push @values, ($name, $product);
-		print Dumper \@values;
 		push @genenames, $name;
 		$generegion{$name} = $product;
 		foreach my $var (@values){
