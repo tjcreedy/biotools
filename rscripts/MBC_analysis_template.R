@@ -301,7 +301,7 @@ check <- check_expected_richness(reads, 0.85)
   # For most community ecology, the best route is to remove samples that 
   # did not reach the threshold. check_expected_richness returns a vector
   # of samples that passed this as the first item
-reads <- reads[check[[1]], ]
+reads <- reads[check$passnames$meanpass, ]
 
   # An alternative to this standardisation is to rarefy. This process
   # removes reads from samples until it reaches a threshold. This 
