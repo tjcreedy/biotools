@@ -326,7 +326,7 @@ if __name__ == "__main__":
 	
 	for well, specs in data.items():
 		sys.stdout.write("Running cutadapt on file pair %s: %s..." % (well, specs['name']))
-		
+		sys.stdout.flush()
 		#well, specs = list(data.items())[0]
 		
 		# Generate and run cutadapt command
