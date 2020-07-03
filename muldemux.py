@@ -331,7 +331,7 @@ if __name__ == "__main__":
 		
 		# Generate and run cutadapt command
 		
-		cutargs = ['cutadapt -cores ' + args.threads]
+		cutargs = ['cutadapt -cores ' + str(args.threads)]
 		if(args.arguments): cutargs.extend(re.split(' +', args.arguments))
 		
 		cutargs.extend([o for a, d in zip(['-o', '-p'],['R1', 'R2']) for o in [a, os.path.join(args.output, well + '_{name1}-{name2}_' + d + '.' + ffmt)]])
