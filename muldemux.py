@@ -237,7 +237,7 @@ parser = argparse.ArgumentParser(description= """description:
 									|n
 									Indices are read from one or more demultiplexing tables supplied to --demuxtable arguments, which must be a three-column tab-separated text file each line of which contains an output name, the forward index, and the reverse index.  Indices will be matched to input read files based on well numbers. Thus, input files and output names must contain well numbers in the format 'A1' or 'A01' and must be preceded by - or _ and/or be followed by - or _ and/or be at the end of the name. Where input files do not contain well numbers, a conversion table must be supplied to --conversion in a two-column tab-separated format, where each line gives a suitably unique name for the input file followed by a well number. 
                                                  |n
-                                                 The basic cutadapt command used is 'cutadapt -cores N -g O1=INDEX -G O2=INDEX [ -g O2=INDEX2 -G O2=INDEX2 ] -o IN_R1 -p IN_R2 OUT_R1 OUT_R2'. The number of cores for cutadapt to run on will be passed directly from the --cores arugment. Further arguments can be supplied to cutadapt using --arguments '-v W -x Y'. These will be passed to cutadapt unchecked.
+                                                 The basic cutadapt command used is 'cutadapt -cores N -g O1=INDEX -G O2=INDEX [ -g O2=INDEX2 -G O2=INDEX2 ] -o IN_R1 -p IN_R2 OUT_R1 OUT_R2'. The number of cores for cutadapt to run on will be passed directly from the --threads argument. Further arguments can be supplied to cutadapt using --arguments '-v W -x Y'. These will be passed to cutadapt unchecked.
                                                  |n
                                                  Output files will be written to a directory named in --output, which will be created if necessary. A statistics file will be written to --statistics if specified.""",  
                                   formatter_class=MultilineFormatter)
@@ -245,6 +245,7 @@ parser = argparse.ArgumentParser(description= """description:
 parser._optionals.title = "arguments"
 
 parser.add_argument("-i", "--input", help = "paths to two or more fastx files to demultiplex, required. These may be compressed.", type = str, metavar = "IN_R1 IN_R2", required = True, nargs ='+', action=required_multiple(2))
+parser.add_argument("-t", "--threads", help = "the number of cores/threads to run cutadapt on", type = int, default = 1)
 parser.add_argument("-d", "--demuxtable", help = "path to a demultiplexing table, required", type = str, metavar = "X", action='append', required=True)
 parser.add_argument("-c", "--conversion", help = "path to a conversion table", type = str, metavar = "X", required=False)
 parser.add_argument("-a", "--arguments", help = "further arguments to pass to cutadapt, in a single quoted list", type = str, metavar = "'-v W -x Y'")
@@ -330,7 +331,7 @@ if __name__ == "__main__":
 		
 		# Generate and run cutadapt command
 		
-		cutargs = ['cutadapt']
+		cutargs = ['cutadapt -cores ' + args.threads]
 		if(args.arguments): cutargs.extend(re.split(' +', args.arguments))
 		
 		cutargs.extend([o for a, d in zip(['-o', '-p'],['R1', 'R2']) for o in [a, os.path.join(args.output, well + '_{name1}-{name2}_' + d + '.' + ffmt)]])
