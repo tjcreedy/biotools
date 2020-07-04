@@ -470,7 +470,7 @@ if __name__ == "__main__":
         cutstdout = cutcmd.stdout.decode("utf-8")
         
         # Write outputs
-        if(args.printcutadapt):
+        if(args.printdetails):
             sys.stdout.write("\n")
             sys.stdout.write("Cutadapt command: %s \n" % (' '.join(cutargs)))
             sys.stdout.write(cutstdout)
