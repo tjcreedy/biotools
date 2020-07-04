@@ -364,7 +364,7 @@ if __name__ == "__main__":
         sys.stdout.write("Demultiplexing using internal indices\n")
     elif(args.prefix == '^'):
         sys.stdout.write("Demultiplexing using anchored indices\n")
-    elif(re.match('^X[N*]$', args.prefix)):
+    elif(re.match('^XN*$', args.prefix)):
         sys.stdout.write("Demultiplexing using non-internal indices\n")
     else:
         sys.exit("Error: value to -p/--prefix not recognised\n")
