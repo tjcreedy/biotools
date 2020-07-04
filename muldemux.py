@@ -318,7 +318,7 @@ parser.add_argument("-c", "--conversion",
 parser.add_argument("-a", "--arguments", 
                     help = ("further arguments to pass to cutadapt, in a "
                             "single quoted list"), 
-                    type = str, metavar = "'-v W -x Y'", default = '-O 4')
+                    type = str, metavar = "'-v W -x Y'", default = '-O 5')
 parser.add_argument("-p", "--prefix",
                     help = ("string to determine index position type, either "
                             "internal (no value), anchored (^) or "
