@@ -278,14 +278,23 @@ input file followed by a well number.
 The basic cutadapt command used is 'cutadapt -g O1=INDEX -G O2=INDEX [ -g 
 O2=INDEX2 -G O2=INDEX2 ] -o IN_R1 -p IN_R2 OUT_R1 OUT_R2'. Further arguments 
 can be supplied to cutadapt using -a/--arguments '-v W -x Y'. These will be 
-passed to cutadapt unchecked. Note that cutadapt does not support 
-multithreading in demultiplexing: do not attempt to pass it a '--cores' 
-argument.
+passed to cutadapt unchecked.  By default this is set to '-O 5', allowing 
+partial indices of 5 or more bases at the beginning of the read (unless 
+anchoring is set). Note that cutadapt does not support multithreading in 
+demultiplexing: do not attempt to pass it a '--cores' argument.
 |n
 Optionally, you can include primers in demultiplexing, by supplying the 
 sequences to -f/--forwardprimer and/or -r/--reverseprimer. The primer sequence 
 will simply be added to all of the respective indices, i.e. INDEXPRIMER and
-cutadapt run as normal.
+cutadapt run as normal. Note that error rate is calculated over the whole 
+length of both index and primer, so it's suggested to reduce the number of 
+mismatches allowed by using -a '-e 0.05' so that erroneous indices do not pass.
+|n
+The -p/--prefix argument determines the string inserted before indices, which
+determines whether indices should be internal(-p with no value), anchored 
+(-p ^) or non-internal (-p X, optionally followed by Ns to allow intrusion 
+into the read). See the cutadapt documentation for more details. By default 
+this is set to 'XN'
 |n
 Output files will be written to a directory named in --output, which will be 
 created if necessary. A statistics file will be written to -s/--statistics if 
@@ -309,10 +318,13 @@ parser.add_argument("-c", "--conversion",
 parser.add_argument("-a", "--arguments", 
                     help = ("further arguments to pass to cutadapt, in a "
                             "single quoted list"), 
-                    type = str, metavar = "'-v W -x Y'")
-parser.add_argument("-^", "--anchored", 
-                    help = "anchor the indices to the start of the reads", 
-                    action = 'store_true')
+                    type = str, metavar = "'-v W -x Y'", default = '-O 4')
+parser.add_argument("-p", "--prefix",
+                    help = ("string to determine index position type, either "
+                            "internal (no value), anchored (^) or "
+                            "non-internal (X[N+])"),
+                    type = str, metavar = "X", default = 'XN', 
+                    nargs = '?', action = 'store', const = '')
 parser.add_argument("-f", "--forwardprimer", 
                     help = "primer sequence to append to R1 indices", 
                     type = str, metavar = 'FPRIMER')
@@ -335,7 +347,7 @@ parser.add_argument("-k", "--keeperrors",
                     help = ("don't delete files for incorrect index "
                             "combinations"),
                     action = 'store_true')
-parser.add_argument("-p", "--printcutadapt", 
+parser.add_argument("-t", "--printdetails", 
                     help = "print cutadapt stdout/stderr to the terminal",
                     action = 'store_true')
 
@@ -346,6 +358,16 @@ if __name__ == "__main__":
     #args = parser.parse_args(['-i', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib1_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib1_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib2_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib2_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib3_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib3_R2.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib4_R1.fastq', '/home/thomas/Documents/NHM_postdoc/iBioGen/MetagenWorkshop/AMM/resources/metabarcoding/0_rawsequences/Lib4_R2.fastq', '-d', 'TEMP/demux.txt', '-c', 'TEMP/convert.txt', '-o', 'TEMP/out/', '-s', 'TEMP/stats.txt', '-w', '-j', '20'])
     
     args = parser.parse_args()
+    
+    # Check prefix
+    if(args.prefix == ''):
+        sys.stdout.write("Demultiplexing using internal indices\n")
+    elif(args.prefix == '^'):
+        sys.stdout.write("Demultiplexing using anchored indices\n")
+    elif(re.match('^X[N*]$', args.prefix)):
+        sys.stdout.write("Demultiplexing using non-internal indices\n")
+    else:
+        sys.exit("Error: value to -p/--prefix not recognised\n")
     
     # Sort input files
     
@@ -414,10 +436,12 @@ if __name__ == "__main__":
         stats_write = csv.writer(stats, delimiter = '\t', quotechar = '', 
                                  quoting = csv.QUOTE_NONE, escapechar = '')
     
-    # Loop through input file pairs
-    eq = '=^' if args.anchored else '='
+    # Set up index customisation
+    pfx = args.prefix
     primers = [p if p else '' 
                for p in [args.forwardprimer, args.reverseprimer]]
+    
+    # Loop through input file pairs
     for well, specs in data.items():
         sys.stdout.write( "Running cutadapt on file pair "
                          f"{well}: {specs['name']}...")
@@ -435,7 +459,7 @@ if __name__ == "__main__":
             # Add indices
         for a, d, p in zip(['-g', '-G'], specs['demux']['indices'], primers):
             for i in d:
-                cutargs.extend([a, i + eq + i + p])
+                cutargs.extend([a, f"{i}={pfx}{i}{p}"])
             # Add input files
         cutargs.extend(specs['files'])
             # Run
