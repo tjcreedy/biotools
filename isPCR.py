@@ -126,9 +126,6 @@ def getcliargs(arglist = None):
         parser.error(f"primer given to -r/--revers contains illegal letters "
                       "{','.join(illegal_letters(args.reverse))}\n")
     
-    
-    
-    
     sys.stderr.flush()
     return(args)
 
@@ -154,6 +151,7 @@ def main():
     for template in inseq:
         #template = next(inseq)
         
+        sys.stdout.write(f"{template.id} {len(template)}bp. ")
         complete = []
         partial = []
         
@@ -161,13 +159,19 @@ def main():
             #d,t = 0, template
             # Set up default sites
             sites = [[None], [None]]
-            
+            sitesn = [0, 0]
             # Do matching
             for i, p in enumerate(primers):
                 #i, p = 0, primers[0]
                 hits = p.finditer(str(template.seq))
                 if hits:
                     sites[i] = [h.span()[1-i] for h in hits]
+                    sitesn[i] = len(sites[i])
+            
+            sitesn = [1, 1]
+            sys.stdout.write(f"{'FS' if d == 0 else 'RS'}:, "
+                             f"{sitesn[0]} forward hits"
+                             f"{sitesn[1]} reverse hits;")
             
             # Get amplicons
             for f, r in itertools.product(*sites):
@@ -185,6 +189,8 @@ def main():
             if len(complete) + len(partial) > 0:
                 break
         
+        sys.stdout.write(f"{len(complete)} complete amplicons, "
+                         f"{len(partial)} partial amplicons.\n")
         # Write out amplicons
         if 0 < len(complete) + len(partial) <= args.maxamplicons:
             for c in complete:
@@ -192,6 +198,7 @@ def main():
             if args.partial:
                 for p in partial:
                     partfa.write(p.format('fasta'))
+        
     # Close handles
     compfa.close()
     if args.partial:
