@@ -70,4 +70,4 @@ for missing in [u for u in list(uniqtips) if u not in results]:
 
 # Write out
 for line in outdata:
-    sys.stdout.write('\t'.join(str(i) for i in line + results[line[2]]))
+    sys.stdout.write('\t'.join(str(i) for i in line + results[line[2]]) + '\n')
