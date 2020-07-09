@@ -48,7 +48,7 @@ matchout = OT.tnrs_match(uniqtips,
                          ).response_dict
 
 # Parse the results
-defaultout = [0, None, None, None, None]
+defaultout = [0, None, None, None, None, None]
 
 results = dict()
 for match in matchout['results']:
@@ -59,9 +59,10 @@ for match in matchout['results']:
         out[1] = dat['unique_name'] if 'unique_name' in dat else match['name']
         out[2] = dat['taxon']['rank']
         out[3] = dat['taxon']['ott_id']
+        out[4] = f"ott{out[3]}"
         taxsources = [d.split(':') for d in dat['taxon']['tax_sources']]
         taxsources = {ts[0]: ts[1] for ts in taxsources}
-        out[4] = taxsources['ncbi'] if 'ncbi' in taxsources else None
+        out[5] = taxsources['ncbi'] if 'ncbi' in taxsources else None
     results[match['name']] = out
 
 # Add in missing results
