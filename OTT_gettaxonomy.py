@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import sys
-import json
 import copy
 from opentree import OTCommandLineTool, get_suppressed_taxon_flag_expl_url
 
@@ -21,7 +20,7 @@ cli.parser.add_argument("--include-suppressed", action="store_true",
                         help='Return taxa that are normally suppressed from '
                              'TNRS results. See '
                              f'{get_suppressed_taxon_flag_expl_url()}')
-OT, args = cli.parse_cli('--input testtaxa.txt'.split(' '))
+OT, args = cli.parse_cli()
 
 kwargs = {'include_children': False,
           'include_lineage': False,
