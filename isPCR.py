@@ -113,7 +113,11 @@ def getcliargs(arglist = None):
                                'each input sequence. Input sequences with '
                                'more amplicons than this value will output 0',
                         type = int, default = 1)
-    
+    parser.add_argument('-a', '--padto',
+                        help = 'add Ns to the start or end of partial '
+                               'amplicons shorter than this value to make up '
+                               'to this length',
+                        type = int, default = 0)
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
     
     # Checking
@@ -134,6 +138,7 @@ def getcliargs(arglist = None):
 def main():
     
     # Get arguments
+    #args = getcliargs('-i /home/thomas/Downloads/MIDORI/MIDORI_UNIQUE/MIDORI_UNIQUE_20180221_COI_MOTHUR.fasta -f CCNGAYATRGCNTTYCCNCG -r TANACYTCNGGRTGNCCRAARAAYCA -c MIDORI_UNIQUE_20180221_COI_418_complete.fasta -p MIDORI_UNIQUE_20180221_COI_418_partial.fasta -n 350 -x 436 -m 1 -a 418'.split(' '))
     args = getcliargs()
     
     # Parse primers
@@ -142,6 +147,7 @@ def main():
     
     # Set up input fasta
     inseq =  SeqIO.parse(args.input, 'fasta')
+    #indict = SeqIO.to_dict(inseq)
     
     # Set up output fasta handles
     compfa = open(args.complete, 'w')
@@ -149,6 +155,7 @@ def main():
         partfa = open(args.partial, 'w')
     
     for template in inseq:
+        #template = indict['AB564645.1._1._1044']
         #template = next(inseq)
         
         sys.stdout.write(f"{template.id} {len(template)}bp. ")
@@ -157,40 +164,49 @@ def main():
         
         for d, t in enumerate((template, template.reverse_complement())):
             #d,t = 0, template
-            # Set up default sites
-            sites = [[None], [None]]
-            sitesn = [0, 0]
-            # Do matching
-            for i, p in enumerate(primers):
-                #i, p = 0, primers[0]
-                hits = p.finditer(str(template.seq))
-                if hits:
-                    sites[i] = [h.span()[1-i] for h in hits]
-                    sitesn[i] = len(sites[i])
+            #d,t = 1, template.reverse_complement()
             
-            sitesn = [1, 1]
-            sys.stdout.write(f"{'FS' if d == 0 else 'RS'}:, "
-                             f"{sitesn[0]} forward hits"
-                             f"{sitesn[1]} reverse hits;")
+            # Generate hit lists for each primer
+            hits = [p.finditer(str(t.seq)) for p in primers]
+            # Extract start/stop positions for spanned regions
+            sites = [[h.span()[1-i] for h in hs] for i, hs in enumerate(hits)]
+            # Count hits
+            sitesn = [len(s) for s in sites]
+            # Replace empty lists with None
+            sites = [s if len(s) > 0 else [None] for s in sites]
+            
+            sys.stdout.write(f"{'FS' if d == 0 else 'RS'}: "
+                             f"{sitesn[0]} forward hit(s), "
+                             f"{sitesn[1]} reverse hit(s), ")
             
             # Get amplicons
             for f, r in itertools.product(*sites):
-                #f, r = sites[0][0], sites[1][0]
+                #f, r = list(itertools.product(*sites))[0]
+                lens = []
                 if f or r:
                     amp = template[f:r]
+                    lens.append(str(len(amp)))
                     if d == 1: amp.seq = amp.seq.reverse_complement()
                     if args.minlength <= len(amp) <= args.maxlength:
                         if f and r:
                             complete.append(amp)
                         else:
+                            if 0 < args.padto and len(amp) < args.padto:
+                                pad = Seq.Seq('N' * (args.padto - len(amp)))
+                                if (f and d == 0) or (r and d == 1):
+                                    amp.seq = amp.seq + pad
+                                else:
+                                    amp.seq = pad + amp.seq
                             partial.append(amp)
             
-            # Break out of loop if find amplicons
-            if len(complete) + len(partial) > 0:
+            sys.stdout.write(f"{', '.join(lens)}bp amplicon(s); ")
+            # Break out of loop if found any hits (even if rejected)
+            if len(lens) > 0:
                 break
         
-        sys.stdout.write(f"{len(complete)} complete amplicons, "
-                         f"{len(partial)} partial amplicons.\n")
+        sys.stdout.write(f"written {len(complete)} complete amplicon(s), "
+                         f"{len(partial)} partial amplicon(s)\n")
+        
         # Write out amplicons
         if 0 < len(complete) + len(partial) <= args.maxamplicons:
             for c in complete:
