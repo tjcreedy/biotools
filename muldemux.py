@@ -288,7 +288,10 @@ sequences to -f/--forwardprimer and/or -r/--reverseprimer. The primer sequence
 will simply be added to all of the respective indices, i.e. INDEXPRIMER and
 cutadapt run as normal. Note that error rate is calculated over the whole 
 length of both index and primer, so it's suggested to reduce the number of 
-mismatches allowed by using -a '-e 0.05' so that erroneous indices do not pass.
+mismatches allowed by using -a '-e 0' so that erroneous indices do not pass.
+It's also suggested to set the minimum overlap to a suitably high number such
+that the primer and at least 4 bases of the primer must be present. This can
+be done separately for each primer by adding ';o=N' after the primer sequence.
 |n
 The -p/--prefix argument determines the string inserted before indices, which
 determines whether indices should be internal(-p with no value), anchored 
@@ -515,7 +518,7 @@ if __name__ == "__main__":
                 else:
                     if(name):
                         sys.stderr.write("No output file could be found for "
-                                         "{name}, either there was an error "
+                                         f"{name}, either there was an error "
                                          "or no matches for the corresponding "
                                          "index pair were found by cutadapt\n")
                 
