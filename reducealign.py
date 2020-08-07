@@ -141,9 +141,9 @@ def getcliargs(arglist = None):
         description:
         |n
         This script removes columns of the alignment(s) passed to 
-        -a/--alignment, retaining the minimal set of columns such that all 
-        sequences share information (i.e. a non gap, non ? character) with at
-        least one other sequence. If multiple alignments are passed, only those
+        -a/--alignment, retaining a roughly minimal set of columns such that 
+        all sequences have information (i.e. a non gap, non ? character) in at
+        least one column. If multiple alignments are passed, only those 
         alignments with columns required to meet this criterion are output.
         |n
         Optionally, the informative regions of some sequences can be protected
@@ -195,7 +195,7 @@ def getcliargs(arglist = None):
 
 def main():
     
-    args = getcliargs('-a genes/ND4L.fa genes/Mito_COX1_Aligned.fasta -p preserve.txt -r -o testout'.split(' '))
+    args = getcliargs()
     
     # Create output directory if needed
     if len(args.alignment) > 1:
