@@ -68,31 +68,31 @@ def process_alignment(name, path, preserve, bycodon = False):
     align = drop_empty_rows(align)
     preskeep = []
     preservealign = []
+    step = 3 if bycodon else 1
     if len(preserve) > 0:
         preservealign = [a for a in align if a.name in preserve]
     if len(preservealign) > 0:
         preservealign = Align.MultipleSeqAlignment(preservealign)
         preserved = preserved_columns(preservealign, bycodon)
-        preskeep = range(preserved[0], preserved[1] + 1)
+        preskeep = range(preserved[0], preserved[1] + 1, step)
         checkalign = [a for a in align if a.name not in preserve]
         checkalign = Align.MultipleSeqAlignment(checkalign)
         processorder = itertools.chain(preskeep,
-                                       range(0, preserved[0]),
+                                       range(0, preserved[0], step),
                                        range(preserved[1] + 1,
-                                             align.get_alignment_length()))
+                                             align.get_alignment_length()), 
+                                             step)
     else:
         checkalign = align
-        processorder = range(align.get_alignment_length())
+        processorder = range(0, align.get_alignment_length(), step)
     del align
     processorder = list(processorder)
     results = []
     allrows = set()
-    step = 3 if bycodon else 1
-    for oi in range(0, len(processorder), step):
-        #oi = list(range(0, len(processorder), step))[0]
-        i = processorder[oi]
-        infset = {s for j in range(i, i + step) 
-                    for s in informative_set(checkalign[:,j:j+1])}
+    for i in processorder:
+        j = min([i + step, checkalign.get_alignment_length()])
+        infset = {s for k in range(i, j) 
+                    for s in informative_set(checkalign[:,k:k+1])}
         if len(results) == 0:
             results.append([name, i, infset])
             allrows = infset
@@ -169,12 +169,12 @@ def getcliargs(arglist = None):
     parser._optionals.title = "arguments"
     
     parser.add_argument('-a', '--alignment',
-                        help = 'path to an alignment in fasta format',
+                        help = 'path to one or more alignments, fasta format',
                         metavar = 'path', required = True, nargs = '+',
                         type = str)
     parser.add_argument('-p', '--preserve',
-                        help = 'path to a text file of sequences for which all'
-                               'columns should be preserved',
+                        help = 'path to a text file of sequences for which '
+                               'all columns should be preserved',
                         metavar = 'path', required = False, type = str)
     parser.add_argument('-r', '--retaincodons',
                         help = 'retain codon positioning in outputs',
@@ -212,10 +212,12 @@ def main():
     results = []
     paths = dict()
     for path in args.alignment:
+        sys.stdout.write(f"Reading {path}\n")
         #path = args.alignment[1]
         name = os.path.basename(path)
         paths[name] = path
         sys.stdout.write(f"Reducing {name}...")
+        sys.stdout.flush()
         res, pc = process_alignment(name, path, preserve, args.retaincodons)
         sys.stdout.write(f"reduced to {len(res)} "
                          f"{'codon ' if args.retaincodons else ''}columns\n")
@@ -244,15 +246,16 @@ def main():
             outpath = args.output
         pcols = set([r[1] for r in results if r[0] == name] 
                     + list(prescols[name]))
-        presprin = f", including {len(prescols[name])} preserved columns,"
+        presprin = f", of which {len(prescols[name])} are preserved,"
+        
         sys.stdout.write(f"Writing {len(pcols)} "
-                         f"{'codon ' if args.retaincodons else ''}columns"
-                         f"{presprin if args.preserve else ''} ")
+                         f"{'codon ' if args.retaincodons else ''}columns ")
         step = 1
         if args.retaincodons:
             step = 3
-            sys.stdout.write(f"for a total of {len(pcols) * 3} bases ")
-        sys.stdout.write(f"from {name} to {outpath}\n")
+            sys.stdout.write(f"({len(pcols) * 3} bases)")
+        sys.stdout.write(f"{presprin if args.preserve else ''} "
+                         f"from {name} to {outpath}\n")
         
         pcols = sorted(list(pcols))
         align = AlignIO.read(paths[name], 'fasta')
