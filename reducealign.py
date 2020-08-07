@@ -195,7 +195,7 @@ def getcliargs(arglist = None):
 
 def main():
     
-    args = getcliargs('-a MTCOX1_pCCCPBC.fa ND5.fa -p new_terminals.txt -r -o testout'.split(' '))
+    args = getcliargs()
     
     # Create output directory if needed
     if len(args.alignment) > 1:
