@@ -105,11 +105,12 @@ def absent_authentication():
     exit()
 
 def get_authentication(path):
+    #path = args.ncbiauth
     auth = dict()
     emailregex = "^(\D)+(\w)*((\.(\w)+)?)+@(\D)+(\w)*((\.(\D)+(\w)*)+)?(\.)[a-z]{2,}$"
     with open(path, 'r') as fh:
         for line in fh:
-            line.strip()
+            line = line.strip()
             if line[0] == '#' or line == '': continue
             if re.match(emailregex, line):
                 auth['email'] = line
@@ -131,13 +132,14 @@ def chunker(seq, size):
 def retrieve_ncbi_remote(taxids, chunksize, auth):
     """Search NCBI for lineage information given a tax id.
     """
-    #taxids, auth = [['143734'], get_authentication(args.ncbiauth)]
+    #taxids, chunksize, auth = absent, args.chunksize, get_authentication(args.ncbiauth)
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
     
     out = dict()
     
     for taxidset in chunker(taxids, chunksize):
+        #taxidset = list(chunker(taxids, chunksize))[0]
         handle = Entrez.efetch(db="taxonomy", id=taxidset)
         records = Entrez.read(handle)
         handle.close()
@@ -231,7 +233,7 @@ parser.add_argument('-c', '--chunksize', help='number of ids per request',
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    #arglist = "-i otus_nt_blast-MEGAN.txt -l pyNCBI.db -o otus_MEGAN_tax.tsv -n tjc_ncbi_authentication.txt".split(' ')
+    #arglist = "-i otus_nt_blast_Rivers-RN_TXID.txt -l NCBI_taxonomy.json -o test.tsv -n ncbi_authentication.txt".split(' ')
     #args = parser.parse_args(arglist)
     #os.chdir('/home/thomas/Documents/NHM_postdoc/Sequencing/NHMMar2019')
     
