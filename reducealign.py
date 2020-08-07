@@ -80,8 +80,8 @@ def process_alignment(name, path, preserve, bycodon = False):
         processorder = itertools.chain(preskeep,
                                        range(0, preserved[0], step),
                                        range(preserved[1] + 1,
-                                             align.get_alignment_length()), 
-                                             step)
+                                             align.get_alignment_length(), 
+                                             step))
     else:
         checkalign = align
         processorder = range(0, align.get_alignment_length(), step)
@@ -195,7 +195,7 @@ def getcliargs(arglist = None):
 
 def main():
     
-    args = getcliargs()
+    args = getcliargs('-a MTCOX1_pCCCPBC.fa ND5.fa -p new_terminals.txt -r -o testout'.split(' '))
     
     # Create output directory if needed
     if len(args.alignment) > 1:
@@ -211,9 +211,11 @@ def main():
     prescols = dict()
     results = []
     paths = dict()
+    
     for path in args.alignment:
-        sys.stdout.write(f"Reading {path}\n")
         #path = args.alignment[1]
+        sys.stdout.write(f"Reading {path}\n")
+        
         name = os.path.basename(path)
         paths[name] = path
         sys.stdout.write(f"Reducing {name}...")
@@ -223,11 +225,11 @@ def main():
                          f"{'codon ' if args.retaincodons else ''}columns\n")
         results.extend(res)
         prescols[name] = pc
-    
+    #[[r[0], r[1], len(r[2])] for r in results]
     # Reduce sets
     if len(args.alignment) > 1:
         sys.stdout.write(f"{len(args.alignment)} separate "
-                         f"alignments produced a total of {len(results)}"
+                         f"alignments produced a total of {len(results)} "
                          f"{'codon ' if args.retaincodons else ''}columns,"
                          f"now reducing these results further...\n")
         maxn = len(set(n for r in results for n in r[2]))
@@ -239,7 +241,7 @@ def main():
     # Write out preserved columns
     outputs = set(r[0] for r in results)
     for name in outputs:
-        #name = outputs[0]
+        #name = outputs[1]
         if len(args.alignment) > 1:
             outpath = os.path.join(args.output, name)
         else:
