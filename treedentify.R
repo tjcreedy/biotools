@@ -62,7 +62,7 @@ spec <- matrix(c(
   'auth'      , 'a', 1, "chacter"   , "an ncbi_authentication text file with your API key as the second line not beginning with #",
   'phylo'     , 'p', 1, "character" , "the phylogeny with known and unknown taxonomy",
   'newprefix' , 'n', 2, 'character' , "all novel tips (to be identified) start with this (e.g. \'otu\')",
-  'metadata'  , 'm', 2, "character" , "metadata containing phylogeny for the tree",
+  'metadata'  , 'm', 2, "character" , "metadata containing taxonomy for the tree",
   'threads'   , 't', 2, 'integer'   , "number of threads to run on",
   'taxcache'  , 'c', 2, 'character' , "path to a .RDS cache of taxonomy data to read from and/or write to",
   'notstrict' , 's', 0, 'logical'   , "don't strictly taxonomise the tree"
