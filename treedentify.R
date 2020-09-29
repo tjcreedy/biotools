@@ -59,7 +59,7 @@ listancestors <- function(tree, n, inc.n = F){
 
 spec <- matrix(c(
   'help'      , 'h', 0, "logical"   , "show this helpful message",
-  'auth'      , 'a', 1, "chacter"   , "an ncbi_authentication text file with your API key as the second line not beginning with #",
+  'auth'      , 'a', 1, "character" , "an ncbi_authentication text file with your API key as the second line not beginning with #",
   'phylo'     , 'p', 1, "character" , "the phylogeny with known and unknown taxonomy",
   'newprefix' , 'n', 2, 'character' , "all novel tips (to be identified) start with this (e.g. \'otu\')",
   'metadata'  , 'm', 2, "character" , "metadata containing taxonomy for the tree",
@@ -81,10 +81,6 @@ rm(spec)
 
 # Set defaults -----------------------------------------------------------
 
-# opt$phylo <- "3.RAxML_Mitogenome+OTUs.nwk"
-# opt$auth <- "tjc_ncbi_authentication.txt"
-# opt$notstrict <- TRUE
-# opt$taxcach <- "ncbi_cache.RDS"
 
 if ( is.null(opt$auth)      )  { stop("NCBI authentication file is required") }
 if ( is.null(opt$phylo)     )  { stop("Phylogeny is required")                }
@@ -136,8 +132,10 @@ if ( !is.null(opt$metadata) ) {
   }
   
   # Extract taxon_ids if present and store, keep remainder for taxonomy
-  if ( 'taxon_id' %in% colnames(metadata) ) {
-    metadataout <- metadata[, 'taxon_id']
+  taxid_names <- c('taxon_id', 'taxid', 'ncbi_taxid')
+  taxid_name <- taxid_names[taxid_names %in% colnames(metadata)]
+  if ( length(taxid_name) > 0 ){
+    metadataout <- metadata[, taxid_name[1]]
     metadataout <- metadataout[metadataout != '' & ! is.na(metadataout)]
     metadata <- metadata[!row.names(metadata) %in% names(metadataout), ]
   } 
@@ -311,7 +309,7 @@ row.names(taxonomy) <- taxonomy$id
 message(paste("Applying taxonomy. The next message will probably be warnings from geiger::nodelabel.phylo - don't be alarmed:",
               "> The message 'redundant labels encountered' means that these levels are fully nested, no big deal.",
               "> The message 'redundant labels encountered at root' means that the entire tree falls inside these taxa, also no big deal unless the first value is a very low taxonomic level.",
-              "> The message 'labels missing from phy' means that it couldn't place these taxonomic levels. We don't expect it to be able to place everything, but if this seems like a lot you could try running again with -notstrict (if you aren't already.",
+              "> The message 'labels missing from phy' means that it couldn't place these taxonomic levels. We don't expect it to be able to place everything, but if this seems like a lot you could try running again with -notstrict (if you aren't already).",
               sep = '\n'))
 tree_nl <- nodelabel.phylo(tree, taxonomy[preslevels], strict = !opt$notstrict, ncores = opt$threads)
 
