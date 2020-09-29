@@ -97,6 +97,8 @@ if ( is.null(opt$notstrict) )  { opt$notstrict  <- FALSE                      }
 
 # Load in tree and get tips ----------------------------------------------
 
+message(paste("Reading tree", opt$phylo))
+
 tree <- read.tree(opt$phylo)
 tips <- tree$tip
 
@@ -107,6 +109,8 @@ if ( ! is.null(opt$newprefix) ){
   unknowntips <- unknowntips[!unknowntips %in% noveltips]
 }
 rm(tips)
+
+message(paste("Read tree with", length(tree$tip.label), "tips"))
 
 # Load the cache if present -----------------------------------------------
 
@@ -126,6 +130,8 @@ options(ENTREZ_KEY = authlines[2])
 metadataout <- c()
 
 if ( !is.null(opt$metadata) ) { 
+  message(paste("Loading and parsing", opt$metadata, "for taxonomy data"))
+  
   # Load data
   metadata <- read.csv(opt$metadata, row.names = 1)
   
@@ -134,10 +140,12 @@ if ( !is.null(opt$metadata) ) {
   metanames <- intersect(unknowntips, metanames)
  
   # Subset only names of interest, check that we have data
-  metadata <- metadata[metanames, ]
-  if ( nrow(metadata) == 0 ) {
-    stop("Error: cannot identify match any tip names on the tree with any values in the first column of the metadata table")
+  
+  if ( length(metanames) == 0 ) {
+    stop("Error: cannot match any tip names on the tree with any values in the first column of the metadata table")
   }
+  message(paste("Metadata table has", nrow(metadata), "rows, of which", length(metanames), "match with tips of the tree"))
+  metadata <- metadata[metanames, ]
   
   # Extract taxon_ids if present and store, keep remainder for taxonomy
   taxid_names <- c('taxon_id', 'taxid', 'ncbi_taxid')
@@ -146,6 +154,7 @@ if ( !is.null(opt$metadata) ) {
     metadataout <- setNames(metadata[, taxid_name[1]], rownames(metadata))
     metadataout <- metadataout[metadataout != '' & ! is.na(metadataout)]
     metadata <- metadata[!row.names(metadata) %in% names(metadataout), ]
+    message(paste("Read NCBI taxids from", length(metadataout), "rows of the metadata"))
   } 
   
   # If any rows remain
@@ -155,6 +164,8 @@ if ( !is.null(opt$metadata) ) {
     
     # Subset rows, sorting by level if present
     if ( length(preslevels) > 0 ) {
+      message(paste("Using taxonomy information present in", length(preslevels), "detected taxonomy columns to search for NCBI taxids"))
+      
       metadata <- metadata[, preslevels]
       
       # Find taxon ids using taxize by working up the available taxonomic levels
@@ -163,15 +174,20 @@ if ( !is.null(opt$metadata) ) {
         taxa <- metadata[,level]
         uniqtaxa <- unique(taxa)
         uniqtaxa <- na.omit(uniqtaxa[uniqtaxa != ''])
+        taxids <- c()
         if( length(uniqtaxa) > 0 ){
           suppressWarnings(
             uids <- get_uid(uniqtaxa, messages = F, ask = F)
           )
           uids <- setNames(uids, uniqtaxa)
           taxids <- setNames(uids[taxa], rownames(metadata))
-          metadataout <- c(metadataout, taxids[!is.na(taxids)])
-          metadata <- metadata[!rownames(metadata) %in% names(metadataout), ]
+          taxids <- taxids[!is.na(taxids)]
         }
+        message(paste("Search of", length(uniqtaxa), "unique", preslevels[level], "values from", nrow(metadata), "remaining metadata rows yielded", 
+                      length(taxids), "matches to NCBI taxids"))
+        metadataout <- c(metadataout, taxids)
+        metadata <- metadata[!rownames(metadata) %in% names(metadataout), ]
+        
         level <- level + 1
       }
       
@@ -187,7 +203,7 @@ if ( !is.null(opt$metadata) ) {
   
   unknowntips <- unknowntips[! unknowntips %in% names(metadataout)]
   
-  message(paste("Retrieved taxon ids for", length(metadataout), "tips from metadata"))
+  message(paste("Retrieved NCBI taxids for a total of", length(metadataout), "tips from metadata,", nrow(metadata), "remain unidentified"))
 }
 
 # Retrieve taxonomy based on Genbank accessions ---------------------------
@@ -280,6 +296,8 @@ rm(unknowntips)
 tip_taxonid <- c(metadataout, gbout, tipout)
 rm(metadataout, gbout, tipout)
 
+message(paste("NCBI taxids available for", length(tip_taxonid), "tips of the tree, searching these in NCBI to retrieve complete taxonomies"))
+
 # Get taxonomy classification
   # Find unique
 uuids <- unique(tip_taxonid)
@@ -288,16 +306,28 @@ inlocal <- uuids[uuids %in% names(taxcache)]
 taxlocal <- list()
 if ( length(inlocal) > 0 ) {
   taxlocal <- taxcache[inlocal]
+  message(paste("Taxonomy retrieved from local NCBI cache for", length(taxlocal), "unique NCBI taxids", sum(tip_taxonid %in% names(taxlocal)), "total tips"))
 }
   # Get from NCBI
-taxncbi <- classification(uuids[! uuids %in% inlocal], db = "ncbi")
+uuids <- uuids[! uuids %in% inlocal]
+taxncbi <- classification(uuids, db = "ncbi")
+taxncbi <- taxncbi[!is.na(taxncbi)]
+message(paste("Taxonomy retrieved from remote NCBI search for", length(taxncbi), "unique NCBI taxids,", sum(tip_taxonid %in% names(taxncbi)), "total tips"))
+
   # Concatenate
 taxall <- c(taxlocal, taxncbi)
 if ( ! is.null(opt$taxcache) ) {
   saveRDS(taxall, opt$taxcache)
 }
+  # Identify any missing
+unid_taxid <- tip_taxonid[! tip_taxonid %in% names(taxall)]
+if ( length(unid_taxid) > 0 ){
+  message(paste(length(unid_taxid), "tips corresponding to", length(unique(unid_taxid)), "unique NCBI taxids failed to retrieve taxonomy, these tips will be",
+                "added to the known novel tips"))
+  noveltips <- c(names(unid_taxid), noveltips)
+}
   # Grab complete
-taxonid_taxonomy <- taxall[tip_taxonid]
+taxonid_taxonomy <- taxall[tip_taxonid[tip_taxonid %in% names(taxall)]]
 rm(taxall, taxlocal, taxncbi, uuids)
 
   # Convert to data frame
@@ -326,6 +356,8 @@ tree_nl <- nodelabel.phylo(tree, taxonomy[preslevels], strict = !opt$notstrict, 
 write.tree(tree_nl, "taxonomised_tree.nwk")
 
 # Get taxonomy for each novel tip
+message(paste("Completed applying taxonomy to tree, using this to find taxonomy for", length(noveltips), "novel tips"))
+
 noveltaxonomy <- lapply(noveltips, function(tip){
   # Get ancestor nodes for this tip
   ancnods <- listancestors(tree_nl, tip)
