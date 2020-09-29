@@ -79,6 +79,14 @@ if ( is.null(opt) | !is.null(opt$help) ){
 
 rm(spec)
 
+#opt$auth <- "~/passwords/api_tokens/ncbi_authentication.txt"
+#opt$phylo <- "~/Documents/NHM_postdoc/MMGdatabase/phylogeny/phycomplete_plus_BIBC_ASVsetall_n1_2020-09-23_NBL.tre"
+#opt$newprefix <- 'uniq'
+#opt$metadata <- "~/Documents/NHM_postdoc/MMGdatabase/AllMitogenomesMaster_2020-09-23.csv"
+#opt$threads <- 2
+#opt$taxcache <- "~/Documents/NHM_postdoc/references/NCBI_taxonomy.RDS"
+#opt$notstrict <- T
+
 # Set defaults -----------------------------------------------------------
 
 
@@ -135,7 +143,7 @@ if ( !is.null(opt$metadata) ) {
   taxid_names <- c('taxon_id', 'taxid', 'ncbi_taxid')
   taxid_name <- taxid_names[taxid_names %in% colnames(metadata)]
   if ( length(taxid_name) > 0 ){
-    metadataout <- metadata[, taxid_name[1]]
+    metadataout <- setNames(metadata[, taxid_name[1]], rownames(metadata))
     metadataout <- metadataout[metadataout != '' & ! is.na(metadataout)]
     metadata <- metadata[!row.names(metadata) %in% names(metadataout), ]
   } 
@@ -150,22 +158,24 @@ if ( !is.null(opt$metadata) ) {
       metadata <- metadata[, preslevels]
       
       # Find taxon ids using taxize by working up the available taxonomic levels
-      metadata$taxon_id <- apply ( metadata, 1, function(tax) {
-        out <- NA
-        for ( t in na.omit(tax[tax != '']) ) {
-          out <- get_uid(t, messages = F, ask = F)[1]
-          if ( !is.na(out) ) break
+      level <- 1
+      while( level <= length(preslevels) ){
+        taxa <- metadata[,level]
+        uniqtaxa <- unique(taxa)
+        uniqtaxa <- na.omit(uniqtaxa[uniqtaxa != ''])
+        if( length(uniqtaxa) > 0 ){
+          suppressWarnings(
+            uids <- get_uid(uniqtaxa, messages = F, ask = F)
+          )
+          uids <- setNames(uids, uniqtaxa)
+          taxids <- setNames(uids[taxa], rownames(metadata))
+          metadataout <- c(metadataout, taxids[!is.na(taxids)])
+          metadata <- metadata[!rownames(metadata) %in% names(metadataout), ]
         }
-        return(out)
-      })
+        level <- level + 1
+      }
       
-      # Drop anything that didn't return a taxon id
-      metadata <- metadata[! is.na(metadata$taxon_id), 'taxon_id']
-      
-      # Concatenate all the found taxon_ids
-      metadataout <- c(metadataout, metadata)
-      
-      if (nrow(metadataout) == 0) {
+      if (length(metadataout) == 0) {
         stop("Error: failed to find any usable taxonomy information in the metadata file")
       }
         
