@@ -198,7 +198,7 @@ if ( !is.null(opt$metadata) ) {
           locuids <- c()
           if ( !is.null(opt$taxcache) ){
             locuids <- get_uid_local(uniqtaxa, taxcache, preslevels[level])
-            locuids <- setNames(locuid, uniqtaxa)
+            locuids <- setNames(locuids, uniqtaxa)
             uniqtaxa <- uniqtaxa[is.na(locuids)]
           }
           suppressWarnings(
