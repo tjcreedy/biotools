@@ -50,6 +50,25 @@ listancestors <- function(tree, n, inc.n = F){
   }
 }
 
+
+
+
+get_uid_local <- function(terms, localcache, rank){
+  # terms = uniqtaxa
+  # localcache = taxcache
+  # rank = preslevels[level]
+  taxnames <- sapply(localcache, function(td){
+    if ( rank %in% td$rank ){
+      return(td$name[td$rank == rank])
+    } else {
+      return(NA)
+    }
+  })
+  taxnames <- taxnames[!is.na(taxnames)]
+  taxnames <- setNames(names(taxnames), taxnames)
+  return(unname(taxnames[terms]))
+}
+
 # Set up options ----------------------------------------------------------
 # col1: long flag name
 # col2: short flag name
@@ -176,15 +195,22 @@ if ( !is.null(opt$metadata) ) {
         uniqtaxa <- na.omit(uniqtaxa[uniqtaxa != ''])
         taxids <- c()
         if( length(uniqtaxa) > 0 ){
+          locuids <- c()
+          if ( !is.null(opt$taxcache) ){
+            locuids <- get_uid_local(uniqtaxa, taxcache, preslevels[level])
+            locuids <- setNames(locuid, uniqtaxa)
+            uniqtaxa <- uniqtaxa[is.na(locuids)]
+          }
           suppressWarnings(
-            uids <- get_uid(uniqtaxa, messages = F, ask = F)
+            remuids <- get_uid(uniqtaxa, messages = F, ask = F)
           )
-          uids <- setNames(uids, uniqtaxa)
+          remuids <- setNames(remuids, uniqtaxa)
+          uids <- c(locuids, remuids)
           taxids <- setNames(uids[taxa], rownames(metadata))
           taxids <- taxids[!is.na(taxids)]
         }
-        message(paste("Search of", length(uniqtaxa), "unique", preslevels[level], "values from", nrow(metadata), "remaining metadata rows yielded", 
-                      length(taxids), "matches to NCBI taxids"))
+        message(paste("Search of", length(uniqtaxa), "unique", preslevels[level], "values from", nrow(metadata), "remaining metadata rows resulted in", 
+                      length(taxids), "tips with matches to NCBI taxids"))
         metadataout <- c(metadataout, taxids)
         metadata <- metadata[!rownames(metadata) %in% names(metadataout), ]
         
