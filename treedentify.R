@@ -332,14 +332,16 @@ inlocal <- uuids[uuids %in% names(taxcache)]
 taxlocal <- list()
 if ( length(inlocal) > 0 ) {
   taxlocal <- taxcache[inlocal]
-  message(paste("Taxonomy retrieved from local NCBI cache for", length(taxlocal), "unique NCBI taxids", sum(tip_taxonid %in% names(taxlocal)), "total tips"))
+  message(paste("Taxonomy retrieved from local NCBI cache for", length(taxlocal), "unique NCBI taxids,", sum(tip_taxonid %in% names(taxlocal)), "total tips"))
 }
   # Get from NCBI
 uuids <- uuids[! uuids %in% inlocal]
-taxncbi <- classification(uuids, db = "ncbi")
-taxncbi <- taxncbi[!is.na(taxncbi)]
-message(paste("Taxonomy retrieved from remote NCBI search for", length(taxncbi), "unique NCBI taxids,", sum(tip_taxonid %in% names(taxncbi)), "total tips"))
-
+taxncbi <- list()
+if ( length(uuids) > 0 ){
+  taxncbi <- classification(uuids, db = "ncbi")
+  taxncbi <- taxncbi[!is.na(taxncbi)]
+  message(paste("Taxonomy retrieved from remote NCBI search for", length(taxncbi), "unique NCBI taxids,", sum(tip_taxonid %in% names(taxncbi)), "total tips"))
+}
   # Concatenate
 taxall <- c(taxlocal, taxncbi)
 if ( ! is.null(opt$taxcache) ) {
