@@ -19,7 +19,7 @@ suppressMessages(require(ape))
 
 spec <- matrix(c(
   'help'   , 'h', 0, "logical",
-  'phy'    , 't', 1, "character",
+  'phy'    , 'p', 1, "character",
   'nodes'  , 'n', 2, "boolean"
 ), byrow = T, ncol = 4)
 
