@@ -42,6 +42,6 @@ phy <- read.tree(opt$phy)
 if( opt$nodes ){
   out <- phy$node.label
 } else {
-  out <- phy$node.label
+  out <- phy$tip.label
 }
 writeLines(out)
