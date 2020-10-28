@@ -14,6 +14,7 @@ use LWP::Simple;
 
 my @gbpaths;
 my $outdir;
+my $genepresence;
 
 my $minregion = 1;
 my @reqregion;
@@ -32,7 +33,6 @@ my $genenames = get 'https://raw.githubusercontent.com/tjcreedy/biotools/master/
 
 my ($known_genes, $genesort, $generegion) = sort_genes($genenames);
 
-
 ########################################################
 # USAGE
 #
@@ -50,6 +50,8 @@ Description:
 	A separate fasta will be written for each region found, containing all of the sequences of that CDS from across all the different sequences in the genbank file(s). The LOCUS name of the sequence in the genbank-format flat file will be used as the sequence header. Alternatively, you can try to use use the organism field of the genbank file as the sequence header using --organism: note that this is very likely to give blank or non-unique headers, and if the script fails to parse the species name it will revert to the LOCUS field.
 	
 	Optionally, you can specify that sequences will only be output for entries where a minimum number of regions are met using -minregion. Similarly, you can optionally specify that certain regions must be present in a sequence for it to output any regions using the -reqregion option. For example, if you only wanted to retrieve sequences for regions from genomes that contain COX1 and COB, you would specify -reqregion COX1 COB. The names used must conform with the standard set of output names (the second column when using the -showgenes option). All available regions will still be output.
+	
+	Also optionally, you can output a list of genes present for each sequence by supplying the path to the output text file name to --presence.
 	
 	In rare cases, an annotation is truncated by the end of a contig at the 5' end, which may leave an incomplete codon at the start of an output sequence and cause downstream issues. To detect this, the script can optionally remove these excess 1 or 2 bases using the -keepframe option. Note this only works if the /codon_start tag is present in the genbank-format features. 
 
@@ -78,6 +80,7 @@ USAGE
 
 GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "out=s"		=> \$outdir,
+	   "presence=s"		=> \$genepresence,
 	   "minregion=i"	=> \$minregion,
 	   "reqregion=s{0,}"	=> \@reqregion,
 	   "regiontypes=s{1,3}"	=> \@regiontypes,
@@ -111,6 +114,12 @@ my %faobjs;
 
 # Set up hash for unrecognised gene names
 my %unrec_genes;
+
+# Set up output handle for gene presences, if using
+my $gph;
+if($genepresence){
+	open($gph, '>', $genepresence) or die "Couldn't open file $genepresence $!";
+}
 
 # Work through genbank files
 foreach my $gbp (@gbpaths){
@@ -214,6 +223,10 @@ foreach my $gbp (@gbpaths){
 		
 		# Run checks against threshold number and content of found genes
 		my @found_gene_names = keys %found_genes;
+		if($gph){
+			print $gph "$seqname\t" . join "\t", @found_gene_names . "\n";
+		}
+		
 		my $n_found_known_genes = scalar (intersect( @found_gene_names, @{$known_genes}));
 		warn "Sequence $seqname in $gbp has $n_found_known_genes known features with sufficient information, it will be skipped\n" and next unless $n_found_known_genes >= $minregion;
 		
@@ -223,6 +236,10 @@ foreach my $gbp (@gbpaths){
 		$faobjs{$_}->write_seq($found_genes{$_}) foreach(keys %found_genes);
 		
 	}
+}
+
+if($gph){
+	close $gph;
 }
 
 if(scalar keys %unrec_genes > 0){
