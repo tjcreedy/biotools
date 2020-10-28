@@ -224,7 +224,8 @@ foreach my $gbp (@gbpaths){
 		# Run checks against threshold number and content of found genes
 		my @found_gene_names = keys %found_genes;
 		if($gph){
-			print $gph "$seqname\t" . join "\t", @found_gene_names . "\n";
+			$genelist = join("\t", @found_gene_names);
+			print $gph "$seqname\t" . $genelist . "\n";
 		}
 		
 		my $n_found_known_genes = scalar (intersect( @found_gene_names, @{$known_genes}));
