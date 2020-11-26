@@ -161,7 +161,7 @@ def parse_conversion(path, datadict):
     
     for name in datadict.keys():
         if(std_well(name) is None):
-            sys.exit("Error: no conversion was found for " + name + "\n")
+            sys.exit(f"Error: no conversion was found for {name}\n")
     
     return(datadict, missing_names)
 
@@ -193,7 +193,7 @@ def parse_demuxtables(demuxtables, datadict):
                     namelist.append(outname)
                 
                 well = find_regex_in_str(outname, wellregex)
-                e =  f" in {outname}, {table} line {n}" 
+                e =  f"in {outname}, {table} line {n}" 
                 if(well == "ambiguous"):
                     sys.exit(f"Error: found multiple possible wells {e}\n")
                 elif(well == "none"):
@@ -262,18 +262,22 @@ Files may be fasta or fastq, and may be compressed in any way that cutadapt
 accepts. In order to accurately generate output file names, input names should 
 not contain '.' symbol apart from denoting file types, e.g. 'filename.fa', 
 'filename.fastq.gz' are permitted, 'file.name.fasta' will cause unexpected and 
-possibly clashing output file names, as the '.name.' section will be lost.
+possibly clashing output file names, as the '.name.' section will be lost. 
 |n
 Indices are read from one or more demultiplexing tables, each supplied to a
 separate -d/--demuxtable arguments, which must be a three-column tab-separated 
 text file each line of which contains an output name, the forward index, and 
-the reverse index.  Indices will be matched to input read files based on well 
-numbers. Thus, input files and output names must contain well numbers in the 
-format 'A1' or 'A01' and must be preceded by - or _ and/or be followed by - or 
-_ and/or be at the end of the name. Where input files do not contain well 
-numbers, a conversion table must be supplied to --conversion in a two-column 
-tab-separated format, where each line gives a suitably unique name for the 
-input file followed by a well number. 
+the reverse index. 
+|n
+Input files will be matched to indices to use based on well numbers, therefore
+it is required that the output names (column 1 of the demultiplexing table) 
+include unambiguous well numbers in the format 'A1' or 'A01' and separated from
+the rest of the name by - or _. For example, "name_A1", "A01_name" and 
+"na_A01_me" are acceptable, but "nameA1" and "name_A1_H7" are not. For input 
+files, these should either contain well numbers according to the same format
+requirements, or a conversion table should be supplied to --conversion. This 
+should be in a two-column tab-separated format, where each line gives a 
+suitably unique name to match to an input file, followed by a well number.
 |n
 The basic cutadapt command used is 'cutadapt -g O1=INDEX -G O2=INDEX [ -g 
 O2=INDEX2 -G O2=INDEX2 ] -o IN_R1 -p IN_R2 OUT_R1 OUT_R2'. Further arguments 
@@ -409,7 +413,7 @@ if __name__ == "__main__":
             sys.stderr.write("Warning: supplied conversion table not needed\n")
     
     # Parse demultiplexing tables
-    sys.stdout.write("Parsing conversion table(s)...")
+    sys.stdout.write("Parsing demultiplexing table(s)...")
     
     data, demux_missing_names, well_missing_demux = parse_demuxtables(
                                                               args.demuxtable,
