@@ -284,8 +284,8 @@ O2=INDEX2 -G O2=INDEX2 ] -o IN_R1 -p IN_R2 OUT_R1 OUT_R2'. Further arguments
 can be supplied to cutadapt using -a/--arguments '-v W -x Y'. These will be 
 passed to cutadapt unchecked.  By default this is set to '-O 5', allowing 
 partial indices of 5 or more bases at the beginning of the read (unless 
-anchoring is set). Note that cutadapt does not support multithreading in 
-demultiplexing: do not attempt to pass it a '--cores' argument.
+anchoring is set). Note that if you have cutadapt v3.0 or later, you could 
+include a --cores argument to perform multicore demultiplexing.
 |n
 Optionally, you can include primers in demultiplexing, by supplying the 
 sequences to -f/--forwardprimer and/or -r/--reverseprimer. The primer sequence 
