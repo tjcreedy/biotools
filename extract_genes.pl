@@ -57,7 +57,7 @@ Description:
 
 Usage:
 
-	perl $script -genbank <in.gb> [<in2.gb>] -out <out/> [-minregion <n>] [-reqregion <CDS1> <CDS2>] [-regiontypes CDS tRNA rRNA] [-keepframe]
+	perl $script -genbank <in.gb> [<in2.gb>] -out <out/> [-minregion <n>] [-reqregion <CDS1> <CDS2>] [-regiontypes CDS tRNA rRNA] [-keepframe] [-presence genepresence.txt]
 	perl $script -showgenes
 
 Arguments:
@@ -71,6 +71,7 @@ Arguments:
 	      organism:  Prints the organism name, if retreivable, instead of the LOCUS
 	 writeunknowns:  Writes out fastas for unidentifiable annotations anyway
 	     keepframe:  Removes excess out-of-frame bases at the beginning of truncated annotations
+	      presence:  The path to a text file to which gene presences by input sequence will be written
 	          help:  Prints out this helpful message
 
 USAGE
