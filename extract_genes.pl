@@ -31,7 +31,8 @@ my $help;
 
 my $script = basename($0, ());
 
-my $genenames = get 'https://raw.githubusercontent.com/tjcreedy/biotools/master/gene_name_variants.txt' or die "Error getting gene_name_variants.txt";
+my $genenames = get 'https://raw.githubusercontent.com/tjcreedy/biotools/master/gene_name_variants.txt';
+die "Error getting gene_name_variants.txt" if (! defined $genenames);
 
 my ($known_genes, $genesort, $generegion) = sort_genes($genenames);
 
