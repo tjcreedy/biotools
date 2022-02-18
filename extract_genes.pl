@@ -18,6 +18,7 @@ my $genepresence;
 
 my $minregion = 1;
 my @reqregion;
+my $filterpath;
 my @regiontypes = ('CDS');
 my $keepframe;
 my $organism;
@@ -66,6 +67,7 @@ Arguments:
 	           out:  The path to a directory in which to place a fasta file for each CDS
 	     minregion:  A minimum number of regions that must be present in a sequence for it to output anything
 	     reqregion:  A list of regions that must be present in a sequence for it to output anything
+	        filter:  A list of LOCUS names, one per line, to use from the genbank file
 	   regiontypes:  One or more region types to extract, currently CDS rRNA and/or tRNA
 	     showgenes:  Prints the hardcoded conversions for region naming variants
 	      organism:  Prints the organism name, if retreivable, instead of the LOCUS
@@ -81,10 +83,11 @@ USAGE
 
 GetOptions("genbank=s{1,}"	=> \@gbpaths,
 	   "out=s"		=> \$outdir,
-	   "presence=s"		=> \$genepresence,
+	   "presence=s"	=> \$genepresence,
 	   "minregion=i"	=> \$minregion,
 	   "reqregion=s{0,}"	=> \@reqregion,
-	   "regiontypes=s{1,3}"	=> \@regiontypes,
+	   "filter=s"		=> \$filterpath,
+	   "regiontypes=s{1,3}"=> \@regiontypes,
 	   "showgenes"		=> \$showgenes,
 	   "organism"		=> \$organism,
 	   "writeunknowns"	=> \$writeunknowns,
@@ -122,7 +125,19 @@ if($genepresence){
 	open($gph, '>', $genepresence) or die "Couldn't open file $genepresence $!";
 }
 
+# Read filter list
+my %filter;
+if($filterpath){
+	open my $fl, '<', $filterpath or die "Error reading $filterpath\n";
+	while(my $row = <$fl>){
+		chomp $row;
+		$filter{$row} = 1;
+	}
+	close $fl;
+}
+
 # Work through genbank files
+my $nrejected = 0;
 foreach my $gbp (@gbpaths){
 	
 	# Initialise genbank read object
@@ -142,6 +157,14 @@ foreach my $gbp (@gbpaths){
 			$species = $seq->species->node_name;
 			$species =~ tr/ /_/;
 		}
+		
+		# If filtering, check that the sequence should be used
+		if($filterpath and not exists($filter{$seqname})){
+			$nrejected++;
+			next
+		}
+		
+		
 		# Get all features with sufficient identification from object
 		my @all_feats = grep {$_->has_tag('gene') or $_->has_tag('product') or $_->has_tag('label')} ($seq->get_SeqFeatures);
 		
@@ -250,6 +273,10 @@ if(scalar keys %unrec_genes > 0){
 	foreach my $ugene (keys %unrec_genes){
 		print "$ugene: ", join (", ", @{$unrec_genes{$ugene}}), "\n";
 	}
+}
+
+if($filterpath and $nrejected > 0){
+	print "$nrejected sequences in genbank-format file(s) rejected for not matching filter list\n"
 }
 
 exit;
