@@ -56,13 +56,11 @@ each record
 **trimalign.py** removes sequences from an alignment according to regular expressions, optionally 
 dropping gap-only columns afterwards.
 
-## Deprecated scripts
+### Deprecated scripts
 
 **isPCR.py** performs a very basic attempt at in silico PCR - cutadapt is better than this script
 
 **rename_newick_with_classifiers.pl** renames a phylogeny using a table - phylabel.R in the 
 (phylostuff)[https://github.com/tjcreedy/phylostuff] repository is better than this
+
 **rename_newick_with_gb.pl** renames a phylogeny using metadata parsed from a genbank file
-
-
-
