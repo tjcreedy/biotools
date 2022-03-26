@@ -113,6 +113,8 @@ spec <- matrix(c(
                                         or b) with column headers comprising id and taxonomic ranks",
   'outputtable' , 't', 2, "character", "path to write output distance matrix as table",
   'outputdist'  , 'd', 2, "character", "path to write output distance matrix as dist object in RDS",
+  'taxout'      , 'o', 2, "character", "optional, path to write out full taxonomy if input taxonomy
+                                        is NCBI taxids",
   'taxcache'    , 'c', 2, 'character', "path to a RDS cache of taxonomy data to read from and/or 
                                         write to",
   'auth'        , 'a', 2, "character", "an ncbi_authentication text file with your API key as the 
@@ -123,11 +125,6 @@ spec[,5] <- gsub("\n[\t ]*", "", spec[,5])
 # Read options and do help -----------------------------------------------
 
 opt <- getopt(spec)
-
-setwd("/home/thomas/work/iBioGen_postdoc/MMGdatabase/phylogeny/duplicatechecking/")
-opt$taxonomy <- "7_dupnt_all_blastn-ex.txt"
-opt$taxcache <- "~/programming/bioinformatics/NCBI_taxonomy.RDS"
-opt$auth <- "~/passwords/api_tokens/ncbi_authentication.txt"
 
 if ( is.null(opt) | !is.null(opt$help) ){
   message(getopt(spec, usage = T))
@@ -167,7 +164,7 @@ if(usetaxid){
   if(is.null(opt$auth)){
     stop("Error: NCBI authentication is required if supplying taxids")
   }
-}
+} 
 
 if( is.null(opt$outputtable) & is.null(opt$outputdist) ){
   stop("Error: specify at least one of --outputtable and/or --outputdist")
@@ -205,10 +202,13 @@ if(usetaxid){
   
   rm(taxcache, gtftreturn, newcache)
   
+  # Write out taxonomy if requested
+  if( !is.null(opt$taxout) ){
+    write.table(tax, opt$taxout)
+  }
 }
 
 # Calculate distances -------------------------------------------------------------------------
-
 
 makedist <- function(x, size = NULL, labels = NULL, method = NULL){
   if( is.null(size) & is.null(labels) ){
