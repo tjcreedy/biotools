@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Translate nucleotide sequences in a fasta to amino acids"""
+"""Finds the frame of sequences in a multifasta"""
 
 # Imports
+from functools import wraps
 from Bio import Seq, SeqIO, AlignIO, BiopythonWarning
 import argparse
 import sys
 import warnings
 import re
-
+import subprocess
 
 # Class definitions
 
@@ -26,20 +27,40 @@ class MultilineFormatter(argparse.HelpFormatter):
         return multiline_text
 
 
+
+
 # Global variables
 
 
 
 # Function definitions
 
+
 def count_start_gaps(Seq):
-    chargen = (c for c in str(Seq))
+    chargen = (c for c in str(Seq.seq))
     gaps = 0
     while next(chargen) == '-':
         gaps += 1
     return gaps
 
+
+def as_fasta(Seq):
+    return f">{Seq.id}\n{str(Seq.seq)}\n"
+
+
 def do_amino_acid_alignments(seq, referencepath):
+
+    pass
+
+    seq = next(nuc_records)
+    aaseq = seq.translate(table = 5)
+    with open("temp.fasta", 'w') as tempfasta:
+        tempfasta.write(as_fasta())
+    p = subprocess.Popen(f"mafft --quiet --6merpair --anysymbol --addfragments temp.fasta {referencepath}")
+
+
+
+
 
     # Create temporary directory
 
@@ -63,14 +84,14 @@ def alignment_positions(alngen, ref = 0):
             sys.exit("Error: ref is too high, not enough values in alngen")
 
     # Get the starting position of the reference
-    refstart = count_start_gaps(refseq.seq)
+    refstart = count_start_gaps(refseq)
 
     # Assess positions of subsequent sequences
     positions = dict()
     for seq in alngen:
         #seq = next(alngen)
         # Get starting position of the sequence
-        seqstart = count_start_gaps(seq.seq)
+        seqstart = count_start_gaps(seq)
         # If the sequence starts earlier than the reference, find the number of bases earlier
         if seqstart < refstart:
             positions[seq.id] = seqstart - refstart
@@ -152,6 +173,8 @@ if __name__ == "__main__":
     # Read nucleotides
     # nuc_records = SeqIO.parse("test/sequence.fasta", 'fasta')
     nuc_records = SeqIO.parse(sys.stdin, "fasta")
+
+    aaref = 'test/COX1.fa'
 
     # Get frame from alignment, if supplied
     refframe = None
