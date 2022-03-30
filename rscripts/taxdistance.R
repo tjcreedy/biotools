@@ -113,7 +113,7 @@ spec <- matrix(c(
                                         or b) with column headers comprising id and taxonomic ranks",
   'outputtable' , 't', 2, "character", "path to write output distance matrix as table",
   'outputdist'  , 'd', 2, "character", "path to write output distance matrix as dist object in RDS",
-  'taxout'      , 'o', 2, "character", "optional, path to write out full taxonomy if input taxonomy
+  'taxout'      , 'x', 2, "character", "optional, path to write out full taxonomy if input taxonomy
                                         is NCBI taxids",
   'taxcache'    , 'c', 2, 'character', "path to a RDS cache of taxonomy data to read from and/or 
                                         write to",
