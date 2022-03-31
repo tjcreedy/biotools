@@ -8,20 +8,23 @@ from Bio import Seq, SeqIO, AlignIO
 import argparse
 import sys
 import re
+from copy import copy
 
 # Global variables
 
 parser = argparse.ArgumentParser(
     description="""
     Standalone tool for translating nucleotide sequences in a multifasta, supplied on STDIN. All 
-    sequences are translated in the forward direction, using the same reading frame and translation
-     table. Results are written to STDOUT
+    sequences are translated in the forward direction, same translation table. By default, if 
+    all sequences have a ";frame=N" tag in the sequence header, where N is 1, 2 or 3, each sequence 
+    will be translated according to this frame. Otherwise, sequences will be translated in frame 1.
+    To override these, specify a frame with -r/--readingframe. Results are written to STDOUT
      """)
 
 parser.add_argument("table", help="translation table number, required", choices=range(1, 33),
                     type=int, metavar="TABLE")
-parser.add_argument("-r", "--reading_frame", help="reading frame, default frame 1", type=int,
-                    choices=[1, 2, 3], default=1)
+parser.add_argument("-r", "--readingframe", help="reading frame, default frame 1", type=int,
+                    choices=[1, 2, 3])
 
 
 # Function definitions
@@ -46,10 +49,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Read nucleotides
-    # nuc_records = SeqIO.parse("/home/thomas/ailes_dytiscids/5_supermatrix.fasta", 'fasta')
+    # nuc_records = SeqIO.parse("test/testout.fasta", 'fasta')
 
     nuc_records = SeqIO.parse(sys.stdin, "fasta")
     aligned = False
+    taggedrf = None
 
     # Translate nucleotides
     aa_records = list()
@@ -60,9 +64,22 @@ if __name__ == "__main__":
         if not aligned and '-' in str(nuc_rec.seq):
             aligned = True
         # Generate the new sequence
-        aa_rec = nuc_rec
+        aa_rec = copy(nuc_rec)
+        # Get the reading frame
+        rf = 1
+        if args.readingframe is None:
+            rftag = re.search("(?<=;frame=)([0-9]+)", nuc_rec.id)
+            if (rftag and taggedrf is not None and not taggedrf) or (taggedrf and not rftag):
+                sys.exit("Error: some, but not all sequences have \";frame=\" tag, either correct "
+                         "this or run with -r/--readingframe to overwrite with a universal frame")
+            taggedrf = True
+            rf = int(rftag.group(1))
+            if rf not in (1, 2, 3):
+                sys.exit(f"Error: frame tag for sequence {nuc_rec.id} not recognised")
+        else:
+            rf = args.readingframe
         # Set the correct nucleotide sequence to translate
-        new_seq = nuc_rec.seq[(args.reading_frame - 1):]
+        new_seq = nuc_rec.seq[(rf - 1):]
         # Check to see if the nucleotide sequence is formed of complete codons,
         # padding if not
         new_seq = padseq(new_seq, aligned)
