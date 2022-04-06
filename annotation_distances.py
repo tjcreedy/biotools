@@ -16,7 +16,8 @@ from Bio import SeqIO
 
 def loadnamevariants():
 	output = {}
-	for line in urllib.request.urlopen("https://raw.githubusercontent.com/tjcreedy/genenames/master/gene_name_variants.txt"):
+	url = "https://raw.githubusercontent.com/tjcreedy/constants/master/gene_name_variants.txt"
+	for line in urllib.request.urlopen(url):
 		line = line.decode('utf-8').strip()
 		name = line.split(";")[0]
 		annotype = line.split(":")[0].split(";")[1]
