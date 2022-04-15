@@ -246,8 +246,8 @@ if __name__ == "__main__":
         # seq = next(nuc_records)
         # Report
         seqn += 1
-        sys.stderr.write(f"finding frame of sequence {seqn}\r")
-        sys.stderr.flush()
+        #sys.stderr.write(f"finding frame of sequence {seqn}\r")
+        #sys.stderr.flush()
         # Set up output
         frames = {}
 
