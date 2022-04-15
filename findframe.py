@@ -66,7 +66,10 @@ def quick_alignment_score(Seq):
     seqstr = str(Seq.seq)
     m = re.search(r'^-*(.*?)-*$', seqstr)
     seqstr = m.group(1)
-    return seqstr.count('-') / len(seqstr.replace('-', ''))
+    if len(seqstr.replace('-', '')) == 0:
+        return 0
+    else:
+        return seqstr.count('-') / len(seqstr.replace('-', ''))
 
 
 def do_amino_acid_alignments(Seq, referencepath, frames=(1, 2, 3)):
@@ -225,10 +228,12 @@ if __name__ == "__main__":
 
     # Get options
     args, order = getcliargs()
+    args, order = getcliargs('-r /home/thomas/work/iBioGen_postdoc/MMGdatabase/0_AA_profiles/COX1.fa -u -s -t 5'.split(' '))
+
 
     # Read nucleotides
     nuc_records = SeqIO.parse(sys.stdin, "fasta")
-
+    nuc_records = SeqIO.parse("/home/thomas/work/iBioGen_postdoc/MMGdatabase/SRAAredux_2022-04-15/21_nt_raw/COX1.fa", "fasta")
     # Get frame from alignment, if supplied
     alnresults = None
     if 'alignment' in order:
@@ -236,11 +241,15 @@ if __name__ == "__main__":
         alnresults = {k: p % 3 + 1 for k, p in positions.items()}
 
     # Work through input sequences
+    nuc_records = list(nuc_records)
     seqn = 0
+    len(nuc_records)
+    seq = nuc_records[114]
     for seq in nuc_records:
         # seq = next(nuc_records)
         # Report
         seqn += 1
+        print(seqn)
         sys.stderr.write(f"finding frame of sequence {seqn}\r")
         sys.stderr.flush()
         # Set up output
