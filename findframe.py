@@ -230,12 +230,9 @@ if __name__ == "__main__":
 
     # Get options
     args, order = getcliargs()
-    args, order = getcliargs('-r /home/thomas/work/iBioGen_postdoc/MMGdatabase/0_AA_profiles/COX1.fa -u -s -t 5'.split(' '))
-
 
     # Read nucleotides
     nuc_records = SeqIO.parse(sys.stdin, "fasta")
-    nuc_records = SeqIO.parse("/home/thomas/work/iBioGen_postdoc/MMGdatabase/SRAAredux_2022-04-15/21_nt_raw/COX1.fa", "fasta")
     # Get frame from alignment, if supplied
     alnresults = None
     if 'alignment' in order:

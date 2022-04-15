@@ -16,14 +16,14 @@ parser = argparse.ArgumentParser(
     description="""
     Standalone tool for translating nucleotide sequences in a multifasta, supplied on STDIN. All 
     sequences are translated in the forward direction, same translation table. By default, if 
-    all sequences have a ";frame=N" tag in the sequence header, where N is 1, 2 or 3, each sequence 
+    sequences have a ";frame=N" tag in the sequence header, where N is 1, 2 or 3, each sequence 
     will be translated according to this frame. Otherwise, sequences will be translated in frame 1.
-    To override these, specify a frame with -r/--readingframe. Results are written to STDOUT
+    To override this, specify a frame with -r/--readingframe. Results are written to STDOUT
      """)
 
 parser.add_argument("table", help="translation table number, required", choices=range(1, 33),
                     type=int, metavar="TABLE")
-parser.add_argument("-r", "--readingframe", help="reading frame", type=int, choices=[1, 2, 3])
+parser.add_argument("-r", "--readingframe", help="reading frame override", type=int, choices=[1, 2, 3])
 parser.add_argument("-s", "--striptags", help="remove frame tags in the output file",
                     action='store_true')
 
@@ -67,14 +67,14 @@ if __name__ == "__main__":
         # Get the reading frame
         if args.readingframe is None:
             rftag = re.search("(?<=;frame=)([0-9]+)", nuc_rec.id)
+            rf = int(rftag.group(1)) if rftag else None
             mixerrmsg = "Error: some, but not all sequences have \";frame=\" tag, either " \
                         "correct this or run with -r/--readingframe to ignore tags and run with " \
                         "a universal frame"
-            if rftag:
+            if rf:
                 if taggedrf is not None and not taggedrf:
                     sys.exit(mixerrmsg)
                 taggedrf = True
-                rf = int(rftag.group(1))
                 if rf not in (1, 2, 3):
                     sys.exit(f"Error: frame tag for sequence {nuc_rec.id} not recognised")
                 if args.striptags:
