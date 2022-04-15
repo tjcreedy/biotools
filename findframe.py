@@ -241,15 +241,11 @@ if __name__ == "__main__":
         alnresults = {k: p % 3 + 1 for k, p in positions.items()}
 
     # Work through input sequences
-    nuc_records = list(nuc_records)
     seqn = 0
-    len(nuc_records)
-    seq = nuc_records[114]
     for seq in nuc_records:
         # seq = next(nuc_records)
         # Report
         seqn += 1
-        print(seqn)
         sys.stderr.write(f"finding frame of sequence {seqn}\r")
         sys.stderr.flush()
         # Set up output
