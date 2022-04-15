@@ -12,6 +12,7 @@ import sys
 import warnings
 import re
 import subprocess
+import os
 from copy import copy
 from shutil import which
 
@@ -83,6 +84,7 @@ def do_amino_acid_alignments(Seq, referencepath, frames=(1, 2, 3)):
                            capture_output=True, text=True)
         *_, aln = SeqIO.parse(StringIO(p.stdout), "fasta")
         alignedseqs[frame] = aln
+    os.remove('temp.fasta')
     return alignedseqs
 
 
