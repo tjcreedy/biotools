@@ -250,7 +250,6 @@ if __name__ == "__main__":
     # Get options
 
     args = getcliargs()
-    #args = getcliargs("--fixhead -d INV --fillpairs --standardname".split(" "))
 
     # Do text fixes if fixing headers
     if args.fixhead:
@@ -268,7 +267,6 @@ if __name__ == "__main__":
         annotypes.add('gene')
 
         gbin = SeqIO.parse(fixout if fixout else sys.stdin, "genbank")
-        #gbin = SeqIO.parse("/home/thomc/work/iBioGen_postdoc/MMGdatabase/newdata_2022-04-15_syrphid/newsequences.gb", "genbank")
 
         for seqrecord in gbin:
             #seqrecord = next(gbin)
