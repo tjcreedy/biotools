@@ -225,8 +225,8 @@ def getcliargs(arglist=None):
     parser.add_argument("-d", "--defaultdivision", default="UNK", metavar="DIV",
                         help="a three-letter code to be used as the default devision where the "
                              "division code is missing")
-    parser.add_argument("-g", "--deletegeneious", action='store_true',
-                        help="try to remove automatic Geneious annotations")
+    # parser.add_argument("-g", "--deletegeneious", action='store_true',
+    #                     help="try to remove automatic Geneious annotations")
     parser.add_argument("--fillpairs", action='store_true',
                         help="add missing annotations for mitochondrial genes")
     parser.add_argument("--standardname", action='store_true',
