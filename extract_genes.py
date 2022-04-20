@@ -39,14 +39,15 @@ def loadnamevariants(report=False):
     if report:
         print("The following are the gene name variants currently known.\n")
     output = {}
-    types = set()
+    fullparse = {}
+    alltypes = set()
     url = "https://raw.githubusercontent.com/tjcreedy/constants/master/gene_name_variants.txt"
     for line in urllib.request.urlopen(url):
         line = line.decode('utf-8').strip()
-        name = line.split(";")[0]
-        annotype = line.split(":")[0].split(";")[1]
-        types.add(annotype)
-        variants = line.split(":")[1].split(",")
+        description, variants = line.split(":")
+        name, annotype, fullname = description.split(";")
+        variants = variants.split(',')
+        variants.extend([name, fullname.upper()])
         fullvariants = []
         for v in variants:
             for g in ['', ' ']:
@@ -55,11 +56,28 @@ def loadnamevariants(report=False):
                     var = v+s
                     fullvariants.append(var)
                     output[v+s] = name
-        fullvariants = '\t'.join(fullvariants)
+        alltypes.add(annotype)
+        fullparse[name] = {'type': annotype, 'variants': fullvariants}
         if report:
-            print(f"Standard name = {name}; type = {annotype}:\n\t{fullvariants}")
+            fullvariants = [v.replace(' ', '\u00A0') if len(v) < 12 else v for v in fullvariants]
+            fullvariants = _textwrap.fill(', '.join(fullvariants), width=80,
+                                          initial_indent='\t', subsequent_indent='\t')
+            print(f"Standard name = {name}, type = {annotype}, full name = {fullname}:\n"
+                  f"{fullvariants}")
+    if not report:
+        return output, alltypes, fullparse
 
-    return output, types
+
+def get_feat_name(feat):
+    featname = "unknown"
+    nametags = ['gene', 'product', 'label', 'standard_name']
+    if any(t in feat.qualifiers.keys() for t in nametags):
+        for t in nametags:
+            if t in feat.qualifiers.keys():
+                featname = feat.qualifiers[t][0].upper()
+                break
+    return featname
+
 
 def getcliargs(arglist=None, knowngenes=None, knowntypes=None):
     # Initialise the parser object and give a description
@@ -121,11 +139,11 @@ def getcliargs(arglist=None, knowngenes=None, knowntypes=None):
                         choices=knowngenes)
     parser.add_argument("-r", "--genetypes", type=str, metavar='TYPE', nargs='+',
                         help="one or more gene types to be output",
-                        choices=knowntypes)
+                        choices=knowntypes, default=knowntypes)
     parser.add_argument("-f", "--filter", type=str, metavar='PATH',
-                        help="path to a file listing Locus names, one per line; if supplied, only "
+                        help="path to a file listing LOCUS names, one per line; if supplied, only "
                              "these entries will be output")
-    parser.add_argument("-m", "--organism", action='store_true',
+    parser.add_argument("-n", "--organism", action='store_true',
                         help="use the organism field instead of the locus field for sequence "
                              "headers in the output files")
     parser.add_argument("-w", "--writeunknowns", action='store_true',
@@ -154,11 +172,11 @@ def getcliargs(arglist=None, knowngenes=None, knowntypes=None):
 if __name__ == "__main__":
 
     # Get the gene name variants
-    genenames, knowntypes = loadnamevariants()
+    nameconvert, annotypes, namevariants = loadnamevariants()
 
     # Get the arguments
-    args = getcliargs()  # Try to read from the command line, won't work interactively!
-    #args = getcliargs('-g '.split(' '))  # Read from a string, good for testing
+    args = getcliargs(None, nameconvert.keys(), annotypes)
+    #args = getcliargs('-g /home/thomc/work/iBioGen_postdoc/MMGdatabase/newdata_2022-04-15_syrphid/testnewsequences.gb -o testextract -w -k -p testpresence.txt'.split(' '),  nameconvert.keys(), annotypes)  # Read from a string, good for testing
 
     # Print gene name variants
     if args.showgenes:
@@ -187,8 +205,9 @@ if __name__ == "__main__":
     nrejected = 0
     outfh = {}
     for gbpath in args.genbank:
+        # gbpath = args.genbank[0]
         for seqrecord in SeqIO.parse(gbpath, "genbank"):
-
+            # seqrecord = next(SeqIO.parse(gbpath, "genbank"))
             # If filtering, check if this entry should be used
             if args.filter and seqrecord.name not in filter:
                 nrejected += 1
@@ -205,39 +224,41 @@ if __name__ == "__main__":
 
             # Work through features
             for feat in seqrecord.features:
-
+                # feat = seqrecord.features[3]
                 # Skip if not requested type
-                if feat.type not in args.regiontypes:
+                if feat.type not in args.genetypes:
                     continue
 
                 # Convert feat name
-                if feat.id in genenames:
-                    stdname = genenames[feat.id]
+                name = get_feat_name(feat)
+                if name in nameconvert:
+                    stdname = nameconvert[name]
                 else:
-                    unrecgenes[feat.id].append(seqname)
+                    unrecgenes[name].append(seqname)
                     if args.writeunknowns:
-                        stdname = feat.id
+                        stdname = name
                     else:
                         continue
 
                 # Store sequence for writing
                 featsequence = feat.extract(seqrecord.seq)
                 if args.keepframe and 'codon_start' in feat.qualifiers:
-                    featsequence = featsequence[(feat.qualifiers['codon_start']-1):]
+                    featsequence = featsequence[(int(feat.qualifiers['codon_start'][0])-1):]
                 foundgenes[stdname].append(featsequence)
 
             # Check to see if there are enough found features and all required genes are present,
             # if so write sequences out
             if len(foundgenes) >= args.mingenes:
-                if all([g in foundgenes for g in args.reqgenes]):
+                if not args.reqgenes or all([g in foundgenes for g in args.reqgenes]):
                     for gene, seqs in foundgenes.items():
                         # Check the number of sequences and warn if there are > 1
                         if len(seqs) > 1:
-                            sys.stderr.write(f"Warning: entry {seqname} has {len(seqs)} {gene} "
-                                             f"annotations!")
+                            sys.stderr.write(f"Warning: entry {seqname} has multiple annotations "
+                                             f"of the target type ({'/'.join(args.genetypes)}) "
+                                             f"matching the standard name \"{stdname}\"\n")
                         # Check to see if there's already a file handle for this gene, if not open
-                        if gene in outfh:
-                            outfh[gene] = open(os.path.join(args.output, gene, ".fasta"), 'w')
+                        if gene not in outfh:
+                            outfh[gene] = open(os.path.join(args.output, f"{gene}.fasta"), 'w')
                         # Write out sequences
                         for seq in seqs:
                             outfh[gene].write(f">{outname}\n{seq}\n")
