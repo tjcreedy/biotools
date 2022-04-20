@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs(None, nameconvert.keys(), annotypes)
-    #args = getcliargs('-g /home/thomc/work/iBioGen_postdoc/MMGdatabase/newdata_2022-04-15_syrphid/testnewsequences.gb -o testextract -w -k -p testpresence.txt'.split(' '),  nameconvert.keys(), annotypes)  # Read from a string, good for testing
+    #args = getcliargs('-g /home/thomas/work/iBioGen_postdoc/MMGdatabase/newdata_2022-04-15_syrphid/testnewsequences.gb -o testextract -w -k -p testpresence.txt'.split(' '),  nameconvert.keys(), annotypes)  # Read from a string, good for testing
 
     # Print gene name variants
     if args.showgenes:
@@ -207,7 +207,8 @@ if __name__ == "__main__":
     for gbpath in args.genbank:
         # gbpath = args.genbank[0]
         for seqrecord in SeqIO.parse(gbpath, "genbank"):
-            # seqrecord = next(SeqIO.parse(gbpath, "genbank"))
+            # gb = SeqIO.parse(gbpath, "genbank")
+            # seqrecord = next(gb)
             # If filtering, check if this entry should be used
             if args.filter and seqrecord.name not in filter:
                 nrejected += 1
@@ -255,13 +256,17 @@ if __name__ == "__main__":
                         if len(seqs) > 1:
                             sys.stderr.write(f"Warning: entry {seqname} has multiple annotations "
                                              f"of the target type ({'/'.join(args.genetypes)}) "
-                                             f"matching the standard name \"{stdname}\"\n")
+                                             f"matching the standard name \"{gene}\"\n")
                         # Check to see if there's already a file handle for this gene, if not open
                         if gene not in outfh:
                             outfh[gene] = open(os.path.join(args.output, f"{gene}.fasta"), 'w')
                         # Write out sequences
                         for seq in seqs:
                             outfh[gene].write(f">{outname}\n{seq}\n")
+
+                    if args.presence:
+                        args.presence.write(f"{outname},{','.join(foundgenes.keys())}\n")
+
                 else:
                     sys.stderr.write(f"Warning: entry {seqname} does not include all required "
                                      f"genes, it will be skipped")
@@ -272,12 +277,14 @@ if __name__ == "__main__":
     # Close file handles
     for gene, fh in outfh.items():
         fh.close()
+    if args.presence:
+        args.presence.close()
 
     # Report unrecognised genes
     if len(unrecgenes) > 0:
         sys.stderr.write(f"Warning: unrecognised genes present in the following entries.\n")
         for gene, entries in unrecgenes.items():
-            sys.stderr.write(f"\t{gene} - {', '.join(entries)}\n")
+            sys.stderr.write(f"\t{gene} - {', '.join(sorted(list(set(entries))))}\n")
 
     # Report rejected entries
     if nrejected > 0:
