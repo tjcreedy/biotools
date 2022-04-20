@@ -256,7 +256,6 @@ if __name__ == "__main__":
     if args.fixhead:
         fixout = "temp.gb" if args.fillpairs or args.standardname else sys.stdout
         fixhead(sys.stdin, fixout, args)
-        #fixhead("/home/thomc/work/iBioGen_postdoc/MMGdatabase/newdata_2022-04-15_syrphid/newsequences.gb", fixout, args)
     else:
         fixout = None
 
