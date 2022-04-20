@@ -261,7 +261,6 @@ distances <- taxdist(tax[, -1], taxdists)
 
 # Output --------------------------------------------------------------------------------------
 
-opt$outputdist = "7_dupnt_all_blastn-ex-distance.RDS"
 if( !is.null(opt$outputdist) ){
   saveRDS(distances, opt$outputdist)
 }

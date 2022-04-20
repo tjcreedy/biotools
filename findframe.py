@@ -12,6 +12,7 @@ import sys
 import warnings
 import re
 import subprocess
+import os
 from copy import copy
 from shutil import which
 
@@ -66,7 +67,10 @@ def quick_alignment_score(Seq):
     seqstr = str(Seq.seq)
     m = re.search(r'^-*(.*?)-*$', seqstr)
     seqstr = m.group(1)
-    return seqstr.count('-') / len(seqstr.replace('-', ''))
+    if len(seqstr.replace('-', '')) == 0:
+        return 0
+    else:
+        return seqstr.count('-') / len(seqstr.replace('-', ''))
 
 
 def do_amino_acid_alignments(Seq, referencepath, frames=(1, 2, 3)):
@@ -80,6 +84,7 @@ def do_amino_acid_alignments(Seq, referencepath, frames=(1, 2, 3)):
                            capture_output=True, text=True)
         *_, aln = SeqIO.parse(StringIO(p.stdout), "fasta")
         alignedseqs[frame] = aln
+    os.remove('temp.fasta')
     return alignedseqs
 
 
@@ -228,7 +233,6 @@ if __name__ == "__main__":
 
     # Read nucleotides
     nuc_records = SeqIO.parse(sys.stdin, "fasta")
-
     # Get frame from alignment, if supplied
     alnresults = None
     if 'alignment' in order:
@@ -241,8 +245,8 @@ if __name__ == "__main__":
         # seq = next(nuc_records)
         # Report
         seqn += 1
-        sys.stderr.write(f"finding frame of sequence {seqn}\r")
-        sys.stderr.flush()
+        #sys.stderr.write(f"finding frame of sequence {seqn}\r")
+        #sys.stderr.flush()
         # Set up output
         frames = {}
 
