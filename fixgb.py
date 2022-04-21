@@ -166,10 +166,10 @@ def fixhead(inpath, outpath, args):
         outgb.close()
 
 
-def sortextractfeats(record, extracttypes):
+def sort_feats(features, extracttypes):
     focalfeats = {}
     otherfeats = []
-    for feat in record.features:
+    for feat in features:
         if feat.type in extracttypes:
             if feat.location in focalfeats:
                 focalfeats[feat.location].append(feat)
@@ -200,6 +200,83 @@ def set_feat_name(feat, name):
     return feat
 
 
+def add_anticodon(feats, nameconvert):
+    # feats = trnas
+    outfeats = []
+    noanticodons = 0
+    # Iterate
+    for i, featlis in enumerate(feats.values()):
+        # featlis = list(feats.values())[1]
+        # Check if at least one is a tRNA, dicard all if not
+        types = set(f.type for f in featlis)
+        if 'tRNA' not in types:
+            outfeats.extend(featlis)
+            continue
+        # Get the names of the features
+        names = [get_feat_name(feat) for feat in featlis]
+        trnanames = [get_feat_name(feat) for feat in featlis if feat.type == 'tRNA']
+        #sys.stderr.write(f"{i} {names}\n")
+        # Check if the names are already recognisable, discard any that are, discard any that don't
+        # have the same name as any trnas
+        featcont = []
+        for feat, name in zip(featlis, names):
+            if name in nameconvert or name not in trnanames:
+                outfeats.append(feat)
+            else:
+                featcont.append(feat)
+        if len(featcont) == 0:
+            continue
+        # Search for anticodon tags
+        anticodons = {}
+        for feat in featcont:
+            # feat = featcont[1]
+            if 'anticodon' in feat.qualifiers:
+                name = get_feat_name(feat)
+                # Check for tags
+                acstring = feat.qualifiers['anticodon']
+                if len(acstring) > 1:
+                    sys.stderr.write(f"Warning: {feat.type} annotation {name} has multiple "
+                                     f"anticodon tags, this will be skipped\n")
+                    continue
+                # Search for information within tag
+                acstring = acstring[0]
+                parser = {#'position': r"pos:([0-9]+)\.\.([0-9]+)",
+                          'aminoacid': r"aa:([A-Za-z]+)",
+                          'anticodon': r"seq:([A-Za-z]{3})"}
+                acdata = {}
+                for part, regex in parser.items():
+                    m = re.search(regex, acstring)
+                    if not m:
+                        sys.stderr.write(f"Warning: {part} cannot be found in {feat.type} "
+                                         f"annotation {name} anticodon tag, this will be skipped\n")
+                        continue
+                    acdata[part] = m.groups(1) if len(m.groups(1)) > 1 else m.groups(1)[0]
+                if len(acdata) < 2:
+                    continue
+                # Construct putative new names
+                acname = f"TRN{acdata['aminoacid'].upper()[0]}-{acdata['anticodon'].upper()}"
+                if name in anticodons:
+                    anticodons[name].add(acname)
+                else:
+                    anticodons[name] = {acname}
+        if len(anticodons) == 0:
+            noanticodons += 1
+            outfeats.extend(featcont)
+            continue
+        # Set up renamer
+        rename = {}
+        for fname, acname in anticodons.items():
+            if len(acname) > 1:
+                sys.stderr.write(f"Warning: anticodon tags do not match for the two or more "
+                                 f"annotations named {fname} at the same locus")
+                outfeats.extend(featcont)
+                continue
+            rename[fname] = list(acname)[0]
+        # Rename all
+        outfeats.extend([set_feat_name(feat, rename[get_feat_name(feat)]) for feat in featcont])
+    # Output list of features
+    return outfeats, noanticodons
+
 def getcliargs(arglist=None):
 
     # Initialise the parser object and give a description
@@ -225,6 +302,8 @@ def getcliargs(arglist=None):
     parser.add_argument("-d", "--defaultdivision", default="UNK", metavar="DIV",
                         help="a three-letter code to be used as the default devision where the "
                              "division code is missing")
+    parser.add_argument("--addanticodons", action='store_true',
+                        help="try to add the anticodon to the name of tRNAs without it")
     # parser.add_argument("-g", "--deletegeneious", action='store_true',
     #                     help="try to remove automatic Geneious annotations")
     parser.add_argument("--fillpairs", action='store_true',
@@ -262,17 +341,31 @@ if __name__ == "__main__":
 
         unrecnames = set()
         couldntduplicate = {}
+        noanticodons = {}
 
         nameconvert, annotypes, namevariants = loadnamevariants()
         annotypes.add('gene')
 
         gbin = SeqIO.parse(fixout if fixout else sys.stdin, "genbank")
+        #gbin = list(SeqIO.parse("/home/thomc/work/iBioGen_postdoc/MMGdatabase/newdata_2022-04-15_syrphid/syrphidsequences_2022-04-21.gb", "genbank"))
+        for i, seqrecord in enumerate(gbin):
+            #seqrecord = gbin[8]
+            #sys.stderr.write(f"sequence {i} name {seqrecord.name}\n")
+            #sys.stderr.flush()
+            # Extract all features
+            features = seqrecord.features
 
-        for seqrecord in gbin:
-            #seqrecord = next(gbin)
+            # Rename tRNAs if needed
+            if args.addanticodons:
+                trnas, otherfeats = sort_feats(features, ['tRNA', 'gene'])
+                correctedtrnas, nac = add_anticodon(trnas, nameconvert)
+                features = correctedtrnas + otherfeats
+                if nac > 0:
+                    noanticodons[seqrecord.name] = nac
 
-            # Find and sort features
-            focalfeats, donefeats = sortextractfeats(seqrecord, annotypes)
+
+            # Sort features for renaming and/or duplication
+            focalfeats, donefeats = sort_feats(seqrecord.features, annotypes)
 
             # Work through putative pairs of focal feats
             for featlis in focalfeats.values():
@@ -283,7 +376,7 @@ if __name__ == "__main__":
 
                 # Iterate through the feats, making duplicates where needed
                 for i, (name, feat) in enumerate(zip(names, featlis)):
-                    #i, (name, feat) = list(enumerate(zip(names, featlis)))[0]
+                    # i, (name, feat) = list(enumerate(zip(names, featlis)))[0]
                     # Get the standard name and type
                     stdname, ftype = [None, None]
                     if name in nameconvert:
@@ -335,6 +428,11 @@ if __name__ == "__main__":
 
         # Report any issues
         tw = _textwrap.TextWrapper(width=80, initial_indent='\t', subsequent_indent='\t')
+        if len(noanticodons) > 0:
+            nal = [f"{k}\u00A0({n})" for k, n in noanticodons.items()]
+            sys.stderr.write(f"\nWarning: the following {len(noanticodons)} genbank entries "
+                             f"had one or more tRNA annotations that were missing anticodon tags "
+                             f"and so no anticodon could be added.\n{tw.fill(', '.join(nal))}\n")
         if len(unrecnames) > 0:
             sys.stderr.write(f"\nWarning: the following {len(unrecnames)} annotation names could "
                              f"not be recognised.\n{tw.fill(', '.join(unrecnames))}\n")
@@ -346,6 +444,7 @@ if __name__ == "__main__":
                              f"{tw.fill(', '.join(cdl))}\nNote that this may not be an issue, some "
                              f"GenBank sequences have both annotations but don't name them the "
                              f"same\n\n")
+
 
         os.remove('temp.gb')
 
