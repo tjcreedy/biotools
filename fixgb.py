@@ -20,6 +20,56 @@ from Bio import SeqIO
 from copy import copy
 
 
+#TODO:
+# Suppress biopython warnings by default - e.g.
+# /usr/lib/python3/dist-packages/Bio/GenBank/__init__.py:1395: BiopythonParserWarning: Expected sequence length 5289, found 5125 (urn.local...13-b53ordm).
+#   warnings.warn(
+# Add argument to just read and write GB using biopython if no other biopython arguments are called - to fix lengths like the above
+# Add code to replace ACCESSION, VERSION, DEFINITION if . or urn.local* or anything else unwanted (grep "ACCESSION" on all gb to check)
+# Fix incorrect origin wrapping e.g.
+# BIOD01157.gb
+# /usr/lib/python3/dist-packages/Bio/GenBank/__init__.py:361: BiopythonParserWarning: Attempting to fix invalid location '29865..15146' as it looks like incorrect origin wrapping. Please fix input file, this could have unintended behavior.
+#   warnings.warn(
+# Traceback (most recent call last):
+#   File "/usr/lib/python3/dist-packages/Bio/GenBank/__init__.py", line 1126, in location
+#     cur_feature.location = SeqFeature.FeatureLocation(
+#   File "/usr/lib/python3/dist-packages/Bio/SeqFeature.py", line 811, in __init__
+#     raise ValueError(
+# ValueError: End location (15146) must be greater than or equal to start location (29864)
+# During handling of the above exception, another exception occurred:
+# Traceback (most recent call last):
+#   File "/home/thomc/programming/bioinformatics/biotools//fixgb.py", line 354, in <module>
+#     for i, seqrecord in enumerate(gbin):
+#   File "/usr/lib/python3/dist-packages/Bio/GenBank/Scanner.py", line 516, in parse_records
+#     record = self.parse(handle, do_features)
+#   File "/usr/lib/python3/dist-packages/Bio/GenBank/Scanner.py", line 499, in parse
+#     if self.feed(handle, consumer, do_features):
+#   File "/usr/lib/python3/dist-packages/Bio/GenBank/Scanner.py", line 470, in feed
+#     self._feed_feature_table(consumer, self.parse_features(skip=False))
+#   File "/usr/lib/python3/dist-packages/Bio/GenBank/Scanner.py", line 420, in _feed_feature_table
+#     consumer.location(location_string)
+#   File "/usr/lib/python3/dist-packages/Bio/GenBank/__init__.py", line 1131, in location
+#     cur_feature.location = _loc(
+#   File "/usr/lib/python3/dist-packages/Bio/GenBank/__init__.py", line 369, in _loc
+#     f1 = SeqFeature.FeatureLocation(s_pos, expected_seq_length, strand)
+#   File "/usr/lib/python3/dist-packages/Bio/SeqFeature.py", line 811, in __init__
+#     raise ValueError(
+# ValueError: End location (15997) must be greater than or equal to start location (29864)
+# Fix whatever's going on here:
+# GBDL00476.gb
+# Traceback (most recent call last):
+#   File "/home/thomc/programming/bioinformatics/biotools//fixgb.py", line 371, in <module>
+#     focalfeats, donefeats = sort_feats(seqrecord.features, annotypes)
+#   File "/home/thomc/programming/bioinformatics/biotools//fixgb.py", line 175, in sort_feats
+#     if feat.location in focalfeats:
+# TypeError: unhashable type: 'CompoundLocation'
+# Add option and code to remove Geneious features/annotations
+# Add option and code to fix IDs with _reversed or _modified
+
+
+
+
+
 # Global variables
 
 divisions = 'BCT,PRI,ROD,MAM,VRT,INV,PLN,VRL,PHG,RNA,SYN,UNA,EST,STS,GSS,HTG,UNK'.split(',')
@@ -166,10 +216,10 @@ def fixhead(inpath, outpath, args):
         outgb.close()
 
 
-def sort_feats(features, extracttypes):
+def sortextractfeats(record, extracttypes):
     focalfeats = {}
     otherfeats = []
-    for feat in features:
+    for feat in record.features:
         if feat.type in extracttypes:
             if feat.location in focalfeats:
                 focalfeats[feat.location].append(feat)
@@ -277,6 +327,84 @@ def add_anticodon(feats, nameconvert):
     # Output list of features
     return outfeats, noanticodons
 
+
+def add_anticodon(feats, nameconvert):
+    # feats = trnas
+    outfeats = []
+    noanticodons = 0
+    # Iterate
+    for i, featlis in enumerate(feats.values()):
+        # featlis = list(feats.values())[1]
+        # Check if at least one is a tRNA, dicard all if not
+        types = set(f.type for f in featlis)
+        if 'tRNA' not in types:
+            outfeats.extend(featlis)
+            continue
+        # Get the names of the features
+        names = [get_feat_name(feat) for feat in featlis]
+        trnanames = [get_feat_name(feat) for feat in featlis if feat.type == 'tRNA']
+        #sys.stderr.write(f"{i} {names}\n")
+        # Check if the names are already recognisable, discard any that are, discard any that don't
+        # have the same name as any trnas
+        featcont = []
+        for feat, name in zip(featlis, names):
+            if name in nameconvert or name not in trnanames:
+                outfeats.append(feat)
+            else:
+                featcont.append(feat)
+        if len(featcont) == 0:
+            continue
+        # Search for anticodon tags
+        anticodons = {}
+        for feat in featcont:
+            # feat = featcont[1]
+            if 'anticodon' in feat.qualifiers:
+                name = get_feat_name(feat)
+                # Check for tags
+                acstring = feat.qualifiers['anticodon']
+                if len(acstring) > 1:
+                    sys.stderr.write(f"Warning: {feat.type} annotation {name} has multiple "
+                                     f"anticodon tags, this will be skipped\n")
+                    continue
+                # Search for information within tag
+                acstring = acstring[0]
+                parser = {#'position': r"pos:([0-9]+)\.\.([0-9]+)",
+                          'aminoacid': r"aa:([A-Za-z]+)",
+                          'anticodon': r"seq:([A-Za-z]{3})"}
+                acdata = {}
+                for part, regex in parser.items():
+                    m = re.search(regex, acstring)
+                    if not m:
+                        sys.stderr.write(f"Warning: {part} cannot be found in {feat.type} "
+                                         f"annotation {name} anticodon tag, this will be skipped\n")
+                        continue
+                    acdata[part] = m.groups(1) if len(m.groups(1)) > 1 else m.groups(1)[0]
+                if len(acdata) < 2:
+                    continue
+                # Construct putative new names
+                acname = f"TRN{acdata['aminoacid'].upper()[0]}-{acdata['anticodon'].upper()}"
+                if name in anticodons:
+                    anticodons[name].add(acname)
+                else:
+                    anticodons[name] = {acname}
+        if len(anticodons) == 0:
+            noanticodons += 1
+            outfeats.extend(featcont)
+            continue
+        # Set up renamer
+        rename = {}
+        for fname, acname in anticodons.items():
+            if len(acname) > 1:
+                sys.stderr.write(f"Warning: anticodon tags do not match for the two or more "
+                                 f"annotations named {fname} at the same locus")
+                outfeats.extend(featcont)
+                continue
+            rename[fname] = list(acname)[0]
+        # Rename all
+        outfeats.extend([set_feat_name(feat, rename[get_feat_name(feat)]) for feat in featcont])
+    # Output list of features
+    return outfeats, noanticodons
+
 def getcliargs(arglist=None):
 
     # Initialise the parser object and give a description
@@ -302,6 +430,8 @@ def getcliargs(arglist=None):
     parser.add_argument("-d", "--defaultdivision", default="UNK", metavar="DIV",
                         help="a three-letter code to be used as the default devision where the "
                              "division code is missing")
+    parser.add_argument("--fixlengths", action='store_true',
+                        help="repair length values in LOCUS line")
     parser.add_argument("--addanticodons", action='store_true',
                         help="try to add the anticodon to the name of tRNAs without it")
     # parser.add_argument("-g", "--deletegeneious", action='store_true',
@@ -332,12 +462,13 @@ if __name__ == "__main__":
 
     # Do text fixes if fixing headers
     if args.fixhead:
-        fixout = "temp.gb" if args.fillpairs or args.standardname else sys.stdout
+        furtherwork = args.fillpairs or args.standardname or args.addanticodons or args.fixlengths
+        fixout = "temp.gb" if furtherwork else sys.stdout
         fixhead(sys.stdin, fixout, args)
     else:
         fixout = None
 
-    if args.fillpairs or args.standardname:
+    if args.fillpairs or args.standardname or args.addanticodons:
 
         unrecnames = set()
         couldntduplicate = {}
@@ -444,8 +575,11 @@ if __name__ == "__main__":
                              f"{tw.fill(', '.join(cdl))}\nNote that this may not be an issue, some "
                              f"GenBank sequences have both annotations but don't name them the "
                              f"same\n\n")
+    elif args.fixlengths:
+        for seqrecord in SeqIO.parse(fixout if fixout else sys.stdin, "genbank"):
+            sys.stdout.write(seqrecord.format('genbank'))
 
-
+    if fixout:
         os.remove('temp.gb')
 
 exit()
