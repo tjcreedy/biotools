@@ -126,10 +126,10 @@ if __name__ == "__main__":
 
         # Check the number of rRNA locations
         if len(rRNAs) == 0:
-            sys.stderr.write(f"{seqrecord.name} has no rRNA locations, no changes made")
+            sys.stderr.write(f"{seqrecord.name} has no rRNA locations, no changes made\n")
         elif len(rRNAs) == 1:
             sys.stderr.write(f"{seqrecord.name} only has one rRNA annotation location, no changes "
-                             f"made")
+                             f"made\n")
             outfeats.extend(list(rRNAs.values())[0])
             rRNAs = {}
         elif len(rRNAs) > 2:
