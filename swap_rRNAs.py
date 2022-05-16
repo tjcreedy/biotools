@@ -82,12 +82,12 @@ def getcliargs(arglist=None):
     # Initialise the parser object and give a description
     parser = argparse.ArgumentParser(description="""
         Swaps the LSU and SSU rRNA annotation locations for all entries in genbank file passed on 
-        STDIN 
+        STDIN. By default, if a swap can't be made, the unchanged file will be output. 
         """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
-    # parser.add_argument("-g", "--genbank", type=str, metavar='PATH', required=True, nargs='+',
-    #                     help="the path(s) to one or more genbank files")
+    parser.add_argument("-s", "--strict", action='store_true',
+                        help="if a swap cannot be made, do not output anything")
 
     # Parse the arguments from the function call if specified, otherwise from the command line
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
@@ -125,16 +125,22 @@ if __name__ == "__main__":
                 outfeats.extend(featlis)
 
         # Check the number of rRNA locations
+        errmsg = None
         if len(rRNAs) == 0:
-            sys.stderr.write(f"{seqrecord.name} has no rRNA locations, no changes made\n")
+            errmsg = f"{seqrecord.name} has no rRNA locations"
         elif len(rRNAs) == 1:
-            sys.stderr.write(f"{seqrecord.name} only has one rRNA annotation location, no changes "
-                             f"made\n")
-            outfeats.extend(list(rRNAs.values())[0])
-            rRNAs = {}
+            errmsg = f"{seqrecord.name} only has one rRNA annotation location"
         elif len(rRNAs) > 2:
-            sys.exit(f"\n\nERROR: {seqrecord.name} has more than two rRNA annotation locations, "
-                     f"cannot perform a swap!\n\n")
+            errmsg = f"{seqrecord.name} has more than two rRNA annotation locations"
+
+        if errmsg:
+            if args.strict:
+                sys.exit(f"\nError: {errmsg}\n")
+            else:
+                sys.stderr.write(f"Warning: {errmsg}, no changes made\n")
+                for loc, featlis in rRNAs.items():
+                    outfeats.extend(featlis)
+                rRNAs = {}
 
         # Do the rRNA swap if we still have two rRNA annotation locations
         if len(rRNAs) == 2:
