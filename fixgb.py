@@ -488,7 +488,7 @@ if __name__ == "__main__":
 
             # Rename tRNAs if needed
             if args.addanticodons:
-                trnas, otherfeats = sort_feats(features, ['tRNA', 'gene'])
+                trnas, otherfeats = sortextractfeats(seqrecord, ['tRNA', 'gene'])
                 correctedtrnas, nac = add_anticodon(trnas, nameconvert)
                 features = correctedtrnas + otherfeats
                 if nac > 0:
@@ -496,7 +496,7 @@ if __name__ == "__main__":
 
 
             # Sort features for renaming and/or duplication
-            focalfeats, donefeats = sort_feats(seqrecord.features, annotypes)
+            focalfeats, donefeats = sortextractfeats(seqrecord, annotypes)
 
             # Work through putative pairs of focal feats
             for featlis in focalfeats.values():
@@ -579,7 +579,7 @@ if __name__ == "__main__":
         for seqrecord in SeqIO.parse(fixout if fixout else sys.stdin, "genbank"):
             sys.stdout.write(seqrecord.format('genbank'))
 
-    if fixout:
+    if fixout == 'temp.gb':
         os.remove('temp.gb')
 
 exit()
