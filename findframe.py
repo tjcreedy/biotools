@@ -221,6 +221,8 @@ def getcliargs(arglist=None):
                              f"-s/--stop to pre-filter for -r/--reference\n")
 
     if 'reference' in order:
+        if not os.path.isfile(args.reference):
+            sys.exit(f"Error: {args.reference} does not exist")
         if which('mafft') is None:
             sys.exit("Error: cannot locate mafft on the command line.")
     return args, order
@@ -266,6 +268,7 @@ if __name__ == "__main__":
 
         # Get frame from reference
         if 'reference' in order:
+
             if 'stop' in order and args.speedup:
                 searchframes = frames['stop']
             if len(searchframes) > 1:
