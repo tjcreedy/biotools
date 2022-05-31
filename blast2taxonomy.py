@@ -59,7 +59,7 @@ def str_is_int(s):
 
 def parse_title(title):
     #title = hit.title
-    gbregex = r"((?:[A-Z]{2}|NC_|XM_)\d+(?:\.\d)?)"
+    gbregex = r"((?:[A-Z]{2}|NC_|XM_|NG_)\d+(?:\.\d)?)"
     # See if this is a longform title separated by |
     tsplit = title.split('|')
     if len(tsplit) > 0:
@@ -373,22 +373,22 @@ def getcliargs(arglist=None):
         Parse the output of a BLAST search against an NCBI database (e.g. nt), supplied to 
         -b/--blastresults, to assign taxonomy to queries. BLAST results can be in XML 
         (--outfmt 5), tsv (--outfmt 6) or csv (--outfmt 10). If tsv or csv format, the first three 
-        columns must be query seq id subject seq id and percent identity in that order, as in the 
+        columns must be query seq id, subject seq id and percent identity in that order, as in the 
         default tabular output format. If a non-default format has been run that includes the 
         column staxids, the column number for this data should be passed to -t/--taxidcolumn. Note 
         that if multiple taxids are found for a hit, the first will be used. 
         |n
-        The taxonomy for each result will be retrieved from NCBI Taxonomy based on the taxid of 
-        the subject. By default, the taxonomy of all hits will be retrieved. Optionally, the hits 
-        can be filtered, either keeping only the top hit using the -p/--tophit option, or 
-        finding the lowest common ancestor of all hits using the -a/--lca option. 
+        The taxonomy will be retrieved from NCBI Taxonomy based on the taxid of the hit(s). By 
+        default, the taxonomy of all hits will be retrieved. Optionally, the hits can be filtered, 
+        either keeping only the/a top hit using the -p/--tophit option, or finding the lowest 
+        common ancestor of all hits using the -a/--lca option. 
         |n
         The script will output a tsv to STDOUT. With the default option, the script will output 
         the information each hit for each query id, in the same format as supplied, followed by 
         the parsed NCBI accession ID, the NCBI taxid and taxonomy columns for each hit. When using 
-        the -p/--tophit option, only the top hit for each query will be output. If multiple top 
-        hits are found, a random one with the most frequent taxonomy will be output. When using 
-        the -a/--lca option, the script will output a single row for each query id, followed by 
+        the -p/--tophit option, only a top hit for each query will be output. If multiple top 
+        hits are found, the first one with the most frequent taxonomy will be output. When using 
+        the -a/--lca option, the script will output a single row for each query id and the LCA  
         taxonomy columns. Note that if the input is XML, the only fields parsed from the XML and 
         output are qseqid, sseqid and pident. Control the taxonomic ranks output in all cases 
         using -r/--rank. 
@@ -397,14 +397,14 @@ def getcliargs(arglist=None):
         prior to retrieving taxonomy. Supply an id threshold to -i/--idthreshold, default 0. It is 
         advisable to use this option when filtering with the -a/--lca option.
         |n
-        To efficiently retrieve taxonomy, the script uses a local database, supplied to --localdb, 
-        that may have been created by previous runs of this script. If this is your first run, the 
-        script will create a new database at the location supplied.
+        To efficiently retrieve taxonomy, the script uses a local database, supplied to 
+        -l/--localdb, that may have been created by previous runs of this script. If this is your 
+        first run, the script will create a new database at the location supplied.
         |n
-        To retrieve information from NCBI, you must authenticate with an email address and api 
+        To retrieve information from NCBI, you must authenticate with an email address and API 
         key. This is only necessary if your local database isn't complete. Supply a file 
-        containing this information to --ncbiauth. The script will output an example file if NCBI 
-        authentication is required but absent.
+        containing this information to -n/--ncbiauth. The script will output an example file if 
+        NCBI authentication is required but absent.
         |n
         By default, the script will send 200 id numbers to NCBI in each request. If this seems to 
         cause errors, set --chunksize to a lower value. 
