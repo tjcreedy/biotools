@@ -60,6 +60,8 @@ def str_is_int(s):
 def parse_title(title):
     #title = hit.title
     gbregex = r"((?:[A-Z]{1,2}_?)\d{3,}(?:\.\d)?)"
+    # If this is a longform title with multipl entries, remove all but the first
+    title = text.split(' >', 1)[0]
     # See if this is a longform title separated by |
     tsplit = title.split('|')
     if len(tsplit) > 0:
