@@ -554,4 +554,3 @@ if __name__ == "__main__":
         taxonomised = filter_tophit(taxonomised)
     # Output
     writeout(taxonomised)
-
