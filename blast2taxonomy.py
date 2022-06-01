@@ -59,7 +59,7 @@ def str_is_int(s):
 
 def parse_title(title):
     #title = hit.title
-    gbregex = r"((?:[A-Z]{2}|NC_|XM_|NG_)\d+(?:\.\d)?)"
+    gbregex = r"((?:[A-Z]{2}_?)\d+(?:\.\d)?)"
     # See if this is a longform title separated by |
     tsplit = title.split('|')
     if len(tsplit) > 0:
