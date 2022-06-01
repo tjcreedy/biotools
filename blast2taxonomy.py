@@ -59,14 +59,15 @@ def str_is_int(s):
 
 def parse_title(title):
     #title = hit.title
-    gbregex = r"((?:[A-Z]{1,2}_?)\d{3,}(?:\.\d)?)"
+    gbregex = r"(?:^|\s)((?:[A-Z]{1,2}_?)\d{3,}(?:\.\d)?)(?:$|\s)"
     # If this is a longform title with multipl entries, remove all but the first
     title = title.split(' >', 1)[0]
     # See if this is a longform title separated by |
     tsplit = title.split('|')
     if len(tsplit) > 0:
         # Find the gb marker and take the part following
-        gbloc = [i for i, part in enumerate(tsplit) if part in ['gb', 'ref', 'dbj', 'emb', 'tpg']]
+        marker = ['gb', 'ref', 'dbj', 'emb', 'tpg', 'tpe']
+        gbloc = [i for i, part in enumerate(tsplit) if part in marker]
         if len(gbloc) > 0:
             i = gbloc[0]
             gbsrch = re.search(gbregex, tsplit[i + 1])
@@ -78,7 +79,7 @@ def parse_title(title):
             if len(gbcand) == 1:
                 return re.search(gbregex, gbcand[0]).group(0)
     # Check to see if the title is a complete accession number by itself
-    elif re.match(f"^{gbregex}$", title):
+    elif re.match(gbregex, title):
         return title
     # Otherwise, search the title for an accession number
     else:
