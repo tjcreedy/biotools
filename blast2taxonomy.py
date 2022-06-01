@@ -59,12 +59,12 @@ def str_is_int(s):
 
 def parse_title(title):
     #title = hit.title
-    gbregex = r"((?:[A-Z]{1,2}_?)\d+(?:\.\d)?)"
+    gbregex = r"((?:[A-Z]{1,2}_?)\d{3,}(?:\.\d)?)"
     # See if this is a longform title separated by |
     tsplit = title.split('|')
     if len(tsplit) > 0:
         # Find the gb marker and take the part following
-        gbloc = [i for i, part in enumerate(tsplit) if part in ['gb', 'ref', 'dbj', 'emb']]
+        gbloc = [i for i, part in enumerate(tsplit) if part in ['gb', 'ref', 'dbj', 'emb', 'tpg']]
         if len(gbloc) > 0:
             i = gbloc[0]
             gbsrch = re.search(gbregex, tsplit[i + 1])
