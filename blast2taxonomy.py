@@ -163,7 +163,7 @@ def parse_input(path, tophit, idthresh, taxidc):
     return indata, accs, taxids
 
 
-def retrieve_ncbi_local(taxids, database):
+def retrieve_taxonomy_local(taxids, database):
     # database = args.localdb
     out = dict()
     absent = set()
@@ -235,49 +235,97 @@ def get_authentication(path):
     return auth
 
 
-def chunker(seq, size):
-    if type(seq) is set:
-        seq = list(seq)
-    for pos in range(0, len(seq), size):
-        yield seq[pos:pos + size]
-
-
-def retrieve_ncbi_remote(taxids, chunksize, auth):
-    """Search NCBI for lineage information given a tax id.
-    """
-    # taxids, chunksize, auth = absent, args.chunksize, get_authentication(args.ncbiauth)
+def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=5):
+    #ids, searchfunc, responsekey = taxids, efetch_read_taxonomy, 'TaxId'
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
+    Entrez.tool = "biotools/blast2taxonomy.py:retrieve_ncbi_remote"
 
-    out = dict()
+    done = 0
+    total = len(ids)
+    idset = {ids.pop() for _ in range(chunksize)}
+    errors = 0
+    maxiterations = int(total / chunksize * 1.5)
+    it = 1
+    while 1:
+        # Attempt to retrieve summaries for this set
+        try:
+            records = searchfunc(idset)
+        # If any errors, retry this set, unless the max errors has been reached
+        except BaseException as exception:
+            errors += 1
+            if errors < maxerrors:
+                sys.stderr.write(f"\nHit a {type(exception)} in during retrieve_ncbi_remote - will "
+                                 f"retry, debug dump follows:\nargs\n{exception.args}\nfull\n"
+                                 f"{exception}\n")
+                time.sleep(0.4)
+                continue
+            else:
+                sys.stderr.write(f"Reached max errors of {maxerrors} during retrieve_ncbi_remote, "
+                                 f"last error:\n {exception=}, {type(exception)=}")
+                raise
+        else:
+            # If successful, work through the results received to store records
+            out = {}
+            for r in records:
+                out[r[responsekey]] = r
+            done += len(out)
+            # If any missing, add them to the to-do set
+            missingids = [t for t in idset if str(t) not in out]
+            if len(missingids) > 0:
+                ids.update(missingids)
+            # Report, take a new set for the next iteration out of what is left
+            sys.stderr.write(f"\rSuccessfully retrieved {done}/{total} records (iteration {it})")
+            idset = {ids.pop() for _ in range(min([chunksize, len(ids)]))}
+            if len(idset) > 0 and it < maxiterations:
+                yield out
+                it += 1
+                time.sleep(0.4)
+            else:
+                if done == total:
+                    sys.stderr.write("\n")
+                else:
+                    sys.stderr.write(", failed to retrieve the remainder.")
+                yield out
+                break
 
-    for taxidset in chunker(taxids, chunksize):
-        # taxidset = list(chunker(taxids, chunksize))[2]
-        handle = Entrez.efetch(db="taxonomy", id=taxidset)
-        records = Entrez.read(handle)
-        handle.close()
-        for r in records:
-            out[r['TaxId']] = r
-        time.sleep(0.1)
+def retrieve_taxonomy(taxids, chunksize, auth):
+    """Search NCBI for lineage information given a tax id.
+    """
+    # taxids, chunksize = absent, 1000
+    def efetch_read_taxonomy(idset):
+        sh = Entrez.efetch(db='taxonomy', id=[str(t) for t in idset])
+        records = Entrez.read(sh)
+        sh.close()
+        return records
+
+    ncbigen = retrieve_ncbi_remote(taxids, efetch_read_taxonomy, 'TaxId', chunksize, auth)
+    out = {}
+    for outsub in ncbigen:
+        # outsub = next(ncbigen)
+        out.update(outsub)
 
     absent = set(i for i in taxids if str(i) not in out)
 
     return out, absent
 
 
-def retrieve_taxids(ids, chunksize, auth):
-    # ids, db, auth, chunksize = gbaccs, 'nt', auth, 10
-    Entrez.email = auth['email']
-    Entrez.api_key = auth['key']
+def retrieve_taxids(ids, chunksize, auth, maxerrors=5):
+    # from copy import copy
+    # ids, chunksize, maxerrors = copy(gbaccs), 1000, 5
 
-    out = dict()
-
-    for idset in chunker(ids, chunksize):
+    def esummary_read_taxids(idset):
         sh = Entrez.esummary(db='nucleotide', id=','.join(idset))
         summaries = Entrez.read(sh)
         sh.close()
-        for gbid, smry in zip(idset, summaries):
-            out[gbid] = int(smry['TaxId'])
+        return(summaries)
+
+    ncbigen = retrieve_ncbi_remote(ids, esummary_read_taxids, 'AccessionVersion', chunksize, auth)
+    out = {}
+    for outsub in ncbigen:
+        # outsub = next(ncbigen)
+        for gb, smry in outsub.items():
+            out[gb] = int(smry['TaxId'])
 
     return out
 
@@ -409,8 +457,8 @@ def getcliargs(arglist=None):
         containing this information to -n/--ncbiauth. The script will output an example file if 
         NCBI authentication is required but absent.
         |n
-        By default, the script will send 200 id numbers to NCBI in each request. If this seems to 
-        cause errors, set --chunksize to a lower value. 
+        By default, the script will send 1000 ids to NCBI in each request. If this seems to cause 
+        errors, set --chunksize to a lower value. This cannot be increased.
         """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
@@ -432,8 +480,8 @@ def getcliargs(arglist=None):
     parser.add_argument('-r', '--ranks', metavar='rank,rank,rank',
                         help='comma-separated list of ranks',
                         default='superkingdom,kingdom,phylum,class,order,family,genus,species')
-    parser.add_argument('-c', '--chunksize', type=int, metavar='N', default=500,
-                        help='number of ids per request, default 500')
+    parser.add_argument('-c', '--chunksize', type=int, metavar='N', default=1000,
+                        help='number of ids per request, default 1000')
 
     # Parse the arguments from the function call if specified, otherwise from the command line
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
@@ -441,6 +489,8 @@ def getcliargs(arglist=None):
     # Do some checking of the inputs
     if args.tophit and args.lca:
         parser.error("select only one of -p/--tophit or -a/--lca")
+    if args.chunksize > 1000:
+        parser.error("-c/--chunksize should not be greater than 1000")
 
     # Process arguments
     args.ranks = args.ranks.lower().split(',')
@@ -459,22 +509,26 @@ if __name__ == "__main__":
     inputdata, gbaccs, taxids = parse_input(args.blastresults, args.tophit, args.idthreshold,
                                             args.taxidcolumn)
 
+    sys.stderr.write(f"Parsed {args.blastresults}, found {len(inputdata)} BLAST queries, "
+                     f"identified {len(gbaccs)} unique GenBank accession values without known "
+                     f"taxids, {len(taxids)} known taxids\n")
     # If taxids not present, search the unique accession numbers to retreive taxids
     gbtaxids = dict()
     if len(gbaccs) > 0:
+        sys.stderr.write(f"Searching NCBI taxonomy to retrieve taxids for GenBank accessions\n")
         auth = get_authentication(args.ncbiauth)
         gbtaxids = retrieve_taxids(gbaccs, args.chunksize, auth)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
 
     # Retrieve taxonomy from local if available
-    taxonomy, absent, local = retrieve_ncbi_local(taxids, args.localdb)
+    taxonomy, absent, local = retrieve_taxonomy_local(taxids, args.localdb)
 
     # If any absent, get from ncbi remote
     if len(absent) > 0:
         if not auth:
             auth = get_authentication(args.ncbiauth)
-        ncbi, ncbiabsent = retrieve_ncbi_remote(absent, args.chunksize, auth)
+        ncbi, ncbiabsent = retrieve_taxonomy(absent, args.chunksize, auth)
 
         if len(ncbi) > 0:
             local.update(ncbi)
