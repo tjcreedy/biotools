@@ -196,7 +196,7 @@ def get_authentication(path):
     return auth
 
 
-def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=5):
+def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=10):
     #ids, searchfunc, responsekey = taxids, efetch_read_taxonomy, 'TaxId'
     #ids, searchfunc, responsekey, auth = absent, efetch_read_taxonomy, 'TaxId', authdict
     Entrez.email = auth['email']
@@ -209,6 +209,7 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
     errors = 0
     maxiterations = int(total / chunksize * 5)
     it = 1
+    missprop = []
     while 1:
         # Attempt to retrieve summaries for this set
         try:
@@ -235,6 +236,7 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
             # If any missing, add them to the to-do set
             missingids = [t for t in idset if str(t) not in out]
             if len(missingids) > 0:
+                missprop.append(len(missingids)/chunksize)
                 ids.update(missingids)
             # Report, take a new set for the next iteration out of what is left
             sys.stderr.write(f"\rSuccessfully retrieved {done}/{total} records (iteration {it})")
@@ -244,10 +246,11 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 it += 1
                 time.sleep(0.4)
             else:
-                if done >= total:
-                    sys.stderr.write("\n")
-                else:
-                    sys.stderr.write(", failed to retrieve the remainder.")
+                if done < total:
+                    sys.stderr.write(", failed to retrieve the remainder")
+                meanmissprop = sum(missprop)/len(missprop)
+                sys.stderr.write(f", {errors} failed NCBI calls, "
+                                 f"mean {round(meanmissprop, 3)*100}% complete NCBI returns.\n")
                 yield out
                 break
 
