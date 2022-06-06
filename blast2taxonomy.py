@@ -542,7 +542,6 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
-    args = getcliargs('-l -i 100 -b ASVs_nt_blast.xml -g NCBI_accession2taxid.json -x NCBI_taxid2taxonomy.json -n /home/thomas/passwords/api_tokens/ncbi_authentication.txt'.split(' '))
     auth = None
 
     # Parse the inputs, filtering out results below idthreshold
