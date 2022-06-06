@@ -560,19 +560,25 @@ if __name__ == "__main__":
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
 
+    sys.stderr.write(f"Total {len(taxids)} unique taxids to retrieve taxonomy for\n.")
+
     # Retrieve taxonomy from local if available
     taxonomy, _ = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
                                      authpath=args.ncbiauth, authdict=auth)
 
     # Assign taxonomy to the input data
+    sys.stderr.write(f"Assigning taxonomy to BLAST hits\n")
     taxonomised = assign_taxonomy(inputdata, gbtaxids, taxonomy, args.ranks)
 
     # Do LCA analysis
     if args.lca:
+        sys.stderr.write(f"Performing LCA search\n")
         taxonomised = lca(taxonomised, args.ranks)
 
     # Filter top hits
     if args.tophit:
+        sys.stderr.write(f"Filtering hits to report top hit taxonomy\n")
         taxonomised = filter_tophit(taxonomised)
     # Output
     writeout(taxonomised)
+    sys.stderr.write(f"Done\n")
