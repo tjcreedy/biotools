@@ -18,17 +18,6 @@ from collections import Counter
 
 from Bio import Entrez
 from Bio.Blast import NCBIXML
-# Test blast commands
-# BLASTDB=/mbl/share/workspaces/groups/database/nt-2021-09-07/nt
-# blastn -query ASVsub.fasta -db $BLASTDB -num_threads 10 -outfmt 5 -out test5.xml
-# blastn -query ASVsub.fasta -db $BLASTDB -num_threads 10 -outfmt 6 -out test6.tsv
-# blastn -query ASVsub.fasta -db $BLASTDB -num_threads 10 -outfmt 10 -out test10.csv
-# blastn -query ASVsub.fasta -db $BLASTDB -num_threads 10 -outfmt "6 std staxids sscinames sskingdoms" -out test6t.tsv
-# blastn -query ASVsub.fasta -db $BLASTDB -num_threads 10 -outfmt "10 std staxids sscinames sskingdoms" -out test10t.csv
-
-
-
-
 
 # Class definitions
 
@@ -282,7 +271,7 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 it += 1
                 time.sleep(0.4)
             else:
-                if done == total:
+                if done < total:
                     sys.stderr.write("\n")
                 else:
                     sys.stderr.write(", failed to retrieve the remainder.")
@@ -413,8 +402,9 @@ def writeout(data):
             if 'id' in hit:
                 output.append(hit['id'])
             if 'tx' in hit:
-                output.append(str(hit['tx']))
+                output.append(hit['tx'])
             output.extend(hit['taxonomy'])
+            output = [str(o) for o in output]
             sys.stdout.write('\t'.join(output) + '\n')
 
 
