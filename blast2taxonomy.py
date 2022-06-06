@@ -398,10 +398,10 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
 
 
 def lca(data, ranks):
-    # data = taxonomised
+    # data, ranks = taxonomised, args.ranks
     out = {}
     for qseqid, hits in data.items():
-        # qseqid = list(data.keys())[0]
+        # qseqid, hits = list(data.items())[422]
         lcasets = {r: set() for r in ranks}
         for hit in hits:
             # i = 0
@@ -410,8 +410,7 @@ def lca(data, ranks):
                 lcasets[r].add(hit['taxonomy'][j])
         lcataxonomy = []
         for r in ranks:
-            if len(lcasets[r]) == 1:
-                lcataxonomy.append(lcasets[r].pop())
+            lcataxonomy.append(lcasets[r].pop() if len(lcasets[r]) == 1 else '')
         out[qseqid] = [{'taxonomy': lcataxonomy}]
     return out
 
@@ -543,6 +542,7 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
+    args = getcliargs('-l -i 100 -b ASVs_nt_blast.xml -g NCBI_accession2taxid.json -x NCBI_taxid2taxonomy.json -n /home/thomas/passwords/api_tokens/ncbi_authentication.txt'.split(' '))
     auth = None
 
     # Parse the inputs, filtering out results below idthreshold
