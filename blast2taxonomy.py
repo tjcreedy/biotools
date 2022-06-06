@@ -560,7 +560,7 @@ if __name__ == "__main__":
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
 
-    sys.stderr.write(f"Total {len(taxids)} unique taxids to retrieve taxonomy for\n.")
+    sys.stderr.write(f"Total {len(taxids)} unique taxids to retrieve taxonomy for\n")
 
     # Retrieve taxonomy from local if available
     taxonomy, _ = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
