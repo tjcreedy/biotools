@@ -573,9 +573,8 @@ if __name__ == "__main__":
     if args.lca:
         sys.stderr.write(f"Performing LCA search\n")
         taxonomised = lca(taxonomised, args.ranks)
-
     # Filter top hits
-    if args.tophit:
+    elif args.tophit:
         sys.stderr.write(f"Filtering hits to report top hit taxonomy\n")
         taxonomised = filter_tophit(taxonomised)
     # Output
