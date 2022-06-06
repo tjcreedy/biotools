@@ -461,27 +461,27 @@ def getcliargs(arglist=None):
         (--outfmt 5), tsv (--outfmt 6) or csv (--outfmt 10). If tsv or csv format, the first three 
         columns must be query seq id, subject seq id and percent identity in that order, as in the 
         default tabular output format. If a non-default format has been run that includes the 
-        column staxids, the column number for this data should be passed to -t/--taxidcolumn. Note 
+        column staxids, the column number for this data should be passed to -c/--taxidcolumn. Note 
         that if multiple taxids are found for a hit, the first will be used. 
         |n
         The taxonomy will be retrieved from NCBI Taxonomy based on the taxid of the hit(s). By 
         default, the taxonomy of all hits will be retrieved. Optionally, the hits can be filtered, 
-        either keeping only the/a top hit using the -p/--tophit option, or finding the lowest 
-        common ancestor of all hits using the -a/--lca option. 
+        either keeping only the/a top hit using the -t/--tophit option, or finding the lowest 
+        common ancestor of all hits using the -l/--lca option. 
         |n
         The script will output a tsv to STDOUT. With the default option, the script will output 
         the information each hit for each query id, in the same format as supplied, followed by 
         the parsed NCBI accession ID, the NCBI taxid and taxonomy columns for each hit. When using 
-        the -p/--tophit option, only a top hit for each query will be output. If multiple top 
+        the -t/--tophit option, only a top hit for each query will be output. If multiple top 
         hits are found, the first one with the most frequent taxonomy will be output. When using 
-        the -a/--lca option, the script will output a single row for each query id and the LCA  
+        the -l/--lca option, the script will output a single row for each query id and the LCA  
         taxonomy columns. Note that if the input is XML, the only fields parsed from the XML and 
         output are qseqid, sseqid and pident. Control the taxonomic ranks output in all cases 
         using -r/--rank. 
         |n
         BLAST results can optionally be filtered to remove hits below a percent identity threshold 
         prior to retrieving taxonomy. Supply an id threshold to -i/--idthreshold, default 0. It is 
-        advisable to use this option when filtering with the -a/--lca option.
+        advisable to use this option when filtering with the -l/--lca option.
         |n
         To efficiently retrieve taxonomy, the script uses a pair of local datasets in json files, 
         one recording taxids for GenBank accession numbers, one recording taxonomy for taxids. 
@@ -496,15 +496,15 @@ def getcliargs(arglist=None):
         NCBI authentication is required but absent.
         |n
         By default, the script will send 1000 ids to NCBI in each request. If this seems to cause 
-        errors, set --chunksize to a lower value. This cannot be increased.
+        errors, set -z/--chunksize to a lower value. This cannot be increased.
         """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
     parser.add_argument('-b', '--blastresults', required=True, metavar='PATH',
                         help='path to blast results file')
-    parser.add_argument('-p', '--tophit', action='store_true',
+    parser.add_argument('-t', '--tophit', action='store_true',
                         help='return the taxonomy of the top hit(s) by percent id')
-    parser.add_argument('-a', '--lca', action='store_true',
+    parser.add_argument('-l', '--lca', action='store_true',
                         help='return the lowest common ancestor of all hits for each query')
     parser.add_argument('-i', '--idthreshold', type=float, metavar='N', default=0,
                         help='minimum percent id to retrieve taxonomy for a hit, default 0')
@@ -514,13 +514,13 @@ def getcliargs(arglist=None):
                         help='path to taxid-taxonomy json, will be created if absent')
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
-    parser.add_argument('-t', '--taxidcolumn', type=int, metavar='N',
+    parser.add_argument('-c', '--taxidcolumn', type=int, metavar='N',
                         help='the column number of the staxid field if included in an input tsv '
                              'or csv')
     parser.add_argument('-r', '--ranks', metavar='rank,rank,rank',
                         help='comma-separated list of ranks',
                         default='superkingdom,kingdom,phylum,class,order,family,genus,species')
-    parser.add_argument('-c', '--chunksize', type=int, metavar='N', default=1000,
+    parser.add_argument('-z', '--chunksize', type=int, metavar='N', default=1000,
                         help='number of ids per request, default 1000')
 
     # Parse the arguments from the function call if specified, otherwise from the command line
