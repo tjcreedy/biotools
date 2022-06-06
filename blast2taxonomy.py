@@ -151,34 +151,6 @@ def parse_input(path, tophit, idthresh, taxidc):
 
     return indata, accs, taxids
 
-
-def retrieve_taxonomy_local(taxids, database):
-    # database = args.localdb
-    out = dict()
-    absent = set()
-    db = dict()
-
-    if os.path.exists(database):
-        with open(database, 'r') as fp:
-            db = json.load(fp)
-
-        for i in taxids:
-            if i in db:
-                out[i] = db[i]
-            else:
-                absent.add(i)
-    else:
-        # Check that we can write to the file before spending time doing
-        # ncbi stuff
-        with open(database, 'w') as fp:
-            pass
-        os.remove(database)
-
-        absent = taxids
-
-    return out, absent, db
-
-
 def absent_authentication():
     out = ("# To automatically pull NCBI data from the internet, you need an NCBI account and API "
            "key.\n"
@@ -226,15 +198,16 @@ def get_authentication(path):
 
 def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=5):
     #ids, searchfunc, responsekey = taxids, efetch_read_taxonomy, 'TaxId'
+    #ids, searchfunc, responsekey, auth = absent, efetch_read_taxonomy, 'TaxId', authdict
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
     Entrez.tool = "biotools/blast2taxonomy.py:retrieve_ncbi_remote"
 
     done = 0
     total = len(ids)
-    idset = {ids.pop() for _ in range(chunksize)}
+    idset = {ids.pop() for _ in range(min([chunksize, len(ids)]))}
     errors = 0
-    maxiterations = int(total / chunksize * 1.5)
+    maxiterations = int(total / chunksize * 5)
     it = 1
     while 1:
         # Attempt to retrieve summaries for this set
@@ -271,57 +244,126 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 it += 1
                 time.sleep(0.4)
             else:
-                if done < total:
+                if done >= total:
                     sys.stderr.write("\n")
                 else:
                     sys.stderr.write(", failed to retrieve the remainder.")
                 yield out
                 break
 
-def retrieve_taxonomy(taxids, chunksize, auth):
-    """Search NCBI for lineage information given a tax id.
-    """
-    # taxids, chunksize = absent, 1000
-    def efetch_read_taxonomy(idset):
-        sh = Entrez.efetch(db='taxonomy', id=[str(t) for t in idset])
-        records = Entrez.read(sh)
-        sh.close()
-        return records
 
-    ncbigen = retrieve_ncbi_remote(taxids, efetch_read_taxonomy, 'TaxId', chunksize, auth)
-    out = {}
-    for outsub in ncbigen:
-        # outsub = next(ncbigen)
-        out.update(outsub)
+def retrieve_ncbi_local(ids, dbpath):
+    # dbpath = gbtiddbpath
+    # ids, dbpath = taxids, tidtaxdbpath
+    out = dict()
+    absent = set()
 
-    absent = set(i for i in taxids if str(i) not in out)
+    if os.path.exists(dbpath):
+        with open(dbpath, 'r') as fp:
+            db = json.load(fp)
+
+        for i in ids:
+            if str(i) in db:
+                out[str(i)] = db[str(i)]
+            else:
+                absent.add(i)
+    else:
+        # Check that we can write to the file for future use
+        with open(dbpath, 'w') as fp:
+            pass
+        os.remove(dbpath)
+        absent = {i for i in ids}
 
     return out, absent
 
 
-def retrieve_taxids(ids, chunksize, auth, maxerrors=5):
-    # from copy import copy
-    # ids, chunksize, maxerrors = copy(gbaccs), 1000, 5
+def update_ncbi_local(newdb, dbpath):
 
-    def esummary_read_taxids(idset):
-        sh = Entrez.esummary(db='nucleotide', id=','.join(idset))
-        summaries = Entrez.read(sh)
-        sh.close()
-        return(summaries)
+    olddb = dict()
 
-    ncbigen = retrieve_ncbi_remote(ids, esummary_read_taxids, 'AccessionVersion', chunksize, auth)
-    out = {}
-    for outsub in ncbigen:
-        # outsub = next(ncbigen)
-        for gb, smry in outsub.items():
-            out[gb] = int(smry['TaxId'])
+    if os.path.exists(dbpath):
+        with open(dbpath, 'r') as fp:
+            olddb = json.load(fp)
 
-    return out
+    for k, v in newdb.items():
+        olddb[k] = v
+
+    with open(dbpath, 'w') as fp:
+        json.dump(olddb, fp)
 
 
-def write_new_local(newdb, database):
-    with open(database, 'w') as fp:
-        json.dump(newdb, fp)
+def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None):
+    # gbids, gbtiddbpath, chunksize, authpath, auth = gbaccs, args.gbtiddb, args.chunksize, args.ncbiauth, None
+
+    out, absent = retrieve_ncbi_local(gbids, gbtiddbpath)
+    if len(out) > 0:
+        sys.stderr.write(f"Retrieved {len(out)} taxids from local database\n")
+
+    if len(absent) > 0:
+        if not authdict:
+            if not authpath:
+                sys.exit("Supply one of authpath or auth to retrieve_taxids")
+            authdict = get_authentication(authpath)
+
+        def esummary_read_taxids(idset):
+            sh = Entrez.esummary(db='nucleotide', id=','.join(idset))
+            summaries = Entrez.read(sh)
+            sh.close()
+            return summaries
+        sys.stderr.write(f"Searching NCBI nt for {len(absent)} taxids\n")
+        ncbigen = retrieve_ncbi_remote(absent, esummary_read_taxids, 'AccessionVersion', chunksize,
+                                       authdict)
+        rem = {}
+        for outsub in ncbigen:
+            # outsub = next(ncbigen)
+            for gb, smry in outsub.items():
+                rem[gb] = int(smry['TaxId'])
+
+        update_ncbi_local(rem, gbtiddbpath)
+
+        out.update(rem)
+
+    absent = set(i for i in ids if str(i) not in out)
+
+    return out, absent, authdict
+
+
+def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=None):
+    #tidtaxdbpath, chunksize, authpath, authdict = args.tidtaxdb, args.chunksize, args.ncbiauth, auth
+    """Search NCBI for lineage information given a tax id.
+    """
+    # taxids, chunksize = absent, 1000
+
+    out, absent = retrieve_ncbi_local(taxids, tidtaxdbpath)
+    if len(out) > 0:
+        sys.stderr.write(f"Retrieved {len(out)} taxonomies from local database\n")
+
+    if len(absent) > 0:
+        if not authdict:
+            if not authpath:
+                sys.exit("Supply one of authpath or auth to retrieve_taxonomy")
+            authdict = get_authentication(authpath)
+
+        def efetch_read_taxonomy(idset):
+            sh = Entrez.efetch(db='taxonomy', id=[str(t) for t in idset])
+            records = Entrez.read(sh)
+            sh.close()
+            return records
+
+        sys.stderr.write(f"Searching NCBI taxonomy for {len(absent)} taxonomies\n")
+        ncbigen = retrieve_ncbi_remote(absent, efetch_read_taxonomy, 'TaxId', chunksize, authdict)
+        rem = {}
+        for outsub in ncbigen:
+            # outsub = next(ncbigen)
+            rem.update(outsub)
+
+        update_ncbi_local(rem, tidtaxdbpath)
+
+        out.update(rem)
+
+    absent = set(i for i in taxids if str(i) not in out)
+
+    return out, absent
 
 
 def get_standard_lineage(record, ranks):
@@ -438,9 +480,12 @@ def getcliargs(arglist=None):
         prior to retrieving taxonomy. Supply an id threshold to -i/--idthreshold, default 0. It is 
         advisable to use this option when filtering with the -a/--lca option.
         |n
-        To efficiently retrieve taxonomy, the script uses a local database, supplied to 
-        -l/--localdb, that may have been created by previous runs of this script. If this is your 
-        first run, the script will create a new database at the location supplied.
+        To efficiently retrieve taxonomy, the script uses a pair of local datasets in json files, 
+        one recording taxids for GenBank accession numbers, one recording taxonomy for taxids. 
+        These might have been created by a previous run of this script, or the latter with 
+        get_NCBI_taxonomy.py. Supply a path to the accession-taxid json with -g/--gbtiddb and the 
+        taxid-taxonomy json with -x/--tidtaxdb. If this is your first run, the script will create 
+        new databases at the locations supplied.
         |n
         To retrieve information from NCBI, you must authenticate with an email address and API 
         key. This is only necessary if your local database isn't complete. Supply a file 
@@ -460,8 +505,10 @@ def getcliargs(arglist=None):
                         help='return the lowest common ancestor of all hits for each query')
     parser.add_argument('-i', '--idthreshold', type=float, metavar='N', default=0,
                         help='minimum percent id to retrieve taxonomy for a hit, default 0')
-    parser.add_argument('-l', '--localdb', type=str, metavar='PATH', required=True,
-                        help='local database file path')
+    parser.add_argument('-g', '--gbtiddb', type=str, metavar='PATH', required=True,
+                        help='path to accession-taxid json, will be created if absent')
+    parser.add_argument('-x', '--tidtaxdb', type=str, metavar='PATH', required=True,
+                        help='path to taxid-taxonomy json, will be created if absent')
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
     parser.add_argument('-t', '--taxidcolumn', type=int, metavar='N',
@@ -505,32 +552,14 @@ if __name__ == "__main__":
     # If taxids not present, search the unique accession numbers to retreive taxids
     gbtaxids = dict()
     if len(gbaccs) > 0:
-        sys.stderr.write(f"Searching NCBI taxonomy to retrieve taxids for GenBank accessions\n")
-        auth = get_authentication(args.ncbiauth)
-        gbtaxids = retrieve_taxids(gbaccs, args.chunksize, auth)
+        gbtaxids, _, auth = retrieve_taxids(gbaccs, args.gbtiddb, args.chunksize,
+                                            authpath=args.ncbiauth)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
 
     # Retrieve taxonomy from local if available
-    taxonomy, absent, local = retrieve_taxonomy_local(taxids, args.localdb)
-
-    # If any absent, get from ncbi remote
-    if len(absent) > 0:
-        if not auth:
-            auth = get_authentication(args.ncbiauth)
-        ncbi, ncbiabsent = retrieve_taxonomy(absent, args.chunksize, auth)
-
-        if len(ncbi) > 0:
-            local.update(ncbi)
-            write_new_local(local, args.localdb)
-            del local
-            taxonomy.update(ncbi)
-
-        if len(ncbiabsent) > 0:
-            absent = ', '.join(list(ncbiabsent))
-            text = "Warning: could not retrieve NCBI taxonomy data for the " \
-                   + "following taxids."
-            sys.stderr.write(f"{text}\n{absent}\n")
+    taxonomy, _ = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
+                                     authpath=args.ncbiauth, authdict=auth)
 
     # Assign taxonomy to the input data
     taxonomised = assign_taxonomy(inputdata, gbtaxids, taxonomy, args.ranks)
