@@ -326,7 +326,7 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None)
 
         out.update(rem)
 
-    absent = set(i for i in ids if str(i) not in out)
+    absent = set(i for i in gbids if str(i) not in out)
 
     return out, absent, authdict
 
