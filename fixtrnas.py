@@ -156,7 +156,7 @@ def write_log(logq):
         if logline is None:
             break
         now = datetime.datetime.now()
-        logh.write(f"{str(now-dt)}\t{logline}")
+        logh.write(f"{str(now-dt)}\t{logline}\n")
         logh.flush()
     logh.close()
 
