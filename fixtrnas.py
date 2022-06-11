@@ -23,8 +23,8 @@ from io import StringIO
 from collections import defaultdict, Counter
 import Bio.Seq
 from Bio import SeqIO, SeqFeature
+from Bio.Data import IUPACData
 from Bio.Align.Applications import MafftCommandline
-
 
 # Class definitions
 
@@ -40,6 +40,17 @@ class MultilineFormatter(argparse.HelpFormatter):
                                                  ) + '\n\n'
             multiline_text = multiline_text + formatted_paragraph
         return multiline_text
+
+
+class NullQueue:
+    def __init__(self, ):
+        pass
+
+    def put(self, value):
+        print(value)
+
+    def get(self):
+        pass
 
 
 # Monkey Patches
@@ -113,6 +124,7 @@ formatregex = {'fasta': "^>",
 
 # Function definitions
 
+
 def get_feat_name(feat):
     featname = "unknown"
     nametags = ['gene', 'product', 'label', 'standard_name']
@@ -135,15 +147,16 @@ def set_feat_name(feat, name):
 
 def write_log(logq):
     # Set up the logging output handle
-    dt = datetime.datetime.now().strftime("%Y-%m-%d-%H%M%S")
-    logh = open(f"fixtrnas_log_{dt}.txt", 'w')
+    dt = datetime.datetime.now()
+    logh = open(f"fixtrnas_log_{dt.strftime('%Y-%m-%d-%H%M%S')}.txt", 'w')
     # Start a constant process that waits to receive data in the form of a file
     # specifying the source of the seqrecord, and the new seqrecord
     while 1:
         logline = logq.get()
         if logline is None:
             break
-        logh.write(logline)
+        now = datetime.datetime.now()
+        logh.write(f"{str(now-dt)}\t{logline}")
         logh.flush()
     logh.close()
 
@@ -190,15 +203,21 @@ def write_term(prinq):
 
 
 def start_accessories(pool, manager):
-    seqq = manager.Queue()
-    logq = manager.Queue()
-    termq = manager.Queue()
 
-    seqwrite = pool.apply_async(functools.partial(write_genbank), (seqq,))
-    logwrite = pool.apply_async(functools.partial(write_log), (logq,))
-    termwrite = pool.apply_async(functools.partial(write_term), (termq,))
+    if pool is None or manager is None:
+        sys.stderr.write("start_accessories has been passed null pool and/or manager: assuming "
+                         "interactive\n")
+        return (NullQueue(), NullQueue(), NullQueue()), None
+    else:
+        seqq = manager.Queue()
+        logq = manager.Queue()
+        termq = manager.Queue()
 
-    return (seqq, logq, termq), (seqwrite, logwrite, termwrite)
+        seqwrite = pool.apply_async(functools.partial(write_genbank), (seqq,))
+        logwrite = pool.apply_async(functools.partial(write_log), (logq,))
+        termwrite = pool.apply_async(functools.partial(write_term), (termq,))
+
+        return (seqq, logq, termq), (seqwrite, logwrite, termwrite)
 
 
 def sequence_generator(current, handle, seqformat):
@@ -309,15 +328,16 @@ def closestbases(seq, n, nbases=1):
 def get_simple_trnas(seqrecord, nameconvertsimple):
     seqtrnas = defaultdict(list)
     seqtrnasbyloc, seqother = sortextractfeats(seqrecord, 'tRNA')
-    seqrecord.features = seqother
     # Sort tRNAs by name to remove as new ones found
     for loc, feats in seqtrnasbyloc.items():
-        names = {nameconvertsimple(get_feat_name(feat)) for feat in feats}
+        # loc, feats = list(seqtrnasbyloc.items())[0]
+        # feat = feats[0]
+        names = {nameconvertsimple[get_feat_name(feat)] for feat in feats}
         if len(names) > 1:
             seqtrnas['unknown'].extend(feats)
         else:
             seqtrnas[list(names)[0]].extend(feats)
-    return seqtrnas
+    return seqtrnas, seqother
 
 
 def unreplaced_trnas(seqtrnas, trnasadded):
@@ -331,7 +351,7 @@ def unreplaced_trnas(seqtrnas, trnasadded):
     return outfeats
 
 
-def ref_annotate(seqrecord, refdict, tempdir, queues, interactive):
+def ref_annotate(seqrecord, refdict, tempdir, queues):
     logq, termq = queues
 
     # Get the reference sequence from refdict
@@ -351,7 +371,9 @@ def ref_annotate(seqrecord, refdict, tempdir, queues, interactive):
     seqtrnas = {}
     nameconvertsimple, *_ = loadnamevariants(simplifytrnas=True)
     if len(seqrecord.features) > 0:
-        seqtrnas = get_simple_trnas(seqrecord, nameconvertsimple)
+        seqtrnas, outfeats = get_simple_trnas(seqrecord, nameconvertsimple)
+    else:
+        outfeats = []
 
     # If sequences match, no need to do an alignment
     reftrnas, refother = sortextractfeats(refrecord, 'tRNA')
@@ -359,6 +381,7 @@ def ref_annotate(seqrecord, refdict, tempdir, queues, interactive):
     refaln, seqaln = None, None
     if seqrecord.seq == refrecord.seq:
         align = False
+        logq.put(f"{seqrecord.name}: reference annotation - sequences are identical")
     else:
         # Otherwise, run alignment
         fastaname = os.path.join(tempdir, f"{seqrecord.name}.fasta")
@@ -378,7 +401,9 @@ def ref_annotate(seqrecord, refdict, tempdir, queues, interactive):
         elif re.match('^_R_', refaln.name):
             refrecord = refrecord.reverse_complement()
         reftrnas, refother = sortextractfeats(refrecord, 'tRNA')
+        logq.put(f"{seqrecord.name}: reference annotation - completed aligning sequences")
 
+    replaced, unreplaced = 0, 0
     for location, feats in reftrnas.items():
         trnasadded = Counter()
         # If aligned, modify the location of the feats based on the alignment
@@ -461,20 +486,23 @@ def ref_annotate(seqrecord, refdict, tempdir, queues, interactive):
                 feat = set_feat_name(feat, nameconvert[name])
             if name in nameconvertsimple:
                 trnasadded[nameconvertsimple[name]] += 1
-            seqrecord.features.append(feat)
+            outfeats.append(feat)
         # Add back in any tRNAs from original set not found
-        seqrecord.features.extend(unreplaced_trnas(seqtrnas, trnasadded))
-
+        unrepfeats = unreplaced_trnas(seqtrnas, trnasadded)
+        outfeats.extend(unrepfeats)
+        if feats:
+            replaced += 1
+        if unrepfeats:
+            unreplaced += 1
+    logq.put(f"{seqrecord.name}: reference annotation - {replaced} tRNA annotations "
+             f"replaced/added, {unreplaced} not replaced")
     issues = None
-
+    seqrecord.features = outfeats
     return seqrecord, issues
 
 
-def mitfi_annotate(seqrecord, table, tempdir, queues, interactive):
-    # table = args.table
-    logq, termq = queues
-
-    # Download mitfi into the temporary directory
+def get_mitfi(tempdir):
+    # Download mitfi into the temporary
     source = "https://raw.githubusercontent.com/tjcreedy/biotools/main/bin/mitfi.tar.gz"
     destination = os.path.join(tempdir, 'mitfi.tar.gz')
     urllib.request.urlretrieve(source, destination)
@@ -482,11 +510,17 @@ def mitfi_annotate(seqrecord, table, tempdir, queues, interactive):
     tar.extractall(tempdir)
     tar.close()
 
+def mitfi_annotate(seqrecord, table, tempdir, queues):
+    # table = args.table
+    logq, termq = queues
+
     # If seqrecord has features, extract out tRNA and other feats from seqrecord
     seqtrnas = {}
     nameconvertsimple, *_ = loadnamevariants(simplifytrnas=True)
     if len(seqrecord.features) > 0:
-        seqtrnas = get_simple_trnas(seqrecord, nameconvertsimple)
+        seqtrnas, outfeats = get_simple_trnas(seqrecord, nameconvertsimple)
+    else:
+        outfeats = []
 
     # Output the sequence as a fasta
     fastapath = os.path.join(tempdir, f"{seqrecord.name}.fasta")
@@ -494,6 +528,7 @@ def mitfi_annotate(seqrecord, table, tempdir, queues, interactive):
         fh.write(f">{seqrecord.name}\n{seqrecord.seq}\n")
 
     # Generate a Mitfi config and output
+    logq.put(f"{seqrecord.name}: MiTFi annotation starting")
     configpath = os.path.join(tempdir, 'mitfi_config.txt')
     with open(configpath, 'w') as fh:
         fh.write(f"infernalCall = {os.path.join(tempdir, 'cmsearch')}\n"
@@ -520,23 +555,29 @@ def mitfi_annotate(seqrecord, table, tempdir, queues, interactive):
         # Parse line
         n, start, end, score, evalue, AC, AA, model, strand = line.rstrip().split('\t')
         anticodon = AC.replace('U', 'T')
-        name = f"TRN{AA[0]}-{anticodon}"
-        trnasadded[f"TRN{AA[0]}"] += 2
+        shortname = f"TRN{AA[0]}"
+        name = f"{shortname}-{anticodon}"
+        trnasadded[shortname] += 2
         # Create features
         location = SeqFeature.FeatureLocation(start=SeqFeature.ExactPosition(int(start)),
                                               end=SeqFeature.ExactPosition(int(end)),
                                               strand=1 if strand == "+" else -1)
-        seqrecord.features.extend([
+        outfeats.extend([
             SeqFeature.SeqFeature(location, type='gene', qualifiers={'gene': name}),
             SeqFeature.SeqFeature(location, type='tRNA', qualifiers={'gene': name,
                                                               'product': variants[name]['product'],
                                                               'standard_name': name})])
 
     # Add back in any tRNAs from original set not found
-    seqrecord.features.extend(unreplaced_trnas(seqtrnas, trnasadded))
+    unrepfeats = unreplaced_trnas(seqtrnas, trnasadded)
+    outfeats.extend(unrepfeats)
+    unreplaced = set(f.location for f in unrepfeats)
+
+    logq.put(f"{seqrecord.name}: MiTFi annotation - {len(trnasadded)} tRNA annotations "
+             f"replaced/added, {len(unreplaced)} not replaced")
 
     issues = None
-
+    seqrecord.features = outfeats
     return seqrecord, issues
 
 
@@ -546,7 +587,7 @@ def add_anticodon(feats):
     noanticodons = 0
     # Iterate
     for i, featlis in enumerate(feats.values()):
-        # featlis = list(feats.values())[1]
+        # featlis = list(feats.values())[0]
         # Check if at least one is a tRNA, dicard all if not
         types = set(f.type for f in featlis)
         if 'tRNA' not in types:
@@ -594,7 +635,8 @@ def add_anticodon(feats):
                 if len(acdata) < 2:
                     continue
                 # Construct putative new names
-                acname = f"TRN{acdata['aminoacid'].upper()[0]}-{acdata['anticodon'].upper()}"
+                protletter = IUPACData.protein_letters_3to1[acdata['aminoacid']]
+                acname = f"TRN{protletter}-{acdata['anticodon'].upper()}"
                 if name in anticodons:
                     anticodons[name].add(acname)
                 else:
@@ -618,40 +660,47 @@ def add_anticodon(feats):
     return outfeats, noanticodons
 
 
-def do_checking(seqrecord, queue, interactive):
+def do_checking(seqrecord, queue):
+    logq, termq = queue
     # Extract tRNAs
     trnas, otherfeats = sortextractfeats(seqrecord, 'tRNA')
+    logq.put(f"{seqrecord.name}: checking - found {len(trnas)} tRNA locations")
     # Add anticodons
     correctedtrnas, nac = add_anticodon(trnas)
+    logq.put(f"{seqrecord.name}: checking - {nac} tRNAs had no anticodon data")
     # Return all features to seqrecord
     seqrecord.features = correctedtrnas + otherfeats
 
     issues = (len(trnas) < len(otherfeats), nac)
+    logq.put(f"{seqrecord.name}: checking - {len(otherfeats)} other features")
 
     return seqrecord, issues
 
 
-def process_seqrecord(dochecking, args, refdict, tempdir, queues, interactive, seqrecord):
-    # dochecking, refdict = check, reference
+def process_seqrecord(dochecking, args, refdict, tempdir, queues, seqrecord):
+    # seqrecordgen, dochecking = parse_input("/home/thomas/work/iBioGen_postdoc/MMGdatabase/genbank_download/reprocessed_2022-06-11/AB267275.gb")
+    # refdict = reference
     # seqrecord = next(seqrecordgen)
     seqq, logq, termq = queues
 
+    logq.put(f"{seqrecord.name}: started processing")
+
     checkissues, refissues, mitfiissues = None, None, None
     if dochecking:
-        seqrecord, checkissues = do_checking(seqrecord, (logq, termq), interactive)
+        seqrecord, checkissues = do_checking(seqrecord, (logq, termq))
+
+    if any(checkissues):
+        logq.put(f"{seqrecord.name}: processing - issues are present")
 
     if args.forcereannotate or any(checkissues):
         if refdict:
-            seqrecord, refissues = ref_annotate(seqrecord, refdict, tempdir, (logq, termq),
-                                                interactive)
+            seqrecord, refissues = ref_annotate(seqrecord, refdict, tempdir, (logq, termq))
         else:
-            seqrecord, mitfiissues = mitfi_annotate(seqrecord, args.table, tempdir, (logq, termq),
-                                                    interactive)
+            seqrecord, mitfiissues = mitfi_annotate(seqrecord, args.table, tempdir, (logq, termq))
 
-    if not interactive:
-        termq.put(len(seqrecord.features))
-        seqq.put(seqrecord)
-
+    termq.put(len(seqrecord.features))
+    seqq.put(seqrecord)
+    #Bio.SeqIO.write(seqrecord, "test.gb", "genbank")
     return checkissues, refissues, mitfiissues
 
 
@@ -705,36 +754,38 @@ if __name__ == "__main__":
     interactive = False
     # Get the arguments
     args = getcliargs()
-
-    # interactive, args = True, getcliargs('-t 1 -r /home/thomas/work/iBioGen_postdoc/MMGdatabase/genbank_download/final_without_tRNAs_orig.gb'.split(' '))
+    # interactive, args = True, getcliargs('-t 1'.split(' '))
 
     # Initialise queue manager and pool
-    manager = multiprocessing.Manager()
-    pool = multiprocessing.Pool(args.threads + 3)
+    manager = multiprocessing.Manager() if not interactive else None
+    pool = multiprocessing.Pool(args.threads + 3) if not interactive else None
 
     # Start the accessory threads
     queues, writers = start_accessories(pool, manager)
 
     # Read input
     seqrecordgen, check = parse_input()
-    # seqrecordgen, check = parse_input("/home/thomas/work/iBioGen_postdoc/MMGdatabase/genbank_download/final_without_tRNAs.gb")
+    # seqrecordgen, check = parse_input("/home/thomas/work/iBioGen_postdoc/MMGdatabase/genbank_download/reprocessed_2022-06-11/AB267275.gb")
 
     # Overwrite checking if genbank but forceannotate has been used
     check = False if args.forcereannotate else check
-
-    # Read the references, if supplied
-    reference, refalndir = None, None
-    if args.reference:
-        reference = parse_reference(args.reference, args.referencemap)
 
     # Create temporary directory
     tempdir = "fixtrnas_temp"
     if not os.path.exists(tempdir):
         os.makedirs(tempdir)
 
+    # Read the references, if supplied
+    reference, refalndir = None, None
+    if args.reference:
+        reference = parse_reference(args.reference, args.referencemap)
+    # Otherwise get mitfi
+    else:
+        get_mitfi(tempdir)
+
     # Do the work
     issues = pool.map(functools.partial(process_seqrecord, check, args,
-                                        reference, tempdir, queues, interactive),
+                                        reference, tempdir, queues),
                       seqrecordgen)
 
     # Delete the temporary reference alignment directory
