@@ -772,8 +772,9 @@ if __name__ == "__main__":
 
     # Create temporary directory
     tempdir = "fixtrnas_temp"
-    if not os.path.exists(tempdir):
-        os.makedirs(tempdir)
+    if os.path.exists(tempdir):
+        shutil.rmtree(tempdir)
+    os.makedirs(tempdir)
 
     # Read the references, if supplied
     reference, refalndir = None, None
