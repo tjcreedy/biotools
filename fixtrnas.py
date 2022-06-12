@@ -195,9 +195,9 @@ def write_term(prinq):
         done += 1
     now = time.perf_counter()
     elapsed = now - start
-    elapsedper = datetime.timedelta(seconds=elapsed / done)
+    elapsedper = datetime.timedelta(seconds=round(elapsed / done))
     elapsed = datetime.timedelta(seconds=round(elapsed))
-    line = f"\nFinished in {elapsed}, {elapsedper} per record\n\n"
+    line = f"\nFinished in {elapsed}, on average {elapsedper} per record across all threads\n\n"
     sys.stderr.write(line)
     sys.stderr.flush()
 
