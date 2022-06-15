@@ -92,7 +92,11 @@ def parse_tabular(path, sep, idthresh, taxc):
                 continue
             # Get hit details and record
             sseqid = parse_title(row[1])
-            resd = {'id': sseqid, 'data': row}
+            resd = {'id': sseqid,
+                    'data': row,
+                    'pident': pident,
+                    'evalue': float(row[10]),
+                    'bitscore': float(row[11])}
             if taxc:
                 resd['tx'] = int(row[taxc - 1].split(';')[0])
             # Add to output dict
@@ -111,11 +115,18 @@ def parse_xml(path, idthresh):
         qseqid = res.query
         hits = []
         for hit in res.alignments:
-            # hit = res.alignments[8]
+            # hit = res.alignments[1]
             sseqid = parse_title(hit.title)
-            pident = (hit.hsps[0].identities/hit.hsps[0].align_length) * 100
+            hsp = hit.hsps[0]
+            pident = (hsp.identities/hsp.align_length) * 100
+            evalue = hsp.expect
+            bitscore = hsp.bits
             if pident >= idthresh:
-                hits.append({'id': sseqid, 'data': [qseqid, sseqid, pident]})
+                hits.append({'id': sseqid,
+                             'data': [qseqid, sseqid, pident, evalue, bitscore],
+                             'pident': pident,
+                             'evalue': evalue,
+                             'bitscore': bitscore})
         out[qseqid] = hits
     return out
 
@@ -457,11 +468,11 @@ def getcliargs(arglist=None):
     parser = argparse.ArgumentParser(description="""
         Parse the output of a BLAST search against an NCBI database (e.g. nt), supplied to 
         -b/--blastresults, to assign taxonomy to queries. BLAST results can be in XML 
-        (--outfmt 5), tsv (--outfmt 6) or csv (--outfmt 10). If tsv or csv format, the first three 
-        columns must be query seq id, subject seq id and percent identity in that order, as in the 
-        default tabular output format. If a non-default format has been run that includes the 
-        column staxids, the column number for this data should be passed to -c/--taxidcolumn. Note 
-        that if multiple taxids are found for a hit, the first will be used. 
+        (--outfmt 5), tsv (--outfmt 6) or csv (--outfmt 10). If tsv or csv format, the query seq 
+        id, subject seq id, percent identity, evalue and bitscore must be in columns 1, 2, 3 11 and 
+        12 respectively, as in the default tabular output format. If a non-default format has been 
+        run that includes the column "staxids", the column number for this data should be passed to 
+        -c/--taxidcolumn. Note that if multiple taxids are found for a hit, the first will be used. 
         |n
         The taxonomy will be retrieved from NCBI Taxonomy based on the taxid of the hit(s). By 
         default, the taxonomy of all hits will be retrieved. Optionally, the hits can be filtered, 
