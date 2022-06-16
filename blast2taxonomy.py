@@ -12,9 +12,11 @@ import json
 import time
 import argparse
 
-import textwrap as _textwrap
+import scipy
+import random
 
-from collections import Counter
+import textwrap as _textwrap
+from collections import Counter, defaultdict
 
 from Bio import Entrez
 from Bio.Blast import NCBIXML
@@ -45,6 +47,7 @@ def str_is_int(s):
         return True
     except ValueError:
         return False
+
 
 def parse_title(title):
     #title = hit.title
@@ -121,18 +124,19 @@ def parse_xml(path, idthresh):
             pident = (hsp.identities/hsp.align_length) * 100
             evalue = hsp.expect
             bitscore = hsp.bits
+            score = hsp.score
             if pident >= idthresh:
                 hits.append({'id': sseqid,
                              'data': [qseqid, sseqid, pident, evalue, bitscore],
                              'pident': pident,
                              'evalue': evalue,
-                             'bitscore': bitscore})
+                             'bitscore': bitscore,
+                             'score': score})
         out[qseqid] = hits
     return out
 
 
-def parse_input(path, tophit, idthresh, taxidc):
-    #
+def parse_input(path, process, idthresh, taxidc):
     #path, idthresh, taxidc = "test6.tsv", 0, None
     # Find out the input format
     with open(path) as fh:
@@ -144,7 +148,7 @@ def parse_input(path, tophit, idthresh, taxidc):
         indata = parse_tabular(path, sep, idthresh, taxidc)
 
     # Filter out non-top hits if using
-    if tophit:
+    if process == 'top':
         for qseqid in indata.keys():
             # qseqid = list(indata.keys())[0]
             pidents = [float(h['data'][2]) for h in indata[qseqid]]
@@ -209,7 +213,7 @@ def get_authentication(path):
 
 def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=10):
     #ids, searchfunc, responsekey = taxids, efetch_read_taxonomy, 'TaxId'
-    #ids, searchfunc, responsekey, auth = absent, efetch_read_taxonomy, 'TaxId', authdict
+    #ids, searchfunc, responsekey, auth, maxerrors = absent, efetch_read_taxonomy, 'TaxId', authdict, 10
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
     Entrez.tool = "biotools/blast2taxonomy.py:retrieve_ncbi_remote"
@@ -259,7 +263,7 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
             else:
                 if done < total:
                     sys.stderr.write(", failed to retrieve the remainder")
-                meanmissprop = sum(missprop)/len(missprop)
+                meanmissprop = sum(missprop)/len(missprop) if len(missprop) > 0 else 0
                 sys.stderr.write(f", {errors} failed NCBI calls, "
                                  f"mean {round(meanmissprop, 3)*100}% complete NCBI returns.\n")
                 yield out
@@ -407,6 +411,13 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
                 data[qseqid][i]['taxonomy'] = ['']  * len(ranks)
     return data
 
+# TODO: implement meganlca option, which filters according to MEGAN algorithm
+# See methods section at end https://genome.cshlp.org/content/17/3/377.full
+# def filter_hits(data, minscore, toppercent, winscore, minsupport):
+#     out = {}
+#     for qseqid, hits in data.items():
+#
+
 
 def lca(data, ranks):
     # data, ranks = taxonomised, args.ranks
@@ -422,6 +433,125 @@ def lca(data, ranks):
         lcataxonomy = []
         for r in ranks:
             lcataxonomy.append(lcasets[r].pop() if len(lcasets[r]) == 1 else '')
+        out[qseqid] = [{'taxonomy': lcataxonomy}]
+    return
+
+
+def p_greater(test, series, nperm = 1000):
+    def firstrank(lis):
+        return scipy.stats.rankdata(lis)[0]
+    fullseries = [test] + series
+    testrank = firstrank(fullseries)
+    permranks = []
+    for _ in range(nperm):
+        random.shuffle(fullseries)
+        permranks.append(firstrank(fullseries))
+    return len([r for r in permranks if r < testrank])/nperm
+
+
+def process_hits(data, ranks, process, speciesid, speciesconsider='pass', weight=5):
+    # data, ranks, process, speciesid, speciesconsider, weight = taxonomised, args.ranks, args.process, args.speciesid, 'pass', 3
+    #process = 'bestfit'
+    #speciesid = 90
+    if speciesconsider not in ['all', 'pass']:
+        sys.exit("Error: process_hits argument speciesconsider should be either 'all' or 'pass'")
+    out = {}
+    for qseqid, hits in data.items():
+        # qseqid, hits = list(data.items())[0]
+        # Set up containers for processing and taxonomy reference
+        lcasets = {r: defaultdict(list) for r in ranks}
+        parent = dict()
+        # Parse the hits, assessing each taxonomic level down
+        for hit in hits:
+            # hit = hits[7]
+            for j, (r, taxon) in enumerate(zip(ranks, hit['taxonomy'])):
+                # j = 7; r = ranks[j]; taxon = hit['taxonomy'][j]
+                taxon = hit['taxonomy'][j]
+                pident = hit['pident']
+                # Simply list the taxon if doing bare LCA
+                if process == 'lca':
+                    lcasets[r][taxon].append(1)
+                else:
+                    # If we're at species level, we don't want to consider the species if it's not
+                    # a true binomial, or if it's not a high enough %id to be likely to be an exact
+                    # species hit
+                    if r == 'species':
+                        if re.search(r" sp\.?( |$)", taxon) or pident < speciesid:
+                            # Do we want to record the score? If we do, species will always be
+                            # super low confidence, because there'll be a lot of things that arn't
+                            # the species - this is massively affected by coverage.
+                            if speciesconsider == 'all':
+                                taxon = ''
+                            # If we don't, the species scores will appear better than the higher
+                            # taxonomic levels!
+                            elif speciesconsider == 'pass':
+                                continue
+                    # Calculate the score with different methods
+                        # % id to the weight power
+                    lcasets[r][taxon].append(pident)
+                        # Product of the proportion, 1-evalue and downweighted bitscore
+                    #lcasets[r][taxon].append(pident/100 * (1-hit['evalue']) * hit['bitscore']/100)
+                # Record the parent
+                parent[taxon] = None if j == 0 else hit['taxonomy'][j-1]
+        # Reorganise the parent dict to a children dict - done after the above to ensure that any
+        # unconsidered species don't show up
+        children = defaultdict(set)
+        for child, parent in parent.items():
+            if parent:
+                children[parent].add(child)
+        # Output containers
+        lcataxonomy = []
+        lcaconf = []
+        lcascndry = [''] * len(ranks)
+        for i, r in enumerate(ranks[:6]):
+            # i = 6; r = ranks[i]
+            # Set up a list of taxa permitted to be selected as the best. In most cases, all taxa
+            # can be selected
+            permit = set(lcasets[r].keys())
+            # But if a) if this isn't the root, the selected taxon must be a valid child of the
+            # current taxonomy, or blank
+            hasblanks = any([p != '' for p in permit])
+            if i > 0:
+                permit = children[lcataxonomy[i-1]] | {''}
+            # or b) if this is species level and there are species names that have passed the
+            # speciesid filter, in which case we want to select one of them and not blank
+            if r == 'species' and hasblanks and speciesconsider == 'all':
+                permit = set(p for p in permit if p != '')
+            # If no hits remain, output empty taxonomy
+            if len(permit) == 0:
+                lcataxonomy.append('')
+                lcaconf.append(0)
+                if len(lcasets[r].keys()) > 0 and not(r == 'species' and '' not in lcasets[r]):
+                    lcascndry[i] = '*'
+                continue
+            # Otherwise, calculate the summary score
+            for t in lcasets[r].keys():
+                # Sum: good for getting consensus, but too overwhelmed by coverage
+                #lcasets[r][t] = sum(lcasets[r][t])
+                # Mean: undersupports mid level taxa
+                #lcasets[r][t] = sum(lcasets[r][t])/len(lcasets[r][t])
+                # Max: isn't biased by coverage, nor by midlevel taxa
+                lcasets[r][t] = max(lcasets[r][t])
+            # Gather scores and find the permitted taxon with the best score
+            scores = lcasets[r].values()
+            maxscore, totscore = max(s for t, s in lcasets[r].items() if t in permit), sum(scores)
+            stax, sscore = [(t, s) for t, s in lcasets[r].items() if s == maxscore][0]
+
+            pvalue
+            # Make a note if this taxon was not the highest scoring because the highest scoring
+            # belonged to a different taxonomy, as long as the highest scoring is not the special
+            # case of being blank at species level
+            actualmaxscore = max(scores)
+            if maxscore != actualmaxscore:
+                actualtoptax = [t for t, s in lcasets[r].items() if s == actualmaxscore][0]
+                if not (r == 'species' and actualtoptax == ''):
+                    lcascndry[i] = '*'
+            lcataxonomy.append(stax)
+            lcaconf.append(sscore)
+
+        if process == 'bestfit':
+            zipped = zip(lcataxonomy, lcascndry, lcaconf)
+            lcataxonomy = [f"{t}{y}_{str(round(s, 2))}" for t, y, s in zipped]
         out[qseqid] = [{'taxonomy': lcataxonomy}]
     return out
 
@@ -475,9 +605,20 @@ def getcliargs(arglist=None):
         -c/--taxidcolumn. Note that if multiple taxids are found for a hit, the first will be used. 
         |n
         The taxonomy will be retrieved from NCBI Taxonomy based on the taxid of the hit(s). By 
-        default, the taxonomy of all hits will be retrieved. Optionally, the hits can be filtered, 
-        either keeping only the/a top hit using the -t/--tophit option, or finding the lowest 
-        common ancestor of all hits using the -l/--lca option. 
+        default, the taxonomy of all hits will be retrieved and reported. Optionally, the hits can 
+        be processed, using the option -p/--process, either keeping only the/a top hit using 
+        "-p top", finding the lowest common ancestor of all hits using "-p lca", or attempting to 
+        find the best fit taxonomy using -p "bestfit", which will consider the hit properties to 
+        select a single taxon for each rank and assign a score (0-1) to that taxon.
+        |n
+        The script can filter hits based on percent identity in two ways. To speed up NCBI 
+        searches, any hits below a minimum percent identity supplied to -m/--minidthreshold will be 
+        discarded prior to taxonomy assignment, default 0. When using the best fit option only, 
+        species level taxonomic assignment will only consider hits with a percent identity greater 
+        than or equal to the value of -s/--speciesidthreshold, default 90. Note that alongside this 
+        filter, uncertain species (containing sp. in the name) are also excluded. Together this 
+        means that species scores are likely to appear higher than other taxonomic levels, because 
+        species are scored only against other species that pass these two filters.   
         |n
         The script will output a tsv to STDOUT. With the default option, the script will output 
         the information each hit for each query id, in the same format as supplied, followed by 
@@ -488,10 +629,6 @@ def getcliargs(arglist=None):
         taxonomy columns. Note that if the input is XML, the only fields parsed from the XML and 
         output are qseqid, sseqid and pident. Control the taxonomic ranks output in all cases 
         using -r/--rank. 
-        |n
-        BLAST results can optionally be filtered to remove hits below a percent identity threshold 
-        prior to retrieving taxonomy. Supply an id threshold to -i/--idthreshold, default 0. It is 
-        advisable to use this option when filtering with the -l/--lca option.
         |n
         To efficiently retrieve taxonomy, the script uses a pair of local datasets in json files, 
         one recording taxids for GenBank accession numbers, one recording taxonomy for taxids. 
@@ -512,18 +649,21 @@ def getcliargs(arglist=None):
     # Add individual argument specifications
     parser.add_argument('-b', '--blastresults', required=True, metavar='PATH',
                         help='path to blast results file')
-    parser.add_argument('-t', '--tophit', action='store_true',
-                        help='return the taxonomy of the top hit(s) by percent id')
-    parser.add_argument('-l', '--lca', action='store_true',
-                        help='return the lowest common ancestor of all hits for each query')
-    parser.add_argument('-i', '--idthreshold', type=float, metavar='N', default=0,
-                        help='minimum percent id to retrieve taxonomy for a hit, default 0')
+    parser.add_argument('-p', '--process', type=str, metavar='P',
+                        choices=('top', 'lca', 'bestfit'),
+                        help='the name of the method to process the hits to return one taxonomy '
+                             'per query')
     parser.add_argument('-g', '--gbtiddb', type=str, metavar='PATH', required=True,
                         help='path to accession-taxid json, will be created if absent')
     parser.add_argument('-x', '--tidtaxdb', type=str, metavar='PATH', required=True,
                         help='path to taxid-taxonomy json, will be created if absent')
+    parser.add_argument('-s', '--speciesid', type=float, metavar='N',
+                        help="only consider species from hits above this percent identity during "
+                             "best fit analysis")
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
+    parser.add_argument('-m', '--minid', type=float, metavar='N', default=0,
+                        help='minimum percent id to retrieve taxonomy for a hit, default 0')
     parser.add_argument('-c', '--taxidcolumn', type=int, metavar='N',
                         help='the column number of the staxid field if included in an input tsv '
                              'or csv')
@@ -537,8 +677,13 @@ def getcliargs(arglist=None):
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
 
     # Do some checking of the inputs
-    if args.tophit and args.lca:
-        parser.error("select only one of -p/--tophit or -a/--lca")
+
+    if args.process == 'bestfit':
+        args.speciesid = args.speciesid if args.speciesid else 90
+    else:
+        if args.speciesid:
+            parser.error("Error: -s/--speciesid is only relevant when using '-p bestfit' or "
+                         "'--process bestfit'")
     if args.chunksize > 1000:
         parser.error("-c/--chunksize should not be greater than 1000")
 
@@ -553,10 +698,11 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
+    #args = getcliargs('-b test6t.tsv -p lca -g NCBI_accession2taxid.json -x NCBI_taxid2taxonomy.json -n /home/thomc/passwords/api_tokens/ncbi_authentication.txt -c 13'.split(' '))
     auth = None
 
     # Parse the inputs, filtering out results below idthreshold
-    inputdata, gbaccs, taxids = parse_input(args.blastresults, args.tophit, args.idthreshold,
+    inputdata, gbaccs, taxids = parse_input(args.blastresults, args.process, args.minid,
                                             args.taxidcolumn)
 
     sys.stderr.write(f"Parsed {args.blastresults}, found {len(inputdata)} BLAST queries, "
@@ -574,20 +720,21 @@ if __name__ == "__main__":
 
     # Retrieve taxonomy from local if available
     taxonomy, _ = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
-                                     authpath=args.ncbiauth, authdict=auth)
+                                    authpath=args.ncbiauth, authdict=auth)
 
     # Assign taxonomy to the input data
     sys.stderr.write(f"Assigning taxonomy to BLAST hits\n")
     taxonomised = assign_taxonomy(inputdata, gbtaxids, taxonomy, args.ranks)
 
-    # Do LCA analysis
-    if args.lca:
-        sys.stderr.write(f"Performing LCA search\n")
-        taxonomised = lca(taxonomised, args.ranks)
-    # Filter top hits
-    elif args.tophit:
+    # Process hits if requested
+    if args.process == 'top':
         sys.stderr.write(f"Filtering hits to report top hit taxonomy\n")
         taxonomised = filter_tophit(taxonomised)
+    # Filter top hits
+    elif args.process:
+        sys.stderr.write(f"Performing {'LCA' if args.process == 'lca' else 'best fit'} analysis\n")
+        taxonomised = process_hits(taxonomised, args.ranks, args.process, args.speciesid)
+
     # Output
     writeout(taxonomised)
     sys.stderr.write(f"Done\n")
