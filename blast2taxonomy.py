@@ -12,9 +12,10 @@ import json
 import time
 import argparse
 
-import scipy
+import scipy.stats
 import random
 
+import numpy as np
 import textwrap as _textwrap
 from collections import Counter, defaultdict
 
@@ -263,7 +264,7 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
             else:
                 if done < total:
                     sys.stderr.write(", failed to retrieve the remainder")
-                meanmissprop = sum(missprop)/len(missprop) if len(missprop) > 0 else 0
+                meanmissprop = np.mean(missprop) if len(missprop) > 0 else 0
                 sys.stderr.write(f", {errors} failed NCBI calls, "
                                  f"mean {round(meanmissprop, 3)*100}% complete NCBI returns.\n")
                 yield out
@@ -434,10 +435,10 @@ def lca(data, ranks):
         for r in ranks:
             lcataxonomy.append(lcasets[r].pop() if len(lcasets[r]) == 1 else '')
         out[qseqid] = [{'taxonomy': lcataxonomy}]
-    return
+    return out
 
 
-def p_greater(test, series, nperm = 1000):
+def p_greater_single(test, series, nperm=10000):
     def firstrank(lis):
         return scipy.stats.rankdata(lis)[0]
     fullseries = [test] + series
@@ -449,110 +450,253 @@ def p_greater(test, series, nperm = 1000):
     return len([r for r in permranks if r < testrank])/nperm
 
 
-def process_hits(data, ranks, process, speciesid, speciesconsider='pass', weight=5):
-    # data, ranks, process, speciesid, speciesconsider, weight = taxonomised, args.ranks, args.process, args.speciesid, 'pass', 3
-    #process = 'bestfit'
-    #speciesid = 90
-    if speciesconsider not in ['all', 'pass']:
-        sys.exit("Error: process_hits argument speciesconsider should be either 'all' or 'pass'")
+def p_greater_pool(test, series, nperm=10000, usestatmean=False):
+
+    def statmax(x, y, axis=0):
+        return np.max(x, axis=axis) - np.max(y, axis=axis)
+
+    def statmean(x, y, axis=0):
+        return np.mean(x, axis=axis) - np.mean(y, axis=axis)
+
+    res = scipy.stats.permutation_test((test, series),
+                                       statmean if usestatmean else statmax,
+                                       vectorized=True,
+                                       n_resamples=nperm,
+                                       alternative='greater')
+    return res.pvalue
+
+
+def perm_test(x, y, stat, alternative, n=5000, converge=None, converge_dp=3):
+    # x, y, n, stat, alternative, converge, converge_dp = staxscores, otherscores, 300, 'max', 'greater', 100, 2
+    # x, y = [1, 3, 2, 5, 4], [1,2,5,3,4]
+    if alternative not in ['greater', 'less']:
+        sys.exit("Error: value of alternative in perm_test should be 'greater' or "
+                 "'less'")
+
+    def get_random_sample(lis, n):
+        new_lis = list(lis)
+        random.shuffle(new_lis)
+        return new_lis[:n]
+
+    def diffmax(a, b):
+        return max(a) - max(b)
+
+    def diffmean(a, b):
+        return np.mean(a) - np.mean(b)
+
+    if stat == 'mean':
+        fun = diffmean
+    elif stat == 'max':
+        fun = diffmax
+    else:
+        sys.exit("Error: value of stat in perm_test should be 'max' or 'mean'")
+
+    def do_perm(x, y, sample, function, alternative):
+        xsamp, ysamp = get_random_sample(x, sample), get_random_sample(y, sample)
+        exp = fun(xsamp, ysamp)
+        complete = list(xsamp + ysamp)
+        random.shuffle(complete)
+        obs = fun(complete[:sample], complete[sample:])
+        return (alternative == 'greater' and exp > obs) or (alternative == 'less' and obs < exp)
+
+    def convergence(x, n, dp):
+        if len(x) < n:
+            return False
+        z = [round(i, dp) for i in x[-n:]]
+        return len(set(z)) == 1
+
+    sample = min(len(x), len(y))
+    res = 0
+    if converge:
+        ps = []
+        while not (len(ps) >= n and convergence(ps, converge, converge_dp)):
+            if do_perm(x, y, sample, fun, alternative):
+                res += 1
+            ps.append(res/(len(ps)+1))
+        return res/len(ps)
+    else:
+        for _ in range(n):
+            if do_perm(x, y, sample, fun, alternative):
+                res += 1
+        return res/n
+
+
+def best_hit(data, ranks, speciesid, rejectunknownequal=False, bestp=True, taxp=False, binspecies=False):
+    # NOTE: binspecies not currently working
+    # data, ranks, process, speciesid, rejectunknownequal, taxp, bestp, binspecies = taxonomised, args.ranks, args.process, args.speciesid, False, False, True, False
     out = {}
-    for qseqid, hits in data.items():
-        # qseqid, hits = list(data.items())[0]
-        # Set up containers for processing and taxonomy reference
-        lcasets = {r: defaultdict(list) for r in ranks}
-        parent = dict()
+    total = len(data)
+    for n, (qseqid, hits) in enumerate(data.items()):
+        # qseqid, hits = list(data.items())[3]
+        sys.stderr.write(f"Performing besthit analysis for query {n+1}/{total}\r")
+       # [f"{h['pident']}: {','.join(h['taxonomy'])}" for h in hits]
+        # Set up containers for processing and taxonomy reference. If species are present, we want
+        # to collapse the hits to a single value per species, to avoid biasing by coverage
+        if 'species' in ranks and binspecies:
+            speciesi = [i for i, r in enumerate(ranks) if r == 'species'][0]
+            taxsets = {r: defaultdict(dict) for r in ranks}
+        else:
+            speciesi = None
+            taxsets = {r: defaultdict(list) for r in ranks}
+        parents = dict()
+        # Sort the hits by bitscore
+        hits = sorted(hits, key=lambda x: x['bitscore'], reverse=True)
         # Parse the hits, assessing each taxonomic level down
+        # Store the highest %id currently achieved by a species-level hit. Drop any unknown taxon
+        # levels if their %id is not less than this value
         for hit in hits:
             # hit = hits[7]
+            lastknowni = 0
+            revisedtaxonomy = []
+            # First, correct the taxonomy and record parents
             for j, (r, taxon) in enumerate(zip(ranks, hit['taxonomy'])):
-                # j = 7; r = ranks[j]; taxon = hit['taxonomy'][j]
-                taxon = hit['taxonomy'][j]
-                pident = hit['pident']
-                # Simply list the taxon if doing bare LCA
-                if process == 'lca':
-                    lcasets[r][taxon].append(1)
+                # Retrieve key details
+                parent = None if j == 0 else revisedtaxonomy[j - 1]
+                # If the taxon is blank, or in the special case that this is a species and it's an
+                # undetermined species
+                if taxon == '' or (r == 'species' and re.search(r" (sp|aff)\.?( |$)", taxon))\
+                        or (r == 'genus' and re.search(r" gen\.?( |$)", taxon)):
+                    # Check the last known taxon and see if there's an existing hit
+                    lastknown = '' if lastknowni == 0 else f"{hit['taxonomy'][lastknowni]}_"
+                    taxon = f"unknown_{lastknown}{r}"
                 else:
-                    # If we're at species level, we don't want to consider the species if it's not
-                    # a true binomial, or if it's not a high enough %id to be likely to be an exact
-                    # species hit
+                    lastknowni = j
+                # Record the corrected taxonomy and output
+                revisedtaxonomy.append(taxon)
+                parents[taxon] = parent
+            # Second, check and score
+            pident = hit['pident']
+            species = revisedtaxonomy[speciesi] if 'species' in ranks and binspecies else None
+            for j, (r, taxon) in enumerate(zip(ranks, revisedtaxonomy)):
+                # j = 6; r = ranks[j]; taxon = hit['taxonomy'][j]
+                # If we're at species level, we don't want to consider the species if it's not a
+                # high enough %id to be likely to be an exact species hit
+                if r == 'species' and pident < speciesid:
+                    break
+                # If the taxon is blank, or in the special case that this is a species and it's an
+                # undetermined species
+                if 'unknown_' in taxon:
+                    # Check the last known taxon and see if there's an existing hit
+                    if j > 0:
+                        lastknown = revisedtaxonomy[lastknowni]
+                        if lastknown in taxsets[ranks[j-1]]:
+                            if species:
+                                currbest = max(taxsets[ranks[j - 1]][lastknown].values())
+                            else:
+                                currbest = max(taxsets[ranks[j - 1]][lastknown])
+                            if currbest == 100 or currbest > pident:
+                                # If the current best for this taxon is a 100 match, this is either
+                                # an unidentified conspecific (if pident == 100), or it will just
+                                # be rejected in favour - either way, reject this. Similarly if the
+                                # current best for this taxon is better than this pident, this
+                                # hit has already contributed its pident as far as possible so
+                                # reject as adding unknowns will just muddy the water
+                                break
+                            elif currbest == pident:
+                                # However in the unique situation where the current best has the
+                                # same identity as this unknown, leave it to the user. Chances are
+                                # the unknown is the same species as the identificied ones, but
+                                # if we're conservitive, we should simply say unknown at this level
+                                if rejectunknownequal:
+                                    break
+                else:
+                    lastknowni = j
+                # Calculate the score
+                if species:
                     if r == 'species':
-                        if re.search(r" sp\.?( |$)", taxon) or pident < speciesid:
-                            # Do we want to record the score? If we do, species will always be
-                            # super low confidence, because there'll be a lot of things that arn't
-                            # the species - this is massively affected by coverage.
-                            if speciesconsider == 'all':
-                                taxon = ''
-                            # If we don't, the species scores will appear better than the higher
-                            # taxonomic levels!
-                            elif speciesconsider == 'pass':
-                                continue
-                    # Calculate the score with different methods
-                        # % id to the weight power
-                    lcasets[r][taxon].append(pident)
-                        # Product of the proportion, 1-evalue and downweighted bitscore
-                    #lcasets[r][taxon].append(pident/100 * (1-hit['evalue']) * hit['bitscore']/100)
-                # Record the parent
-                parent[taxon] = None if j == 0 else hit['taxonomy'][j-1]
+                        species = taxon
+                    if species in taxsets[r][taxon]:
+                        taxsets[r][taxon][species] = max(pident, taxsets[r][taxon][species])
+                    else:
+                        taxsets[r][taxon][species] = pident
+                else:
+                    taxsets[r][taxon].append(pident)
+
+        # If species are present, collect the %id by species together into a list
+        if 'species' in ranks and binspecies:
+            for r in ranks:
+                taxa = list(taxsets[r].keys())
+                for t in taxa:
+                    taxsets[r][t] = list(taxsets[r][t].values())
         # Reorganise the parent dict to a children dict - done after the above to ensure that any
         # unconsidered species don't show up
         children = defaultdict(set)
-        for child, parent in parent.items():
+        for child, parent in parents.items():
             if parent:
                 children[parent].add(child)
         # Output containers
-        lcataxonomy = []
-        lcaconf = []
-        lcascndry = [''] * len(ranks)
-        for i, r in enumerate(ranks[:6]):
-            # i = 6; r = ranks[i]
-            # Set up a list of taxa permitted to be selected as the best. In most cases, all taxa
-            # can be selected
-            permit = set(lcasets[r].keys())
-            # But if a) if this isn't the root, the selected taxon must be a valid child of the
-            # current taxonomy, or blank
-            hasblanks = any([p != '' for p in permit])
+        bestfittaxonomy = []
+        bestfitpvalue = []
+        pident = None
+        for i, r in enumerate(ranks):
+            # i = 0 ; r = ranks[i]
+            # If this is not the root, remove any other taxa that are not valid children
+            possibletaxa = list(taxsets[r].keys())
             if i > 0:
-                permit = children[lcataxonomy[i-1]] | {''}
-            # or b) if this is species level and there are species names that have passed the
-            # speciesid filter, in which case we want to select one of them and not blank
-            if r == 'species' and hasblanks and speciesconsider == 'all':
-                permit = set(p for p in permit if p != '')
-            # If no hits remain, output empty taxonomy
-            if len(permit) == 0:
-                lcataxonomy.append('')
-                lcaconf.append(0)
-                if len(lcasets[r].keys()) > 0 and not(r == 'species' and '' not in lcasets[r]):
-                    lcascndry[i] = '*'
+                for t in possibletaxa:
+                    if t not in children[bestfittaxonomy[i - 1]]:
+                        del taxsets[r][t]
+            # If no hits remain, or the remaining hit is unknown, fill the rest of the output lists
+            # with nothing and break
+            if len(taxsets[r]) == 0 or all('unknown_' in t for t in taxsets[r].keys()):
+                break
+            # If only one hit remains, return it with the probability of its parent, or 1 if this
+            # is the root
+            elif len(taxsets[r]) == 1:
+                pident = max(list(taxsets[r].values())[0])
+                bestfittaxonomy.append(list(taxsets[r].keys())[0])
+                bestfitpvalue.append(1.0 if i == 0 else bestfitpvalue[-1])
                 continue
-            # Otherwise, calculate the summary score
-            for t in lcasets[r].keys():
+            # Otherwise, calculate the summary scores
+            scores = {'taxa': [], 'max': [], 'mean': []}
+            for t in taxsets[r].keys():
+                scores['taxa'].append(t)
                 # Sum: good for getting consensus, but too overwhelmed by coverage
                 #lcasets[r][t] = sum(lcasets[r][t])
                 # Mean: undersupports mid level taxa
                 #lcasets[r][t] = sum(lcasets[r][t])/len(lcasets[r][t])
                 # Max: isn't biased by coverage, nor by midlevel taxa
-                lcasets[r][t] = max(lcasets[r][t])
-            # Gather scores and find the permitted taxon with the best score
-            scores = lcasets[r].values()
-            maxscore, totscore = max(s for t, s in lcasets[r].items() if t in permit), sum(scores)
-            stax, sscore = [(t, s) for t, s in lcasets[r].items() if s == maxscore][0]
+                scores['max'].append(max(taxsets[r][t]))
+                scores['mean'].append(np.mean(taxsets[r][t]))
 
-            pvalue
-            # Make a note if this taxon was not the highest scoring because the highest scoring
-            # belonged to a different taxonomy, as long as the highest scoring is not the special
-            # case of being blank at species level
-            actualmaxscore = max(scores)
-            if maxscore != actualmaxscore:
-                actualtoptax = [t for t, s in lcasets[r].items() if s == actualmaxscore][0]
-                if not (r == 'species' and actualtoptax == ''):
-                    lcascndry[i] = '*'
-            lcataxonomy.append(stax)
-            lcaconf.append(sscore)
+            # Find the taxon with the best score
+            besttaxa = [t for t, x in zip(scores['taxa'], scores['max']) if x == max(scores['max'])]
+            # Break ties using mean
+            if len(besttaxa) > 1:
+                besttaxa = [t for t, m in zip(scores['taxa'], scores['mean'])
+                            if m == max(scores['mean']) and t in besttaxa]
+                # If ties remain, or the best taxon is unknown, output nothing
+                if len(besttaxa) > 1 or 'unknown_' in besttaxa[0]:
+                    break
+            # Calculate the probability that we would select this taxon based on its score if
+            # we had the same number of hits as the next best taxa do, or vice versa
+            stax = besttaxa[0]
+            staxscores = taxsets[r][stax]
+            otherscores = []
+            for t, s in taxsets[r].items():
+                if t != stax and 'unknown_' not in t:
+                    otherscores.extend(s)
+            pvalue = 1.0 if len(otherscores) == 1 else perm_test(staxscores, otherscores, 'max',
+                                                                 'greater', n=1000, converge=300)
+            pident = max(staxscores)
+            # If this is the root, output the taxon and p value
+            bestfittaxonomy.append(stax)
+            if i == 0:
+                bestfitpvalue.append(pvalue)
+            else:
+                # Otherwise, calculate the probability that this taxon is maximum and that its parental
+                # taxa are also maximum
+                bestfitpvalue.append(bestfitpvalue[i-1] * pvalue)
 
-        if process == 'bestfit':
-            zipped = zip(lcataxonomy, lcascndry, lcaconf)
-            lcataxonomy = [f"{t}{y}_{str(round(s, 2))}" for t, y, s in zipped]
-        out[qseqid] = [{'taxonomy': lcataxonomy}]
+        if taxp:
+            outtaxonomy = [f"{t}_{str(round(s, 2))}" for t, s in zip(bestfittaxonomy, bestfitpvalue)]
+        else:
+            outtaxonomy = bestfittaxonomy
+        outtaxonomy += ([''] * (len(ranks) - len(outtaxonomy)))
+        out[qseqid] = [{'taxonomy': outtaxonomy}]
+        if bestp:
+            out[qseqid][0]['pident'] = pident
+    sys.stderr.write("\nCompleted besthit analysis\n")
     return out
 
 
@@ -588,6 +732,8 @@ def writeout(data):
                 output.append(hit['id'])
             if 'tx' in hit:
                 output.append(hit['tx'])
+            if 'pident' in hit and 'data' not in hit:
+                output.append(hit['pident'])
             output.extend(hit['taxonomy'])
             output = [str(o) for o in output]
             sys.stdout.write('\t'.join(output) + '\n')
@@ -609,16 +755,19 @@ def getcliargs(arglist=None):
         be processed, using the option -p/--process, either keeping only the/a top hit using 
         "-p top", finding the lowest common ancestor of all hits using "-p lca", or attempting to 
         find the best fit taxonomy using -p "bestfit", which will consider the hit properties to 
-        select a single taxon for each rank and assign a score (0-1) to that taxon.
+        select a single taxon for each rank and, if -w/--showscores is set, report the score (0-1) 
+        for that taxon. Note that scores are currently not calculated well where multiple higher 
+        taxa have high percent ID hits.
         |n
         The script can filter hits based on percent identity in two ways. To speed up NCBI 
         searches, any hits below a minimum percent identity supplied to -m/--minidthreshold will be 
         discarded prior to taxonomy assignment, default 0. When using the best fit option only, 
         species level taxonomic assignment will only consider hits with a percent identity greater 
-        than or equal to the value of -s/--speciesidthreshold, default 90. Note that alongside this 
-        filter, uncertain species (containing sp. in the name) are also excluded. Together this 
-        means that species scores are likely to appear higher than other taxonomic levels, because 
-        species are scored only against other species that pass these two filters.   
+        than or equal to the value of -s/--speciesidthreshold, default 95. By default, during best 
+        fit processing, hits with unknown species identity are excluded only if they score worse
+        than hits with known identity, the conservative option. To reject unknown hits that score 
+        worse or equal to hits with known identity, use the flag '-j/--rejectunknowns. This is 
+        only recommended when it is expected that NCBI contains the species in the query.
         |n
         The script will output a tsv to STDOUT. With the default option, the script will output 
         the information each hit for each query id, in the same format as supplied, followed by 
@@ -651,8 +800,8 @@ def getcliargs(arglist=None):
                         help='path to blast results file')
     parser.add_argument('-p', '--process', type=str, metavar='P',
                         choices=('top', 'lca', 'bestfit'),
-                        help='the name of the method to process the hits to return one taxonomy '
-                             'per query')
+                        help='if desired, the name of the method to process the hits to return '
+                             'one taxonomy per query')
     parser.add_argument('-g', '--gbtiddb', type=str, metavar='PATH', required=True,
                         help='path to accession-taxid json, will be created if absent')
     parser.add_argument('-x', '--tidtaxdb', type=str, metavar='PATH', required=True,
@@ -660,6 +809,11 @@ def getcliargs(arglist=None):
     parser.add_argument('-s', '--speciesid', type=float, metavar='N',
                         help="only consider species from hits above this percent identity during "
                              "best fit analysis")
+    parser.add_argument('-j', '--rejectunknowns', action='store_true',
+                        help="do not consider unknown taxonomies with the same score as known "
+                             "taxonomies during best fit analysis")
+    parser.add_argument('-w', '--showscores', action='store_true',
+                        help="show individual taxon scores in the best hit analysis output")
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
     parser.add_argument('-m', '--minid', type=float, metavar='N', default=0,
@@ -679,11 +833,15 @@ def getcliargs(arglist=None):
     # Do some checking of the inputs
 
     if args.process == 'bestfit':
-        args.speciesid = args.speciesid if args.speciesid else 90
+        args.speciesid = args.speciesid if args.speciesid else 95
     else:
+        msg = "is only relevant when using '-p bestfit'/'--process bestfit'"
         if args.speciesid:
-            parser.error("Error: -s/--speciesid is only relevant when using '-p bestfit' or "
-                         "'--process bestfit'")
+            parser.error(f"Error: -s/--speciesid {msg}")
+        if args.rejectunknowns:
+            parser.error(f"Error: -j/--rejectunknowns {msg}")
+        if args.showscores:
+            parser.error(f"Error: -w/--showscores {msg}")
     if args.chunksize > 1000:
         parser.error("-c/--chunksize should not be greater than 1000")
 
@@ -698,7 +856,7 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
-    #args = getcliargs('-b test6t.tsv -p lca -g NCBI_accession2taxid.json -x NCBI_taxid2taxonomy.json -n /home/thomc/passwords/api_tokens/ncbi_authentication.txt -c 13'.split(' '))
+    #args = getcliargs('-b test6t.tsv -p bestfit -g NCBI_accession2taxid.json -x NCBI_taxid2taxonomy.json -n /home/thomc/passwords/api_tokens/ncbi_authentication.txt -c 13'.split(' '))
     auth = None
 
     # Parse the inputs, filtering out results below idthreshold
@@ -730,10 +888,13 @@ if __name__ == "__main__":
     if args.process == 'top':
         sys.stderr.write(f"Filtering hits to report top hit taxonomy\n")
         taxonomised = filter_tophit(taxonomised)
-    # Filter top hits
-    elif args.process:
-        sys.stderr.write(f"Performing {'LCA' if args.process == 'lca' else 'best fit'} analysis\n")
-        taxonomised = process_hits(taxonomised, args.ranks, args.process, args.speciesid)
+    elif args.process == 'lca':
+        sys.stderr.write(f"Performing LCA analysis\n")
+        taxonomised = lca(taxonomised, args.ranks)
+    elif args.process == 'bestfit':
+        #data, ranks, speciesid, rejectunknownequal = False, bestp = True, taxp = False, binspecies = False
+        taxonomised = best_hit(taxonomised, args.ranks, args.speciesid,
+                               args.rejectunknowns, True, args.showscores)
 
     # Output
     writeout(taxonomised)
