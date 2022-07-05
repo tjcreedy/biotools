@@ -18,6 +18,7 @@ import textwrap as _textwrap
 import Bio
 from Bio import SeqIO
 from copy import copy
+from collections import defaultdict
 
 
 #TODO:
@@ -250,6 +251,36 @@ def set_feat_name(feat, name):
     return feat
 
 
+def overlap(feats):
+    a, b = [[int(e) for e in (f.location.start, f.location.end)] for f in feats]
+    return a[0] <= b[0] <= a[1] or b[0] <= a[0] <= b[1]
+
+
+def remove_duplicates(feats):
+    featdict = defaultdict(list)
+
+    for feat in feats:
+        id = f"{get_feat_name(feat)} {feat.type}"
+        featdict[id].append(feat)
+
+    outfeats = []
+    for id, featlis in featdict.items():
+        featcheck = copy(featlis)
+        i = 0
+        while i < len(featcheck):
+            overlapj = [j for j, f in enumerate(featcheck) if overlap([f, featcheck[i]])]
+            if len(overlapj) > 1:
+                lens = [len(featcheck[j]) for j in overlapj]
+                maxj = [j for j, l in zip(overlapj, lens) if l == max(lens)][0]
+                dropj = [j for j in overlapj if j != maxj]
+                featcheck = [f for j, f in enumerate(featcheck) if j not in dropj]
+                nregress = sum(1 for j in dropj if j <= i)
+                i -= nregress
+            i += 1
+        outfeats.extend(featcheck)
+    return outfeats
+
+
 def add_anticodon(feats, nameconvert):
     # feats = trnas
     outfeats = []
@@ -420,6 +451,9 @@ def getcliargs(arglist=None):
     the annotations to make sure that all 'CDS', 'tRNA' or 'rRNA' annotations have an identical 
     'gene' annotation, and vice-versa. All other types of annotation will be ignored. 
     |n 
+    Where multiple overlapping annotations share the same name and type, retain only the longest 
+    annotation using --removeduplicates
+    |n    
     Standardise gene names with --standardname. This will check each gene name and replace it with
     the standard name used in https://github.com/tjcreedy/constants.   
     """, formatter_class=MultilineFormatter)
@@ -434,6 +468,8 @@ def getcliargs(arglist=None):
                         help="repair length values in LOCUS line")
     parser.add_argument("--addanticodons", action='store_true',
                         help="try to add the anticodon to the name of tRNAs without it")
+    parser.add_argument("--removeduplicates", action='store_true',
+                        help="remove shorter duplicate annotations")
     # parser.add_argument("-g", "--deletegeneious", action='store_true',
     #                     help="try to remove automatic Geneious annotations")
     parser.add_argument("--fillpairs", action='store_true',
@@ -459,16 +495,18 @@ if __name__ == "__main__":
     # Get options
 
     args = getcliargs()
+    #args = getcliargs("--removeduplicates".split(' '))
 
     # Do text fixes if fixing headers
     if args.fixhead:
-        furtherwork = args.fillpairs or args.standardname or args.addanticodons or args.fixlengths
+        furtherwork = args.fillpairs or args.standardname or args.addanticodons or \
+                      args.fixlengths or args.removeduplicates
         fixout = "temp.gb" if furtherwork else sys.stdout
         fixhead(sys.stdin, fixout, args)
     else:
         fixout = None
 
-    if args.fillpairs or args.standardname or args.addanticodons:
+    if args.fillpairs or args.standardname or args.addanticodons or args.removeduplicates:
 
         unrecnames = set()
         couldntduplicate = {}
@@ -478,13 +516,17 @@ if __name__ == "__main__":
         annotypes.add('gene')
 
         gbin = SeqIO.parse(fixout if fixout else sys.stdin, "genbank")
-        #gbin = list(SeqIO.parse("/home/thomc/work/iBioGen_postdoc/MMGdatabase/newdata_2022-04-15_syrphid/syrphidsequences_2022-04-21.gb", "genbank"))
+        #gbin = list(SeqIO.parse("/home/thomas/work/iBioGen_postdoc/MMGdatabase/issueseqs.gb", "genbank"))
         for i, seqrecord in enumerate(gbin):
-            #seqrecord = gbin[8]
+            #seqrecord = gbin[0]
             #sys.stderr.write(f"sequence {i} name {seqrecord.name}\n")
             #sys.stderr.flush()
             # Extract all features
             features = seqrecord.features
+
+            if args.removeduplicates:
+                features = remove_duplicates(features)
+                seqrecord.featuse = features
 
             # Rename tRNAs if needed
             if args.addanticodons:
@@ -494,64 +536,67 @@ if __name__ == "__main__":
                 if nac > 0:
                     noanticodons[seqrecord.name] = nac
 
+            if args.fillpairs or args.standardname:
+                # Sort features for renaming and/or duplication
+                focalfeats, donefeats = sortextractfeats(seqrecord, annotypes)
 
-            # Sort features for renaming and/or duplication
-            focalfeats, donefeats = sortextractfeats(seqrecord, annotypes)
+                # Work through putative pairs of focal feats
+                for featlis in focalfeats.values():
+                    #featlis = list(focalfeats.values())[0]
 
-            # Work through putative pairs of focal feats
-            for featlis in focalfeats.values():
-                #featlis = list(focalfeats.values())[0]
+                    names = [get_feat_name(f) for f in featlis]
+                    types = sorted(list({f.type for f in featlis}))
 
-                names = [get_feat_name(f) for f in featlis]
-                types = sorted(list({f.type for f in featlis}))
+                    # Iterate through the feats, making duplicates where needed
+                    for i, (name, feat) in enumerate(zip(names, featlis)):
+                        # i, (name, feat) = list(enumerate(zip(names, featlis)))[0]
+                        # Get the standard name and type
+                        stdname, ftype = [None, None]
+                        if name in nameconvert:
+                            stdname = nameconvert[name]
+                            ftype = namevariants[stdname]['type']
+                        elif name != 'unknown':
+                            unrecnames.add(name)
 
-                # Iterate through the feats, making duplicates where needed
-                for i, (name, feat) in enumerate(zip(names, featlis)):
-                    # i, (name, feat) = list(enumerate(zip(names, featlis)))[0]
-                    # Get the standard name and type
-                    stdname, ftype = [None, None]
-                    if name in nameconvert:
-                        stdname = nameconvert[name]
-                        ftype = namevariants[stdname]['type']
-                    elif name != 'unknown':
-                        unrecnames.add(name)
+                        # Rename if renaming and we can retrieve a standard name
+                        if args.standardname and stdname:
+                            feat = set_feat_name(feat, stdname)
 
-                    # Rename if renaming and we can retrieve a standard name
-                    if args.standardname and stdname:
-                        feat = set_feat_name(feat, stdname)
-
-                    # Output the renamed ones if only renaming
-                    if not args.fillpairs:
-                        donefeats.append(feat)
-                        continue
-
-                    # Check to see if a an appropriate duplicate is already present
-                        # Are there others with this name?
-                    othersamename = [j for j, n in enumerate(names) if name == n]
-                    if len(othersamename) > 1:
-                        # What types are they?
-                        othertypes = [featlis[j].type for j in othersamename if j != i]
-                        if (ftype and feat.type == 'gene' and ftype in othertypes) or (
-                                feat.type != 'gene' and 'gene' in othertypes):
-                            # If the current feat is gene, with a recognised type that is present
-                            # in the other features, or the feature is not a gene and gene is in
-                            # the other features, sorted - just add this feature to the output
+                        # Output the renamed ones if only renaming
+                        if not args.fillpairs:
                             donefeats.append(feat)
                             continue
 
-                    # If it's not a gene or it is a gene and we know the type to make
-                    if feat.type != 'gene' or ftype:
-                        newfeat = copy(feat)
-                        newfeat.type = 'gene' if feat.type != 'gene' else ftype
-                        donefeats.extend([feat, newfeat])
+                        # Check to see if a an appropriate duplicate is already present
+                            # Are there others with this name?
+                        othersamename = [j for j, n in enumerate(names) if name == n]
+                        if len(othersamename) > 1:
+                            # What types are they?
+                            othertypes = [featlis[j].type for j in othersamename if j != i]
+                            if (ftype and feat.type == 'gene' and ftype in othertypes) or (
+                                    feat.type != 'gene' and 'gene' in othertypes):
+                                # If the current feat is gene, with a recognised type that is
+                                # present in the other features, or the feature is not a gene and
+                                # gene is in the other features, sorted - just add this feature to
+                                # the output
+                                donefeats.append(feat)
+                                continue
 
-                    # Otherwise, nothing we can do because we don't know the type to make
-                    else:
-                        if seqrecord.name in couldntduplicate:
-                            couldntduplicate[seqrecord.name] += 1
+                        # If it's not a gene or it is a gene and we know the type to make
+                        if feat.type != 'gene' or ftype:
+                            newfeat = copy(feat)
+                            newfeat.type = 'gene' if feat.type != 'gene' else ftype
+                            donefeats.extend([feat, newfeat])
+
+                        # Otherwise, nothing we can do because we don't know the type to make
                         else:
-                            couldntduplicate[seqrecord.name] = 1
-                        donefeats.append(feat)
+                            if seqrecord.name in couldntduplicate:
+                                couldntduplicate[seqrecord.name] += 1
+                            else:
+                                couldntduplicate[seqrecord.name] = 1
+                            donefeats.append(feat)
+            else:
+                donefeats = features
 
             # Replace the features with the new list and output
             seqrecord.features = donefeats
