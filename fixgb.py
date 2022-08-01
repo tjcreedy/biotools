@@ -442,7 +442,7 @@ def getcliargs(arglist=None):
     parser = argparse.ArgumentParser(description="""
     Standalone tool for fixing various issues in genbank files, supplied on STDIN
     |n
-    To fix issues so the file can be opened with BioPython, run with --fixtext. The header will be
+    To fix issues so the file can be opened with BioPython, run with --fixhead. The header will be
     checked for correct spacing, and missing division codes will be filled in with UNK by default, 
     unless a three-letter code is supplied to -d/--defaultdivision. Any incomplete annotation tags
     will be fixed as far as possible.
