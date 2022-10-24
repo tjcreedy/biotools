@@ -521,14 +521,17 @@ def perm_test(x, y, stat, alternative, n=5000, converge=None, converge_dp=3):
         return res/n
 
 
-def best_hit(data, ranks, speciesid, rejectunknownequal=False, bestp=True, taxp=False, binspecies=False):
+def best_hit(data, ranks, speciesid,
+             rejectunknownequal=False, bestp=True, taxp=False, binspecies=False):
     # NOTE: binspecies not currently working
     # data, ranks, process, speciesid, rejectunknownequal, taxp, bestp, binspecies = taxonomised, args.ranks, args.process, args.speciesid, False, False, True, False
     out = {}
     total = len(data)
     for n, (qseqid, hits) in enumerate(data.items()):
-        # qseqid, hits = list(data.items())[3]
+        # qseqid, hits = list(data.items())[176]
+        # n, qseqid, hits = 176, '8df9781305647dba2ac9767718e5ed74', data['8df9781305647dba2ac9767718e5ed74']
         sys.stderr.write(f"Performing besthit analysis for query {n+1}/{total}\r")
+        sys.stderr.flush()
        # [f"{h['pident']}: {','.join(h['taxonomy'])}" for h in hits]
         # Set up containers for processing and taxonomy reference. If species are present, we want
         # to collapse the hits to a single value per species, to avoid biasing by coverage
@@ -676,7 +679,7 @@ def best_hit(data, ranks, speciesid, rejectunknownequal=False, bestp=True, taxp=
             for t, s in taxsets[r].items():
                 if t != stax and 'unknown_' not in t:
                     otherscores.extend(s)
-            pvalue = 1.0 if len(otherscores) == 1 else perm_test(staxscores, otherscores, 'max',
+            pvalue = 1.0 if len(otherscores) <= 1 else perm_test(staxscores, otherscores, 'max',
                                                                  'greater', n=1000, converge=300)
             pident = max(staxscores)
             # If this is the root, output the taxon and p value
