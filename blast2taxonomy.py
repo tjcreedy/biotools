@@ -530,7 +530,7 @@ def best_hit(data, ranks, speciesid,
     for n, (qseqid, hits) in enumerate(data.items()):
         # qseqid, hits = list(data.items())[567]
         # n, qseqid, hits = 176, 'ec6cb0bb13bd179a117b8d85a0991fa6', data['ec6cb0bb13bd179a117b8d85a0991fa6']
-        sys.stderr.write(f"Performing besthit analysis for query {qseqid} {n+1}/{total}\n")
+        sys.stderr.write(f"Performing besthit analysis for query {qseqid} {n+1}/{total}\r")
         sys.stderr.flush()
        # [f"{h['pident']}: {','.join(h['taxonomy'])}" for h in hits]
         # Set up containers for processing and taxonomy reference. If species are present, we want
