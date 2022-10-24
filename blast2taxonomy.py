@@ -528,9 +528,9 @@ def best_hit(data, ranks, speciesid,
     out = {}
     total = len(data)
     for n, (qseqid, hits) in enumerate(data.items()):
-        # qseqid, hits = list(data.items())[176]
-        # n, qseqid, hits = 176, '8df9781305647dba2ac9767718e5ed74', data['8df9781305647dba2ac9767718e5ed74']
-        sys.stderr.write(f"Performing besthit analysis for query {n+1}/{total}\r")
+        # qseqid, hits = list(data.items())[567]
+        # n, qseqid, hits = 176, 'ec6cb0bb13bd179a117b8d85a0991fa6', data['ec6cb0bb13bd179a117b8d85a0991fa6']
+        sys.stderr.write(f"Performing besthit analysis for query {qseqid} {n+1}/{total}\n")
         sys.stderr.flush()
        # [f"{h['pident']}: {','.join(h['taxonomy'])}" for h in hits]
         # Set up containers for processing and taxonomy reference. If species are present, we want
@@ -614,7 +614,6 @@ def best_hit(data, ranks, speciesid,
                         taxsets[r][taxon][species] = pident
                 else:
                     taxsets[r][taxon].append(pident)
-
         # If species are present, collect the %id by species together into a list
         if 'species' in ranks and binspecies:
             for r in ranks:
@@ -661,13 +660,12 @@ def best_hit(data, ranks, speciesid,
                 # Max: isn't biased by coverage, nor by midlevel taxa
                 scores['max'].append(max(taxsets[r][t]))
                 scores['mean'].append(np.mean(taxsets[r][t]))
-
             # Find the taxon with the best score
             besttaxa = [t for t, x in zip(scores['taxa'], scores['max']) if x == max(scores['max'])]
             # Break ties using mean
             if len(besttaxa) > 1:
-                besttaxa = [t for t, m in zip(scores['taxa'], scores['mean'])
-                            if m == max(scores['mean']) and t in besttaxa]
+                bestmeans = [m for t, m in zip(scores['taxa'], scores['mean']) if t in besttaxa]
+                besttaxa = [t for t, m in zip(besttaxa, bestmeans) if m == max(bestmeans)]
                 # If ties remain, or the best taxon is unknown, output nothing
                 if len(besttaxa) > 1 or 'unknown_' in besttaxa[0]:
                     break
