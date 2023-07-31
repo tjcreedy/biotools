@@ -56,19 +56,9 @@ from collections import defaultdict
 #   File "/usr/lib/python3/dist-packages/Bio/SeqFeature.py", line 811, in __init__
 #     raise ValueError(
 # ValueError: End location (15997) must be greater than or equal to start location (29864)
-# Fix whatever's going on here:
-# GBDL00476.gb
-# Traceback (most recent call last):
-#   File "/home/thomc/programming/bioinformatics/biotools//fixgb.py", line 371, in <module>
-#     focalfeats, donefeats = sort_feats(seqrecord.features, annotypes)
-#   File "/home/thomc/programming/bioinformatics/biotools//fixgb.py", line 175, in sort_feats
-#     if feat.location in focalfeats:
-# TypeError: unhashable type: 'CompoundLocation'
+# Is there a way to change the origin???
 # Add option and code to remove Geneious features/annotations
 # Add option and code to fix IDs with _reversed or _modified
-
-
-
 
 
 # Global variables
@@ -215,7 +205,6 @@ def fixhead(inpath, outpath, args):
 
     if type(outpath) is str:
         outgb.close()
-
 
 def sortextractfeats(record, extracttypes):
     focalfeats = {}
@@ -496,6 +485,7 @@ if __name__ == "__main__":
 
     args = getcliargs()
     #args = getcliargs("--removeduplicates".split(' '))
+    #args = getcliargs("--fixhead -d INV --addanticodons --removeduplicates --fillpairs".split(' '))
 
     # Do text fixes if fixing headers
     if args.fixhead:
@@ -503,11 +493,13 @@ if __name__ == "__main__":
                       args.fixlengths or args.removeduplicates
         fixout = "temp.gb" if furtherwork else sys.stdout
         fixhead(sys.stdin, fixout, args)
+        #fixhead("path", fixout, args)
     else:
         fixout = None
 
     if args.fillpairs or args.standardname or args.addanticodons or args.removeduplicates:
 
+        splitannotations = set()
         unrecnames = set()
         couldntduplicate = {}
         noanticodons = {}
@@ -516,9 +508,9 @@ if __name__ == "__main__":
         annotypes.add('gene')
 
         gbin = SeqIO.parse(fixout if fixout else sys.stdin, "genbank")
-        #gbin = list(SeqIO.parse("/home/thomas/work/iBioGen_postdoc/MMGdatabase/issueseqs.gb", "genbank"))
+        #gbin = list(SeqIO.parse("temp.gb", "genbank"))
         for i, seqrecord in enumerate(gbin):
-            #seqrecord = gbin[0]
+            #seqrecord = list(gbin)[0]
             #sys.stderr.write(f"sequence {i} name {seqrecord.name}\n")
             #sys.stderr.flush()
             # Extract all features
@@ -527,6 +519,14 @@ if __name__ == "__main__":
             if args.removeduplicates:
                 features = remove_duplicates(features)
                 seqrecord.featuse = features
+            
+            # Check for split annotation
+            if args.addanticodons or args.fillpairs or args.standardname:
+                locclassname = [f.location.__class__.__name__ for f in seqrecord.features]
+                if any(n != "SimpleLocation" for n in locclassname):
+                   splitannotations.add(seqrecord.name)
+                   sys.stdout.write(seqrecord.format('genbank'))
+                   continue
 
             # Rename tRNAs if needed
             if args.addanticodons:
@@ -604,6 +604,13 @@ if __name__ == "__main__":
 
         # Report any issues
         tw = _textwrap.TextWrapper(width=80, initial_indent='\t', subsequent_indent='\t')
+
+        if len(splitannotations) > 0:
+            sys.stderr.write(f"Warning: the following genbank entries had one or more annotations "
+                             f"that are split over multiple locations. These should be rectified. "
+                             f"Output sequences for these entries will not have anticodons added, "
+                             f"pairs filled and/or names standardised.\n"
+                             f"{tw.fill(', '.join(splitannotations))}\n")
         if len(noanticodons) > 0:
             nal = [f"{k}\u00A0({n})" for k, n in noanticodons.items()]
             sys.stderr.write(f"\nWarning: the following {len(noanticodons)} genbank entries "
