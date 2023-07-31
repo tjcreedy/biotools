@@ -523,7 +523,7 @@ if __name__ == "__main__":
             # Check for split annotation
             if args.addanticodons or args.fillpairs or args.standardname:
                 locclassname = [f.location.__class__.__name__ for f in seqrecord.features]
-                if any(n != "SimpleLocation" for n in locclassname):
+                if any([n != "SimpleLocation" and n != "FeatureLocation" for n in locclassname]):
                    splitannotations.add(seqrecord.name)
                    sys.stdout.write(seqrecord.format('genbank'))
                    continue
