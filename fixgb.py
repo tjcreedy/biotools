@@ -57,7 +57,6 @@ from collections import defaultdict
 #     raise ValueError(
 # ValueError: End location (15997) must be greater than or equal to start location (29864)
 # Is there a way to change the origin???
-# Add option and code to remove Geneious features/annotations
 # Add option and code to fix IDs with _reversed or _modified
 
 
@@ -86,7 +85,7 @@ class MultilineFormatter(argparse.HelpFormatter):
 Bio.SeqFeature.FeatureLocation.__hash__ = lambda self : hash(f"{self.start.__str__()}"
                                                              f"{self.end.__str__()}"
                                                              f"{self.strand}")
-
+Bio.SeqFeature.SimpleLocation = Bio.SeqFeature.FeatureLocation
 
 # Function definitions
 
@@ -439,12 +438,17 @@ def getcliargs(arglist=None):
     On mitogenomes, fill missing annotations with --fillpairs. This will check through 
     the annotations to make sure that all 'CDS', 'tRNA' or 'rRNA' annotations have an identical 
     'gene' annotation, and vice-versa. All other types of annotation will be ignored. 
-    |n 
+    |n
     Where multiple overlapping annotations share the same name and type, retain only the longest 
     annotation using --removeduplicates
-    |n    
+    |n
     Standardise gene names with --standardname. This will check each gene name and replace it with
-    the standard name used in https://github.com/tjcreedy/constants.   
+    the standard name used in https://github.com/tjcreedy/constants.
+    |n
+    Remove any geneious editing history or annotation derivation annotations using --removegeneious.
+    |n
+    By default, any source annotations will be reset to start at position 1 and end at the last 
+    position in the sequence. Use --dontresetsource to stop this behaviour.
     """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
@@ -465,6 +469,10 @@ def getcliargs(arglist=None):
                         help="add missing annotations for mitochondrial genes")
     parser.add_argument("--standardname", action='store_true',
                         help="standardise gene names")
+    parser.add_argument("--removegeneious", action='store_true',
+                        help="remove any geneious editing history or other annotations")
+    parser.add_argument("--dontresetsource", action = "store_true",
+                        help="dont reset any source annotations to the entire sequence length")
 
     # Parse the arguments from the function call if specified, otherwise from the command line
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
@@ -485,19 +493,20 @@ if __name__ == "__main__":
 
     args = getcliargs()
     #args = getcliargs("--removeduplicates".split(' '))
-    #args = getcliargs("--fixhead -d INV --addanticodons --removeduplicates --fillpairs".split(' '))
+    #args = getcliargs("--fixhead -d INV --addanticodons --removeduplicates --fillpairs --removegeneious".split(' '))
 
     # Do text fixes if fixing headers
     if args.fixhead:
         furtherwork = args.fillpairs or args.standardname or args.addanticodons or \
-                      args.fixlengths or args.removeduplicates
+                      args.fixlengths or args.removeduplicates or args.removegeneious
         fixout = "temp.gb" if furtherwork else sys.stdout
         fixhead(sys.stdin, fixout, args)
-        #fixhead("path", fixout, args)
+        #fixhead("/home/thomas/work/iBioGen_postdoc/MMGdatabase/gbmaster_2023-08-01/GBDL01750.gb", fixout, args)
     else:
         fixout = None
 
-    if args.fillpairs or args.standardname or args.addanticodons or args.removeduplicates:
+    if args.fillpairs or args.standardname or args.addanticodons or args.removeduplicates or \
+       args.removegeneious:
 
         splitannotations = set()
         unrecnames = set()
@@ -509,20 +518,36 @@ if __name__ == "__main__":
 
         gbin = SeqIO.parse(fixout if fixout else sys.stdin, "genbank")
         #gbin = list(SeqIO.parse("temp.gb", "genbank"))
-        for i, seqrecord in enumerate(gbin):
+        for seqrecord in gbin:
             #seqrecord = list(gbin)[0]
-            #sys.stderr.write(f"sequence {i} name {seqrecord.name}\n")
+            #sys.stderr.write(f"sequence name {seqrecord.name}\n")
             #sys.stderr.flush()
             # Extract all features
             features = seqrecord.features
 
+            if not args.dontresetsource:
+                for i, feat in enumerate(features):
+                    #i, feat = 0, features[0]
+                    if feat.type == 'source':
+                        features[i].location = Bio.SeqFeature.SimpleLocation(1, len(seqrecord.seq))
+
+            if args.removegeneious:
+                newfeatures = []
+                for feat in features:
+                    if 'note' in feat.qualifiers.keys():
+                        if not any(['geneious' in n.lower() for n in feat.qualifiers['note']]):
+                            newfeatures.append(feat)
+                    else:
+                        newfeatures.append(feat)
+                features = newfeatures
+            
+            
             if args.removeduplicates:
                 features = remove_duplicates(features)
-                seqrecord.featuse = features
             
             # Check for split annotation
             if args.addanticodons or args.fillpairs or args.standardname:
-                locclassname = [f.location.__class__.__name__ for f in seqrecord.features]
+                locclassname = [f.location.__class__.__name__ for f in features]
                 if any([n != "SimpleLocation" and n != "FeatureLocation" for n in locclassname]):
                    splitannotations.add(seqrecord.name)
                    sys.stdout.write(seqrecord.format('genbank'))
