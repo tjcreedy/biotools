@@ -501,7 +501,7 @@ if __name__ == "__main__":
                       args.fixlengths or args.removeduplicates or args.removegeneious
         fixout = "temp.gb" if furtherwork else sys.stdout
         fixhead(sys.stdin, fixout, args)
-        #fixhead("/home/thomas/work/iBioGen_postdoc/MMGdatabase/gbmaster_2023-08-01/GBDL01750.gb", fixout, args)
+        #fixhead("/home/thomas/work/iBioGen_postdoc/MMGdatabase/gbmaster_2023-08-01/BIOD03404.gb", fixout, args)
     else:
         fixout = None
 
@@ -517,47 +517,47 @@ if __name__ == "__main__":
         annotypes.add('gene')
 
         gbin = SeqIO.parse(fixout if fixout else sys.stdin, "genbank")
-        #gbin = list(SeqIO.parse("temp.gb", "genbank"))
         for seqrecord in gbin:
             #seqrecord = list(gbin)[0]
             #sys.stderr.write(f"sequence name {seqrecord.name}\n")
             #sys.stderr.flush()
+            
             # Extract all features
-            features = seqrecord.features
-
+            #[print(f) for f in seqrecord.features[0:5]]
+            
             if not args.dontresetsource:
-                for i, feat in enumerate(features):
+                for i, feat in enumerate(seqrecord.features):
                     #i, feat = 0, features[0]
                     if feat.type == 'source':
-                        features[i].location = Bio.SeqFeature.SimpleLocation(1, len(seqrecord.seq))
+                        seqrecord.features[i].location = Bio.SeqFeature.SimpleLocation(0, len(seqrecord.seq))
 
             if args.removegeneious:
-                newfeatures = []
-                for feat in features:
-                    if 'note' in feat.qualifiers.keys():
-                        if not any(['geneious' in n.lower() for n in feat.qualifiers['note']]):
-                            newfeatures.append(feat)
+                for feat in seqrecord.features[:]:
+                    gpr = ['geneious' in qi.lower() for q in feat.qualifiers.values() for qi in q]
+                    if feat.type == 'misc_feature' and any(gpr):
+                        seqrecord.features.remove(feat)
                     else:
-                        newfeatures.append(feat)
-                features = newfeatures
-            
+                        spr = [re.match("^[ATCGU ]+$", qi.upper()) for q in feat.qualifiers.values() for qi in q]
+                        for k, gp, sp in zip(list(feat.qualifiers.keys()), gpr, spr):
+                            if gp or sp or k == 'modified_by':
+                                del feat.qualifiers[k]
             
             if args.removeduplicates:
-                features = remove_duplicates(features)
+                seqrecord.features = remove_duplicates(seqrecord.features)
             
             # Check for split annotation
             if args.addanticodons or args.fillpairs or args.standardname:
-                locclassname = [f.location.__class__.__name__ for f in features]
+                locclassname = [f.location.__class__.__name__ for f in seqrecord.features]
                 if any([n != "SimpleLocation" and n != "FeatureLocation" for n in locclassname]):
-                   splitannotations.add(seqrecord.name)
-                   sys.stdout.write(seqrecord.format('genbank'))
-                   continue
+                    splitannotations.add(seqrecord.name)
+                    sys.stdout.write(seqrecord.format('genbank'))
+                    continue
 
             # Rename tRNAs if needed
             if args.addanticodons:
                 trnas, otherfeats = sortextractfeats(seqrecord, ['tRNA', 'gene'])
                 correctedtrnas, nac = add_anticodon(trnas, nameconvert)
-                features = correctedtrnas + otherfeats
+                seqrecord.features = correctedtrnas + otherfeats
                 if nac > 0:
                     noanticodons[seqrecord.name] = nac
 
@@ -620,13 +620,12 @@ if __name__ == "__main__":
                             else:
                                 couldntduplicate[seqrecord.name] = 1
                             donefeats.append(feat)
-            else:
-                donefeats = features
+                
+                seqrecord.features = donefeats
 
-            # Replace the features with the new list and output
-            seqrecord.features = donefeats
+            # Output
             sys.stdout.write(seqrecord.format('genbank'))
-
+        
         # Report any issues
         tw = _textwrap.TextWrapper(width=80, initial_indent='\t', subsequent_indent='\t')
 
