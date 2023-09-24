@@ -539,7 +539,7 @@ if __name__ == "__main__":
                     else:
                         spr = [re.match("^[ATCGU ]+$", qi.upper()) for q in feat.qualifiers.values() for qi in q]
                         for k, gp, sp in zip(list(feat.qualifiers.keys()), gpr, spr):
-                            if gp or sp or k == 'modified_by':
+                            if gp or sp or k == 'modified_by' or k == 'created_by' or k == 'Score':
                                 del feat.qualifiers[k]
             
             if args.removeduplicates:
