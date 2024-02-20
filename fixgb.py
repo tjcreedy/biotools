@@ -56,19 +56,8 @@ from collections import defaultdict
 #   File "/usr/lib/python3/dist-packages/Bio/SeqFeature.py", line 811, in __init__
 #     raise ValueError(
 # ValueError: End location (15997) must be greater than or equal to start location (29864)
-# Fix whatever's going on here:
-# GBDL00476.gb
-# Traceback (most recent call last):
-#   File "/home/thomc/programming/bioinformatics/biotools//fixgb.py", line 371, in <module>
-#     focalfeats, donefeats = sort_feats(seqrecord.features, annotypes)
-#   File "/home/thomc/programming/bioinformatics/biotools//fixgb.py", line 175, in sort_feats
-#     if feat.location in focalfeats:
-# TypeError: unhashable type: 'CompoundLocation'
-# Add option and code to remove Geneious features/annotations
+# Is there a way to change the origin???
 # Add option and code to fix IDs with _reversed or _modified
-
-
-
 
 
 # Global variables
@@ -96,7 +85,7 @@ class MultilineFormatter(argparse.HelpFormatter):
 Bio.SeqFeature.FeatureLocation.__hash__ = lambda self : hash(f"{self.start.__str__()}"
                                                              f"{self.end.__str__()}"
                                                              f"{self.strand}")
-
+Bio.SeqFeature.SimpleLocation = Bio.SeqFeature.FeatureLocation
 
 # Function definitions
 
@@ -215,7 +204,6 @@ def fixhead(inpath, outpath, args):
 
     if type(outpath) is str:
         outgb.close()
-
 
 def sortextractfeats(record, extracttypes):
     focalfeats = {}
@@ -450,12 +438,17 @@ def getcliargs(arglist=None):
     On mitogenomes, fill missing annotations with --fillpairs. This will check through 
     the annotations to make sure that all 'CDS', 'tRNA' or 'rRNA' annotations have an identical 
     'gene' annotation, and vice-versa. All other types of annotation will be ignored. 
-    |n 
+    |n
     Where multiple overlapping annotations share the same name and type, retain only the longest 
     annotation using --removeduplicates
-    |n    
+    |n
     Standardise gene names with --standardname. This will check each gene name and replace it with
-    the standard name used in https://github.com/tjcreedy/constants.   
+    the standard name used in https://github.com/tjcreedy/constants.
+    |n
+    Remove any geneious editing history or annotation derivation annotations using --removegeneious.
+    |n
+    By default, any source annotations will be reset to start at position 1 and end at the last 
+    position in the sequence. Use --dontresetsource to stop this behaviour.
     """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
@@ -476,6 +469,10 @@ def getcliargs(arglist=None):
                         help="add missing annotations for mitochondrial genes")
     parser.add_argument("--standardname", action='store_true',
                         help="standardise gene names")
+    parser.add_argument("--removegeneious", action='store_true',
+                        help="remove any geneious editing history or other annotations")
+    parser.add_argument("--dontresetsource", action = "store_true",
+                        help="dont reset any source annotations to the entire sequence length")
 
     # Parse the arguments from the function call if specified, otherwise from the command line
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
@@ -496,18 +493,22 @@ if __name__ == "__main__":
 
     args = getcliargs()
     #args = getcliargs("--removeduplicates".split(' '))
+    #args = getcliargs("--fixhead -d INV --addanticodons --removeduplicates --fillpairs --removegeneious".split(' '))
 
     # Do text fixes if fixing headers
     if args.fixhead:
         furtherwork = args.fillpairs or args.standardname or args.addanticodons or \
-                      args.fixlengths or args.removeduplicates
+                      args.fixlengths or args.removeduplicates or args.removegeneious
         fixout = "temp.gb" if furtherwork else sys.stdout
         fixhead(sys.stdin, fixout, args)
+        #fixhead("/home/thomas/work/iBioGen_postdoc/MMGdatabase/gbmaster_2023-08-01/BIOD03404.gb", fixout, args)
     else:
         fixout = None
 
-    if args.fillpairs or args.standardname or args.addanticodons or args.removeduplicates:
+    if args.fillpairs or args.standardname or args.addanticodons or args.removeduplicates or \
+       args.removegeneious:
 
+        splitannotations = set()
         unrecnames = set()
         couldntduplicate = {}
         noanticodons = {}
@@ -516,23 +517,47 @@ if __name__ == "__main__":
         annotypes.add('gene')
 
         gbin = SeqIO.parse(fixout if fixout else sys.stdin, "genbank")
-        #gbin = list(SeqIO.parse("/home/thomas/work/iBioGen_postdoc/MMGdatabase/issueseqs.gb", "genbank"))
-        for i, seqrecord in enumerate(gbin):
-            #seqrecord = gbin[0]
-            #sys.stderr.write(f"sequence {i} name {seqrecord.name}\n")
+        for seqrecord in gbin:
+            #seqrecord = list(gbin)[0]
+            #sys.stderr.write(f"sequence name {seqrecord.name}\n")
             #sys.stderr.flush()
+            
             # Extract all features
-            features = seqrecord.features
+            #[print(f) for f in seqrecord.features[0:5]]
+            
+            if not args.dontresetsource:
+                for i, feat in enumerate(seqrecord.features):
+                    #i, feat = 0, features[0]
+                    if feat.type == 'source':
+                        seqrecord.features[i].location = Bio.SeqFeature.SimpleLocation(0, len(seqrecord.seq))
 
+            if args.removegeneious:
+                for feat in seqrecord.features[:]:
+                    gpr = ['geneious' in qi.lower() for q in feat.qualifiers.values() for qi in q]
+                    if feat.type == 'misc_feature' and any(gpr):
+                        seqrecord.features.remove(feat)
+                    else:
+                        spr = [re.match("^[ATCGU ]+$", qi.upper()) for q in feat.qualifiers.values() for qi in q]
+                        for k, gp, sp in zip(list(feat.qualifiers.keys()), gpr, spr):
+                            if gp or sp or k == 'modified_by' or k == 'created_by' or k == 'Score':
+                                del feat.qualifiers[k]
+            
             if args.removeduplicates:
-                features = remove_duplicates(features)
-                seqrecord.featuse = features
+                seqrecord.features = remove_duplicates(seqrecord.features)
+            
+            # Check for split annotation
+            if args.addanticodons or args.fillpairs or args.standardname:
+                locclassname = [f.location.__class__.__name__ for f in seqrecord.features]
+                if any([n != "SimpleLocation" and n != "FeatureLocation" for n in locclassname]):
+                    splitannotations.add(seqrecord.name)
+                    sys.stdout.write(seqrecord.format('genbank'))
+                    continue
 
             # Rename tRNAs if needed
             if args.addanticodons:
                 trnas, otherfeats = sortextractfeats(seqrecord, ['tRNA', 'gene'])
                 correctedtrnas, nac = add_anticodon(trnas, nameconvert)
-                features = correctedtrnas + otherfeats
+                seqrecord.features = correctedtrnas + otherfeats
                 if nac > 0:
                     noanticodons[seqrecord.name] = nac
 
@@ -595,15 +620,21 @@ if __name__ == "__main__":
                             else:
                                 couldntduplicate[seqrecord.name] = 1
                             donefeats.append(feat)
-            else:
-                donefeats = features
+                
+                seqrecord.features = donefeats
 
-            # Replace the features with the new list and output
-            seqrecord.features = donefeats
+            # Output
             sys.stdout.write(seqrecord.format('genbank'))
-
+        
         # Report any issues
         tw = _textwrap.TextWrapper(width=80, initial_indent='\t', subsequent_indent='\t')
+
+        if len(splitannotations) > 0:
+            sys.stderr.write(f"Warning: the following genbank entries had one or more annotations "
+                             f"that are split over multiple locations. These should be rectified. "
+                             f"Output sequences for these entries will not have anticodons added, "
+                             f"pairs filled and/or names standardised.\n"
+                             f"{tw.fill(', '.join(splitannotations))}\n")
         if len(noanticodons) > 0:
             nal = [f"{k}\u00A0({n})" for k, n in noanticodons.items()]
             sys.stderr.write(f"\nWarning: the following {len(noanticodons)} genbank entries "

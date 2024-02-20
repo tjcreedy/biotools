@@ -521,14 +521,17 @@ def perm_test(x, y, stat, alternative, n=5000, converge=None, converge_dp=3):
         return res/n
 
 
-def best_hit(data, ranks, speciesid, rejectunknownequal=False, bestp=True, taxp=False, binspecies=False):
+def best_hit(data, ranks, speciesid,
+             rejectunknownequal=False, bestp=True, taxp=False, binspecies=False):
     # NOTE: binspecies not currently working
     # data, ranks, process, speciesid, rejectunknownequal, taxp, bestp, binspecies = taxonomised, args.ranks, args.process, args.speciesid, False, False, True, False
     out = {}
     total = len(data)
     for n, (qseqid, hits) in enumerate(data.items()):
-        # qseqid, hits = list(data.items())[3]
-        sys.stderr.write(f"Performing besthit analysis for query {n+1}/{total}\r")
+        # qseqid, hits = list(data.items())[567]
+        # n, qseqid, hits = 176, 'ec6cb0bb13bd179a117b8d85a0991fa6', data['ec6cb0bb13bd179a117b8d85a0991fa6']
+        sys.stderr.write(f"Performing besthit analysis for query {qseqid} {n+1}/{total}\r")
+        sys.stderr.flush()
        # [f"{h['pident']}: {','.join(h['taxonomy'])}" for h in hits]
         # Set up containers for processing and taxonomy reference. If species are present, we want
         # to collapse the hits to a single value per species, to avoid biasing by coverage
@@ -611,7 +614,6 @@ def best_hit(data, ranks, speciesid, rejectunknownequal=False, bestp=True, taxp=
                         taxsets[r][taxon][species] = pident
                 else:
                     taxsets[r][taxon].append(pident)
-
         # If species are present, collect the %id by species together into a list
         if 'species' in ranks and binspecies:
             for r in ranks:
@@ -658,13 +660,12 @@ def best_hit(data, ranks, speciesid, rejectunknownequal=False, bestp=True, taxp=
                 # Max: isn't biased by coverage, nor by midlevel taxa
                 scores['max'].append(max(taxsets[r][t]))
                 scores['mean'].append(np.mean(taxsets[r][t]))
-
             # Find the taxon with the best score
             besttaxa = [t for t, x in zip(scores['taxa'], scores['max']) if x == max(scores['max'])]
             # Break ties using mean
             if len(besttaxa) > 1:
-                besttaxa = [t for t, m in zip(scores['taxa'], scores['mean'])
-                            if m == max(scores['mean']) and t in besttaxa]
+                bestmeans = [m for t, m in zip(scores['taxa'], scores['mean']) if t in besttaxa]
+                besttaxa = [t for t, m in zip(besttaxa, bestmeans) if m == max(bestmeans)]
                 # If ties remain, or the best taxon is unknown, output nothing
                 if len(besttaxa) > 1 or 'unknown_' in besttaxa[0]:
                     break
@@ -676,7 +677,7 @@ def best_hit(data, ranks, speciesid, rejectunknownequal=False, bestp=True, taxp=
             for t, s in taxsets[r].items():
                 if t != stax and 'unknown_' not in t:
                     otherscores.extend(s)
-            pvalue = 1.0 if len(otherscores) == 1 else perm_test(staxscores, otherscores, 'max',
+            pvalue = 1.0 if len(otherscores) <= 1 else perm_test(staxscores, otherscores, 'max',
                                                                  'greater', n=1000, converge=300)
             pident = max(staxscores)
             # If this is the root, output the taxon and p value
