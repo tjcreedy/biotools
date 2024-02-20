@@ -46,7 +46,6 @@ def padseq(seq, aligned = False):
 if __name__ == "__main__":
 
     # Get options
-    # args = parser.parse_args(['5'])
     args = parser.parse_args()
 
     # Read nucleotides

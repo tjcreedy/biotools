@@ -62,10 +62,6 @@ if __name__ == "__main__":
 
     # Get options
 
-    # args = parser.parse_args(['-r', '1', '-i', 'aln_aa.fa', 'test.fa', '5'])
-    # args = parser.parse_args('-i /home/thomas/work/iBioGen_postdoc/MMGdatabase/SRAAredux_2022-04-15/23_aa_aln/COX1.fa'
-    #                          ' /home/thomas/work/iBioGen_postdoc/MMGdatabase/SRAAredux_2022-04-15/21_nt_raw/COX1.fa 5'.split(' '))
-
     args = parser.parse_args()
 
     # Read amino acid alignment
