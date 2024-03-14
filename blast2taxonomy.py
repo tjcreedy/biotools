@@ -89,7 +89,8 @@ def parse_title(title):
         gbsrch = re.search(gbregex, title)
         if gbsrch:
             return gbsrch.group(0)
-    sys.stderr.write(f"Error: cannot recognise a single genbank accession number in {title}")
+    sys.stderr.write(f"Warning: cannot recognise a single genbank accession number in {title} - "
+                     f"this hit will be ignored")
     sys.exit()
 
 
