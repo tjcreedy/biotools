@@ -37,6 +37,20 @@ class MultilineFormatter(argparse.HelpFormatter):
             multiline_text = multiline_text + formatted_paragraph
         return multiline_text
 
+class Range(object):
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+    def __eq__(self, other):
+        return self.start <= other <= self.end
+
+class MinimumInteger(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        if values < 0:
+            parser.error("Minimum value for {0} is 1".format(option_string))
+        setattr(namespace, self.dest, values)
+
+
 # Global variables
 
 
@@ -83,7 +97,7 @@ def parse_title(title):
     sys.exit()
 
 
-def parse_tabular(path, sep, idthresh, taxc):
+def parse_tabular(path, sep, taxc, minid, minscore, minalen):
     out = {}
     with open(path) as fh:
         for line in fh:
@@ -92,7 +106,9 @@ def parse_tabular(path, sep, idthresh, taxc):
             # Get id and skip row if id below threshold or does not exceed the current top hit (if
             # using
             pident = float(row[2])
-            if pident < idthresh:
+            bitscore = float(row[11])
+            length = int(row[3])
+            if pident <  minid or bitscore < minscore or length < minalen:
                 continue
             # Get hit details and record
             sseqid = parse_title(row[1])
@@ -100,7 +116,8 @@ def parse_tabular(path, sep, idthresh, taxc):
                     'data': row,
                     'pident': pident,
                     'evalue': float(row[10]),
-                    'bitscore': float(row[11])}
+                    'bitscore': bitscore,
+                    'length': length}
             if taxc:
                 resd['tx'] = int(row[taxc - 1].split(';')[0])
             # Add to output dict
@@ -111,7 +128,7 @@ def parse_tabular(path, sep, idthresh, taxc):
     return out
 
 
-def parse_xml(path, idthresh):
+def parse_xml(path, minid, minscore, minalen):
     out = {}
     results = NCBIXML.parse(open(path))
     for res in results:
@@ -125,35 +142,28 @@ def parse_xml(path, idthresh):
             pident = (hsp.identities/hsp.align_length) * 100
             evalue = hsp.expect
             bitscore = hsp.bits
-            score = hsp.score
-            if pident >= idthresh:
+            length = hsp.score
+            if pident >= minid and bitscore >= minscore and length >= minalen :
                 hits.append({'id': sseqid,
                              'data': [qseqid, sseqid, pident, evalue, bitscore],
                              'pident': pident,
                              'evalue': evalue,
                              'bitscore': bitscore,
-                             'score': score})
+                             'length': length})
         out[qseqid] = hits
     return out
 
 
-def parse_input(path, process, idthresh, taxidc):
-    #path, idthresh, taxidc = "test6.tsv", 0, None
+def parse_input(path, taxidc, minscore = 0, minid = 0, minalen = 0):
+    # path, taxidc, minscore, minid, minalen = args.blastresults, args.taxidcolumn, args.minscore, args.minid, args.minalen
     # Find out the input format
     with open(path) as fh:
         fline = fh.readline().strip()
     if re.match(r"^<\?xml.*\?>$", fline):
-        indata = parse_xml(path, idthresh)
+        indata = parse_xml(path, minid, minscore, minalen)
     else:
         sep = ',' if fline.count(',') > fline.count('\t') else '\t'
-        indata = parse_tabular(path, sep, idthresh, taxidc)
-
-    # Filter out non-top hits if using
-    if process == 'top':
-        for qseqid in indata.keys():
-            # qseqid = list(indata.keys())[0]
-            pidents = [float(h['data'][2]) for h in indata[qseqid]]
-            indata[qseqid] = [h for h in indata[qseqid] if float(h['data'][2]) == max(pidents)]
+        indata = parse_tabular(path, sep, taxidc, minid, minscore, minalen)
 
     # Get accessions to search and taxids if present
     accs = set()
@@ -412,14 +422,6 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
                 data[qseqid][i]['taxonomy'] = ['']  * len(ranks)
     return data
 
-# TODO: implement meganlca option, which filters according to MEGAN algorithm
-# See methods section at end https://genome.cshlp.org/content/17/3/377.full
-# def filter_hits(data, minscore, toppercent, winscore, minsupport):
-#     out = {}
-#     for qseqid, hits in data.items():
-#
-
-
 def lca(data, ranks):
     # data, ranks = taxonomised, args.ranks
     out = {}
@@ -434,10 +436,81 @@ def lca(data, ranks):
         lcataxonomy = []
         for r in ranks:
             lcataxonomy.append(lcasets[r].pop() if len(lcasets[r]) == 1 else '')
-        out[qseqid] = [{'taxonomy': lcataxonomy}]
+        out[qseqid] = {'taxonomy': lcataxonomy}
     return out
 
+def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, minsupppc, minsuppn, minlen):
+    # data, ranks, minscore, maxexp, minid, toppc, minsuppc, minsuppn, minlen = taxonomised, args.ranks, args.minscore, args.maxexp, args.minid, args.toppc, args.minhitpc, args.minhitn, args.minalen
+    
+    out = {}
+    for qseqid, hits in data.items():
+        # qseqid, hits = list(data.items())[0]
+        # print(json.dumps(hits[0:20], indent = 4))
+        # Filter out any hit rejected for the various filters
+        scores = [h['bitscore'] for h in hits]
+        mintopscore = (100 - toppc)/100 * max(scores)
+        for hit in hits:
+            if hit['bitscore'] < minscore:
+                hit['status'] = 'reject-minscore'
+            elif hit['bitscore'] < mintopscore:
+                hit['status'] = 'reject-outsidetoppc'
+            elif hit['pident'] < minid:
+                hit['status'] = 'reject-minid'
+            elif hit['evalue'] > maxexp:
+                hit['status'] = 'reject-maxexp'
+            elif hit['length'] < minlen:
+                hit['status'] = 'reject-minlen'
+            else:
+                hit['status'] = 'acceptforlca'
+        
+        # Do LCA
+        lcaids, lcascores = [], []
+        lcasets = {r: set() for r in ranks}
+        for hit in hits:
+            # i = 0
+            if hit['status'] != 'acceptforlca':
+                continue
+            
+            lcaids.append(hit['pident'])
+            lcascores.append(hit['bitscore'])
+            for j, r in enumerate(ranks):
+                # j = 0
+                lcasets[r].add(hit['taxonomy'][j])
+        
+        # Do LCA
+        lcataxonomy = []
+        for r in ranks:
+            lcataxonomy.append(lcasets[r].pop() if len(lcasets[r]) == 1 else '')
+        
+        # Start output
+        out[qseqid] = {'hits': len(hits),
+                       'considered': len(lcaids),
+                       'consideredpc': 100 * len(lcaids)/len(hits) }
 
+        # Check sufficient support and report taxonomy and support
+        if len(lcaids) < minsuppn or len(lcaids)/len(hits) < minsupppc/100:
+            out[qseqid].update({'taxonomy': ['' for r in ranks],
+                                'support': 'reject-insufficient'})
+        else:
+            out[qseqid].update({'taxonomy': lcataxonomy,
+                                'support': 'accept-sufficient'})
+
+        # Report stats for considered hits
+        if len(lcaids) > 0:
+            out[qseqid].update(
+                {'minpident': min(lcaids),
+                 'maxpident': max(lcaids),
+                 'minscore': min(lcascores),
+                 'maxscore': max(lcascores)}
+                 )
+        else:
+            out[qseqid].update(
+                {k: None for k in ['minpident', 'maxpident', 'minscore', 'maxscore']}
+                )
+    
+    return out, data
+
+""" 
 def p_greater_single(test, series, nperm=10000):
     def firstrank(lis):
         return scipy.stats.rankdata(lis)[0]
@@ -518,10 +591,10 @@ def perm_test(x, y, stat, alternative, n=5000, converge=None, converge_dp=3):
         for _ in range(n):
             if do_perm(x, y, sample, fun, alternative):
                 res += 1
-        return res/n
+        return res/n """
 
 
-def best_hit(data, ranks, speciesid,
+""" def best_hit(data, ranks, speciesid,
              rejectunknownequal=False, bestp=True, taxp=False, binspecies=False):
     # NOTE: binspecies not currently working
     # data, ranks, process, speciesid, rejectunknownequal, taxp, bestp, binspecies = taxonomised, args.ranks, args.process, args.speciesid, False, False, True, False
@@ -698,28 +771,40 @@ def best_hit(data, ranks, speciesid,
         if bestp:
             out[qseqid][0]['pident'] = pident
     sys.stderr.write("\nCompleted besthit analysis\n")
-    return out
+    return out """
 
-
-def filter_tophit(data):
+def filter_tophit(data, method):
+    # data, method = taxonomised, "bitscore"
+    altmethod = "pident" if method == "bitscore" else "bitscore"
     #data = taxonomised
     out = {}
     for qseqid, hits in data.items():
         # qseqid, hits = list(data.items())[0]
-        if len(hits) > 1:
-            # Count the unique taxonomies
-            taxcount = Counter()
-            for hit in hits:
-                taxcount[','.join(hit['taxonomy'])] += 1
-            # Find the most frequent taxonomy
-            toptaxonomy = [t for t, c in taxcount.items() if c == max(taxcount.values())][0]
-            # Output the first hit with the most frequent taxonomy
-            out[qseqid] = [[h for h in hits if ','.join(h['taxonomy']) == toptaxonomy][0]]
-        else:
-            out[qseqid] = hits
+        max1 = max(h[method] for h in hits)
+        max2 = max(h[altmethod] for h in hits if h[method] == max1)
+        selected = [h for h in hits if h[method] == max1 and h[altmethod] == max2]
+        out[qseqid] = {'taxonomy': selected[0]['taxonomy'], 'ntop': len(selected)}
     return out
 
+def writetaxonomy(data, path, ranks):
+    #data, path, ranks = taxonomies, args.outtaxonomy, args.ranks
+    header = list(data.values())[0].keys()
+    header = [h for h in header if h != "taxonomy"]
+    fh = open(path, 'w') 
+    fh.write(','.join(['qseqid'] + ranks + list(header)))
+    for q, v in data.items():
+        # q, v = list(data.items())[0]
+        fh.write(','.join([q] + v['taxonomy'] + [str(v[h]) for h in header]))
+    fh.close()
 
+def writehits(data, path, ranks):
+    #data, path, ranks = taxonomised, args.outhits, args.ranks
+    header = list(data.values())[0][0]
+
+    
+
+
+""" 
 def writeout(data):
     for qseqid, hits in data.items():
         # qseqid, hits = list(data.items())[0]
@@ -737,7 +822,27 @@ def writeout(data):
                 output.append(hit['pident'])
             output.extend(hit['taxonomy'])
             output = [str(o) for o in output]
-            sys.stdout.write('\t'.join(output) + '\n')
+            sys.stdout.write('\t'.join(output) + '\n') """
+
+""", or attempting to 
+        find the best fit taxonomy using -p "bestfit", which will consider the hit properties to 
+        select a single taxon for each rank and, if -w/--showscores is set, report the score (0-1) 
+        for that taxon. Note that scores are currently not calculated well where multiple higher 
+        taxa have high percent ID hits. |n 
+        When using the best fit option only, 
+        species level taxonomic assignment will only consider hits with a percent identity greater 
+        than or equal to the value of -s/--speciesidthreshold, default 95. By default, during best 
+        fit processing, hits with unknown species identity are excluded only if they score worse
+        than hits with known identity, the conservative option. To reject unknown hits that score 
+        worse or equal to hits with known identity, use the flag '-j/--rejectunknowns. This is 
+        only recommended when it is expected that NCBI contains the species in the query.
+        |n"""
+""" 
+    parser.add_argument('--bf_rejectunknowns', action='store_true',
+                        help="do not consider unknown taxonomies with the same score as known "
+                             "taxonomies [BEST FIT]")
+    parser.add_argument('--bf_showscores', action='store_true', 
+                        help="show individual taxon scores in the output [BEST FIT]") """
 
 
 def getcliargs(arglist=None):
@@ -751,41 +856,49 @@ def getcliargs(arglist=None):
         run that includes the column "staxids", the column number for this data should be passed to 
         -c/--taxidcolumn. Note that if multiple taxids are found for a hit, the first will be used. 
         |n
-        The taxonomy will be retrieved from NCBI Taxonomy based on the taxid of the hit(s). By 
-        default, the taxonomy of all hits will be retrieved and reported. Optionally, the hits can 
-        be processed, using the option -p/--process, either keeping only the/a top hit using 
-        "-p top", finding the lowest common ancestor of all hits using "-p lca", or attempting to 
-        find the best fit taxonomy using -p "bestfit", which will consider the hit properties to 
-        select a single taxon for each rank and, if -w/--showscores is set, report the score (0-1) 
-        for that taxon. Note that scores are currently not calculated well where multiple higher 
-        taxa have high percent ID hits.
+        To skip searching for taxonomy for poor quality hits, these can optionally be filtered out 
+        first according to percent identity (-i/--minid), bitscore (-s/--minscore) and/or alignment 
+        length (-l/--minalen). By default, no filtering is done.
         |n
-        The script can filter hits based on percent identity in two ways. To speed up NCBI 
-        searches, any hits below a minimum percent identity supplied to -m/--minidthreshold will be 
-        discarded prior to taxonomy assignment, default 0. When using the best fit option only, 
-        species level taxonomic assignment will only consider hits with a percent identity greater 
-        than or equal to the value of -s/--speciesidthreshold, default 95. By default, during best 
-        fit processing, hits with unknown species identity are excluded only if they score worse
-        than hits with known identity, the conservative option. To reject unknown hits that score 
-        worse or equal to hits with known identity, use the flag '-j/--rejectunknowns. This is 
-        only recommended when it is expected that NCBI contains the species in the query.
-        |n
-        The script will output a tsv to STDOUT. With the default option, the script will output 
-        the information each hit for each query id, in the same format as supplied, followed by 
-        the parsed NCBI accession ID, the NCBI taxid and taxonomy columns for each hit. When using 
-        the -t/--tophit option, only a top hit for each query will be output. If multiple top 
-        hits are found, the first one with the most frequent taxonomy will be output. When using 
-        the -l/--lca option, the script will output a single row for each query id and the LCA  
-        taxonomy columns. Note that if the input is XML, the only fields parsed from the XML and 
-        output are qseqid, sseqid and pident. Control the taxonomic ranks output in all cases 
-        using -r/--rank. 
-        |n
-        To efficiently retrieve taxonomy, the script uses a pair of local datasets in json files, 
-        one recording taxids for GenBank accession numbers, one recording taxonomy for taxids. 
-        These might have been created by a previous run of this script, or the latter with 
+        The taxonomy will be retrieved from NCBI Taxonomy based on the taxid of the (remaining) 
+        hit(s). To efficiently retrieve taxonomy, the script uses a pair of local datasets in json 
+        files, one recording taxids for GenBank accession numbers, one recording taxonomy for 
+        taxids. These might have been created by a previous run of this script, or the latter with 
         get_NCBI_taxonomy.py. Supply a path to the accession-taxid json with -g/--gbtiddb and the 
         taxid-taxonomy json with -x/--tidtaxdb. If this is your first run, the script will create 
         new databases at the locations supplied.
+        |n
+        Optionally, hits can then be processed to select a single taxonomy for each query using the 
+        option -p/--process. Currently, three options are available. The two simple options are Top 
+        Hit and LCA. Top Hit returns the taxonomy of the hit with the highest bitscore (-p 
+        "top_score") or highest percent identity (-p "top_id"). Where there are ties, 
+        these are broken by percent identity and bitscore respectively; if ties remain, the first 
+        hit used. LCA (-p lca) simply returns the lowest common ancestor of all hits for which 
+        taxonomy has been retrieved. 
+        |n
+        The final processing option, MEGAN LCA (-p megan), follows closely to the MEGAN LCA 
+        algorithm as originally described here: https://genome.cshlp.org/content/17/3/377.full. 
+        When this process is selected, no hit filtering prior to taxonomy retrieval is performed, 
+        so taxonomy is retrieved for all hits. Then, more detailed filtering is performed to reject 
+        hits prior to LCA analysis. Hits are reject if they fail the following conditions, in order:
+        1. The bitscore is less than the minimum supplied to -s/--minscore (default 1); 
+        2. The bitscore is less than a given percentage (-t/--toppc) below the top scoring hit 
+        (default 15);
+        3. The percent identity is less than the minimum supplied to -i/--minid (default 80);
+        4. The expected value (e-value) is greater than the maximum supplied to -e/--maxexp 
+        (default 0.01);
+        5. The alignment length is less than the minimum supplied to -l/--minalen (default 100).
+        The number of remaining hits is then compared against the supplied minimum number 
+        (-n/--minhitn, default 0) and percentage of all hits (-a/--minhitpc, default 1). If 
+        sufficient hits remain, the lowest common ancestor of these hits is found.
+        |n
+        The script has two outputs. Details of all hits not filtered out in the first stage, along 
+        with their taxonomies, will be output to a csv if -h/--outhits is specified. If the MEGAN 
+        LCA process is used, all hits are output, and the fate of the hit in MEGAN LCA filtering is 
+        reported. If any processing is performed, the final taxonomy assigned to each query will be 
+        output to -y/--outtaxonomy; if MEGAN LCA processing is performed, summary details of the 
+        filtering are also reported. Control the taxonomic ranks output in all cases 
+        using -r/--rank. 
         |n
         To retrieve information from NCBI, you must authenticate with an email address and API 
         key. This is only necessary if your local database isn't complete. Supply a file 
@@ -799,26 +912,22 @@ def getcliargs(arglist=None):
     # Add individual argument specifications
     parser.add_argument('-b', '--blastresults', required=True, metavar='PATH',
                         help='path to blast results file')
+    parser.add_argument('-i', '--minid', type=float, metavar='N', choices=[Range(0,100)],
+                        help='filter out hits below this percent identity')
+    parser.add_argument('-s', '--minscore', type=float, metavar='N',
+                        help='filter out hits below this bitscore')
+    parser.add_argument('-l', '--minalen', type=int, metavar='N',
+                        help='filter out hits below this BLAST alignment length')
     parser.add_argument('-p', '--process', type=str, metavar='P',
-                        choices=('top', 'lca', 'bestfit'),
-                        help='if desired, the name of the method to process the hits to return '
-                             'one taxonomy per query')
+                        choices=('top_score', 'top_id', 'lca', 'megan'),
+                        help='if desired, process hits using the given method and return one '
+                             'taxonomy per query')
     parser.add_argument('-g', '--gbtiddb', type=str, metavar='PATH', required=True,
                         help='path to accession-taxid json, will be created if absent')
     parser.add_argument('-x', '--tidtaxdb', type=str, metavar='PATH', required=True,
                         help='path to taxid-taxonomy json, will be created if absent')
-    parser.add_argument('-s', '--speciesid', type=float, metavar='N',
-                        help="only consider species from hits above this percent identity during "
-                             "best fit analysis")
-    parser.add_argument('-j', '--rejectunknowns', action='store_true',
-                        help="do not consider unknown taxonomies with the same score as known "
-                             "taxonomies during best fit analysis")
-    parser.add_argument('-w', '--showscores', action='store_true',
-                        help="show individual taxon scores in the best hit analysis output")
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
-    parser.add_argument('-m', '--minid', type=float, metavar='N', default=0,
-                        help='minimum percent id to retrieve taxonomy for a hit, default 0')
     parser.add_argument('-c', '--taxidcolumn', type=int, metavar='N',
                         help='the column number of the staxid field if included in an input tsv '
                              'or csv')
@@ -827,27 +936,51 @@ def getcliargs(arglist=None):
                         default='superkingdom,kingdom,phylum,class,order,family,genus,species')
     parser.add_argument('-z', '--chunksize', type=int, metavar='N', default=1000,
                         help='number of ids per request, default 1000')
+    parser.add_argument('-e', '--maxexp', type=float, metavar='N', default = 0.01,
+                        help="maximum e-value for a hit to be considered in MEGAN LCA")
+    parser.add_argument('-t', '--toppc', type = float, metavar='N', default=15, 
+                        choices=[Range(0,100)],
+                        help="only consider hits with a bitscore within this percentage of the "
+                             "highest bitscore for this query in MEGAN LCA")
+    parser.add_argument('-a', '--minhitpc', type=float, metavar='N', default = 1, 
+                        choices=[Range(0,100)],
+                        help="minimum percentage of hits that must be assigned to a taxon or any "
+                             "of its descendants for an assignment to be retained in MEGAN LCA")
+    parser.add_argument('-d', '--minhitn', type=int, metavar='N', default=1,
+                        help="minimum number of hits that must be assigned to a taxon or any "
+                             "of its descendants for an assignment to be retained in MEGAN LCA")
+    parser.add_argument('-o', '--outhits', type=str, metavar='PATH',
+                        help="path to write a csv recording the taxonomy of hits")
+    parser.add_argument('-y', '--outtaxonomy', type=str, metavar='PATH',
+                        help='path to write a csv recording the taxonomy of queries after '
+                             'processing')
+
 
     # Parse the arguments from the function call if specified, otherwise from the command line
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
 
     # Do some checking of the inputs
 
-    if args.process == 'bestfit':
-        args.speciesid = args.speciesid if args.speciesid else 95
-    else:
-        msg = "is only relevant when using '-p bestfit'/'--process bestfit'"
-        if args.speciesid:
-            parser.error(f"Error: -s/--speciesid {msg}")
-        if args.rejectunknowns:
-            parser.error(f"Error: -j/--rejectunknowns {msg}")
-        if args.showscores:
-            parser.error(f"Error: -w/--showscores {msg}")
     if args.chunksize > 1000:
         parser.error("-c/--chunksize should not be greater than 1000")
+    if args.chunksize < 1:
+        parser.error("-c/--chunksize shouldn't be less than 1")
 
     # Process arguments
     args.ranks = args.ranks.lower().split(',')
+
+    if args.process:
+        if not args.outtaxonomy:
+            parser.error("if processing taxonomies, supply a path to -y/--outtaxonomy")
+        if args.process == "megan":
+            args.minid = args.minid if args.minid else 80
+            args.minscore = args.minscore if args.minscore else 1
+            args.minalen = args.minalen if args.minalen else 100
+            if not args.outhits:
+                sys.stderr.write(f"Warning: no hit details will be output; supply a path to "
+                                 f"-h/--outhits to review hit taxonomies and details\n")
+    elif not args.outhits:
+        parser.error("supply a path to -h/--outhits")
 
     # If the arguments are all OK, output them
     return args
@@ -858,10 +991,13 @@ if __name__ == "__main__":
     # Get the arguments
     args = getcliargs()
     auth = None
-
+    args = getcliargs('-b ASV_subset_blast.xml -p megan -g NCBI_accession2taxid.json -x NCBI_taxid2taxonomy.json -n /home/thomas/secure/api_tokens/ncbi_authentication.txt -y taxonomyout.csv -o hitsout.csv'.split(' '))
     # Parse the inputs, filtering out results below idthreshold
-    inputdata, gbaccs, taxids = parse_input(args.blastresults, args.process, args.minid,
-                                            args.taxidcolumn)
+    if args.process == 'megan':
+        inputdata, gbaccs, taxids = parse_input(args.blastresults, args.taxidcolumn)
+    else:
+        inputdata, gbaccs, taxids = parse_input(args.blastresults, args.taxidcolumn, args.minscore,
+                                                args.minid, args.minalen)
 
     sys.stderr.write(f"Parsed {args.blastresults}, found {len(inputdata)} BLAST queries, "
                      f"identified {len(gbaccs)} unique GenBank accession values without known "
@@ -885,17 +1021,29 @@ if __name__ == "__main__":
     taxonomised = assign_taxonomy(inputdata, gbtaxids, taxonomy, args.ranks)
 
     # Process hits if requested
-    if args.process == 'top':
-        sys.stderr.write(f"Filtering hits to report top hit taxonomy\n")
-        taxonomised = filter_tophit(taxonomised)
+    if args.process == 'top_score':
+        sys.stderr.write(f"Reporting taxonomy of the top hit by bitscore\n")
+        taxonomies = filter_tophit(taxonomised, "bitscore")
+    elif args.process == 'top_id':
+        sys.stderr.write(f"Reporting taxonomy of the top hit by percent identity\n")
+        taxonomies = filter_tophit(taxonomised, "pident")
     elif args.process == 'lca':
-        sys.stderr.write(f"Performing LCA analysis\n")
-        taxonomised = lca(taxonomised, args.ranks)
-    elif args.process == 'bestfit':
+        sys.stderr.write(f"Performing basic LCA analysis\n")
+        taxonomies = lca(taxonomised, args.ranks)
+    """ elif args.process == 'bestfit':
         #data, ranks, speciesid, rejectunknownequal = False, bestp = True, taxp = False, binspecies = False
-        taxonomised = best_hit(taxonomised, args.ranks, args.speciesid,
-                               args.rejectunknowns, True, args.showscores)
-
+        taxonomised = best_hit(taxonomised, args.ranks, args.minid,
+                               args.bf_rejectunknowns, True, args.bf_showscores) """
+    elif args.process == 'megan':
+        sys.stdeer.write(f'Performing MEGAN naive LCA analysis\n')
+        taxonomies, taxonomised = megan_naive_lca(taxonomised, args.ranks, args.minscore, 
+                                                  args.maxexp, args.minid, args.toppc, 
+                                                  args.minhitpc, args.minhitn, args.minalen)
+    print(json.dumps(taxonomies, indent = 4))
     # Output
-    writeout(taxonomised)
+    if args.hits:
+        writehits(taxonomised, args.outhits, args.ranks)
+    if args.taxonomy:
+        writetaxonomy(taxonomies, args.outtaxonomy, args.ranks)
+
     sys.stderr.write(f"Done\n")
