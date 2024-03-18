@@ -1,0 +1,36 @@
+qseqid,superkingdom,kingdom,phylum,class,order,family,genus,species,hits,considered,consideredpc,supportingn,support,consideredminpident,consideredmaxpident,consideredminscore,consideredmaxscore,toppident,topscore,toplen,topstatus
+6c575b927cd5f5f5e71b7787263a4509,Eukaryota,Metazoa,Arthropoda,Insecta,Diptera,Tachinidae,Trixa,Trixa conspersa,500,6,1.2,6,accept-sufficient,99.5249406175772,99.7624703087886,763.787,773.02,99.7624703087886,773.02,418.0,acceptforlca
+24ab22184488167266849c4e50ab6fbf,Eukaryota,Metazoa,Arthropoda,Insecta,Coleoptera,Chrysomelidae,Chaetocnema,Chaetocnema hortensis,500,3,0.6,3,accept-sufficient,100.0,100.0,778.56,778.56,100.0,778.56,421.0,acceptforlca
+4fdded5ca5cd31fd963d526faa053119,Bacteria,,,,,,,,500,10,2.0,10,accept-sufficient,96.67458432304038,99.7624703087886,701.001,773.02,99.7624703087886,773.02,418.0,acceptforlca
+0ae4c8785521130cbb3f0cb4e4da0b3a,Eukaryota,Metazoa,Arthropoda,Insecta,Diptera,Syrphidae,Eristalis,Eristalis pertinax,500,5,1.0,5,accept-sufficient,100.0,100.0,778.56,778.56,100.0,778.56,421.0,acceptforlca
+99dc44c4f7a1013fa5fa2d05f8bac5db,Eukaryota,Metazoa,Arthropoda,Insecta,Coleoptera,Chrysomelidae,Sermylassa,Sermylassa halensis,500,8,1.6,8,accept-sufficient,98.09976247030879,99.7624703087886,745.32,773.02,99.7624703087886,773.02,418.0,acceptforlca
+6328ecacdfde90e9b2808bf406c18e56,Eukaryota,Metazoa,Arthropoda,Insecta,Hemiptera,Aphididae,,,500,456,91.2,454,accept-sufficient,95.47619047619048,98.812351543943,676.994,750.86,98.812351543943,750.86,406.0,acceptforlca
+35fd1e4797bbca6aae17856df41d4c1e,Eukaryota,Metazoa,Arthropoda,Insecta,Hymenoptera,Tenthredinidae,Macrophya,Macrophya annulata,500,10,2.0,10,accept-sufficient,100.0,100.0,769.327,778.56,100.0,778.56,421.0,acceptforlca
+229253a12c0e4ef5d14409b6086b0e3f,Eukaryota,Metazoa,Arthropoda,Insecta,Diptera,Sphaeroceridae,Telomerina,Telomerina flavipes,500,2,0.4,2,accept-sufficient,100.0,100.0,778.56,778.56,100.0,778.56,421.0,acceptforlca
+b480fdab394b70a1dd6eabaecf9ae53a,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,88.36104513064133,507.102,274.0,reject-minlen
+d23c40d98c678240d9a0ec0395c50c4d,Eukaryota,Metazoa,Arthropoda,Insecta,Hymenoptera,Braconidae,Orgilus,,500,11,2.2,11,accept-sufficient,93.11163895486936,95.01187648456056,617.901,662.221,95.01187648456056,662.221,358.0,acceptforlca
+224cecb3ce49d17b7a81350add55a54d,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,86.96682464454977,473.863,256.0,reject-minlen
+36c2bb85b7edc05529aeee30693a6104,Eukaryota,Metazoa,Arthropoda,Insecta,Coleoptera,Curculionidae,Barypeithes,Barypeithes pellucidus,500,1,0.2,1,accept-sufficient,100.0,100.0,778.56,778.56,100.0,778.56,421.0,acceptforlca
+9b4436037d1b511fc02108e857376d99,Bacteria,,Proteobacteria,Alphaproteobacteria,Rickettsiales,Anaplasmataceae,Wolbachia,Wolbachia endosymbiont of Bactericera albiventris,500,1,0.2,1,accept-sufficient,100.0,100.0,778.56,778.56,100.0,778.56,421.0,acceptforlca
+c07dd1c0d9bb40595d306ca87093b82b,Eukaryota,Metazoa,Arthropoda,Insecta,Diptera,Tachinidae,Athrycia,,500,12,2.4,12,accept-sufficient,94.53681710213777,97.46835443037975,651.141,717.62,97.38717339667458,717.62,388.0,acceptforlca
+0478f68fc764a6c388198aa4dee25c91,Bacteria,,,,,,,,500,19,3.8,18,accept-sufficient,95.48693586698337,98.33729216152018,673.301,739.78,98.33729216152018,739.78,400.0,acceptforlca
+21ebb36470530faf708817a20ee39220,Bacteria,,,,,,,,500,25,5.0,24,accept-sufficient,95.01187648456056,97.8622327790974,662.221,728.7,97.8622327790974,728.7,394.0,acceptforlca
+f3a69a67b2646212cf7f9f5f1a2e685c,,,,,,,,,73,0,0.0,0,reject-insufficient,,,,,72.81323877068559,137.772,74.0,reject-minscore
+2461b9b076a33a68b6f24a0d8b5c158c,Eukaryota,Metazoa,Arthropoda,Insecta,Hymenoptera,Ichneumonidae,Clistopyga,Clistopyga incitator,500,3,0.6,3,accept-sufficient,95.48693586698337,96.18320610687023,643.754,684.381,95.96199524940617,684.381,370.0,acceptforlca
+29a83bebd2afd6dc24891d1d52590cc8,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,81.93548387096774,132.232,71.0,reject-minscore
+648b03e1fd5872db4dfe1f05da28f4b0,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,80.34682080924856,261.498,141.0,reject-minscore
+caade95d11c59c8e6d7430cc39cd105a,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,82.28782287822878,230.105,124.0,reject-minscore
+1a4bce2b83ef7361ffea1bcac42bc992,,,,,,,,,2,0,0.0,0,reject-insufficient,,,,,72.6923076923077,82.3729,44.0,reject-minscore
+350f05c1074afea6b219593e1653ec85,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,74.88038277511961,187.632,101.0,reject-minscore
+0bd784aa94459d331a415d9f103263f9,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,79.34272300469483,287.351,155.0,reject-minscore
+f4dddb4f4315c6e33ed2d5f43251d22c,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,80.55555555555556,137.772,74.0,reject-minscore
+ad27b3b5ac627b443784a0c036f91646,Eukaryota,Metazoa,Arthropoda,Insecta,Diptera,Mycetophilidae,Megophthalmidia,Megophthalmidia crassicornis,500,1,0.2,1,accept-sufficient,99.2874109263658,99.2874109263658,761.94,761.94,99.2874109263658,761.94,412.0,acceptforlca
+80c80a1911385bf91990a10df6a23b7d,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,76.20192307692307,217.178,117.0,reject-minscore
+4f26b0eef6ebd65bec3d306f25c46d2e,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,74.58333333333333,102.686,55.0,reject-minscore
+30716a86ee21e21abaa3138f076c5eea,,,,,,,,,79,0,0.0,0,reject-insufficient,,,,,78.343949044586,100.839,54.0,reject-minscore
+18c6f8e35236ed7044d9030245a721ee,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,76.66666666666667,222.718,120.0,reject-minscore
+f321a4faa7f9b3983f396a0c5e957fbd,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,83.0945558739255,311.357,168.0,reject-minid
+56ba5f3be73a9507236b19da64621ee1,,,,,,,,,236,0,0.0,0,reject-insufficient,,,,,85.91549295774648,76.8329,41.0,reject-minscore
+1878cfdd6dc40d55b0d9eb3d75226955,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,80.56872037914692,318.744,172.0,reject-minid
+ddb0829f9a238d4da8ecef05f2190ca7,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,81.23167155425219,270.731,146.0,reject-minscore
+7145a05fdcc93d6e229e3b98efab1d40,,,,,,,,,500,0,0.0,0,reject-insufficient,,,,,76.0,204.252,110.0,reject-minscore
