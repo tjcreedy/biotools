@@ -1,10 +1,10 @@
 #! /usr/bin/env bash
 
-echo -n "{"
-
+p="{"
 while read -r a v t g
 do
-   echo -n "\"$v\": $t,"
+   echo -n $p
+   p="\"$v\": $t, "
 done < <(zcat "${1:-/dev/stdin}" | tail -n +2)
-
-echo -ne "\b}"
+p=${p%,*}
+echo -n "$p}"
