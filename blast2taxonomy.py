@@ -318,7 +318,7 @@ def update_ncbi_local(newdb, dbpath):
         json.dump(olddb, fp)
 
 
-def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None):
+def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None, searchreps = 10):
     # gbids, gbtiddbpath, chunksize, authpath, auth = gbaccs, args.gbtiddb, args.chunksize, args.ncbiauth, None
 
     out, absent = retrieve_ncbi_local(gbids, gbtiddbpath)
@@ -338,7 +338,7 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None)
             return summaries
         sys.stderr.write(f"Searching NCBI nt for {len(absent)} taxids\n")
         ncbigen = retrieve_ncbi_remote(absent, esummary_read_taxids, 'AccessionVersion', chunksize,
-                                       authdict)
+                                       authdict, maxerrors = searchreps)
         rem = {}
         for outsub in ncbigen:
             # outsub = next(ncbigen)
@@ -355,7 +355,8 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None)
     return out, absent, authdict
 
 
-def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=None):
+def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=None, 
+                      searchreps = 10):
     #tidtaxdbpath, chunksize, authpath, authdict = args.tidtaxdb, args.chunksize, args.ncbiauth, auth
     """Search NCBI for lineage information given a tax id.
     """
@@ -378,7 +379,8 @@ def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=N
             return records
 
         sys.stderr.write(f"Searching NCBI taxonomy for {len(absent)} taxonomies\n")
-        ncbigen = retrieve_ncbi_remote(absent, efetch_read_taxonomy, 'TaxId', chunksize, authdict)
+        ncbigen = retrieve_ncbi_remote(absent, efetch_read_taxonomy, 'TaxId', chunksize, authdict, 
+                                       maxerrors = searchreps)
         rem = {}
         for outsub in ncbigen:
             # outsub = next(ncbigen)
@@ -653,8 +655,10 @@ def getcliargs(arglist=None):
         containing this information to -n/--ncbiauth. The script will output an example file if 
         NCBI authentication is required but absent.
         |n
-        By default, the script will send 1000 ids to NCBI in each request. If this seems to cause 
-        errors, set -z/--chunksize to a lower value. This cannot be increased.
+        NCBI requests and parsing by biopython can be buggy. By default, the script will send 
+        chunks of 1000 ids to NCBI in each request, and repeat a specific search up to 10 times if 
+        any errors are reported. If this doesn't seem to be sufficiently error-tolerant, set 
+        -z/--chunksize to a lower value and or -u/--searchreps to a higher value. 
         """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
@@ -682,8 +686,6 @@ def getcliargs(arglist=None):
     parser.add_argument('-r', '--ranks', metavar='rank,rank,rank',
                         help='comma-separated list of ranks',
                         default='superkingdom,kingdom,phylum,class,order,family,genus,species')
-    parser.add_argument('-z', '--chunksize', type=int, metavar='N', default=1000,
-                        help='number of ids per request, default 1000')
     parser.add_argument('-w', '--winid', type=float, metavar = 'N', choices=[Range(0,100)],
                         help = 'if any hits meet or exceed this percentage identity, only consider '
                                'these hits for MEGAN LCA (no default)')
@@ -708,6 +710,10 @@ def getcliargs(arglist=None):
     parser.add_argument('-y', '--outtaxonomy', type=str, metavar='PATH',
                         help='path to write a csv recording the taxonomy of queries after '
                              'processing')
+    parser.add_argument('-z', '--chunksize', type=int, metavar='N', default=1000,
+                    help='number of ids per request, default 1000')
+    parser.add_argument('-u', '--searchreps', type=int, metavar='N', default=10,
+                    help='number of times to repeat a search if errors, default 10')
 
 
     # Parse the arguments from the function call if specified, otherwise from the command line
@@ -719,6 +725,8 @@ def getcliargs(arglist=None):
         parser.error("-c/--chunksize should not be greater than 1000")
     if args.chunksize < 1:
         parser.error("-c/--chunksize shouldn't be less than 1")
+    if args.searchreps < 1:
+        parser.error("-u/--searchreps shouldn't be less than 1")
 
     # Process arguments
     args.ranks = args.ranks.lower().split(',')
@@ -761,7 +769,7 @@ if __name__ == "__main__":
     gbtaxids = dict()
     if len(gbaccs) > 0:
         gbtaxids, absent, auth = retrieve_taxids(gbaccs, args.gbtiddb, args.chunksize,
-                                            authpath=args.ncbiauth)
+                                            authpath=args.ncbiauth, searchreps = args.searchreps)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
     if len(absent) > 0:
@@ -773,7 +781,8 @@ if __name__ == "__main__":
 
     # Retrieve taxonomy from local if available
     taxonomy, absent = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
-                                    authpath=args.ncbiauth, authdict=auth)
+                                    authpath=args.ncbiauth, authdict=auth, 
+                                    searchreps = args.searchreps)
     if len(absent) > 0:
         sys.stderr.write(f"Failed to get taxids for {len(absent)} taxids, these may have been "
                          f"withdrawn from GenBank:\n"
