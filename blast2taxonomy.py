@@ -407,12 +407,16 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
     for qseqid in data.keys():
         # qseqid = list(data.keys())[0]
         for i in range(len(data[qseqid])):
-            # i = 0
+            # i = 462
             # Retrieve the taxid
             if 'tx' in data[qseqid][i]:
                 tx = data[qseqid][i]['tx']
             else:
-                tx = data[qseqid][i]['tx'] = gbtax[data[qseqid][i]['id']]
+                gbid = data[qseqid][i]['id']
+                if gbid in gbtax:
+                    tx = data[qseqid][i]['tx'] = gbtax[gbid]
+                else:
+                    tx = None
             # Retrieve the taxonomy for this taxid and format it
             if str(tx) in taxonomies:
                 data[qseqid][i]['taxonomy'] = get_standard_lineage(taxonomies[str(tx)], ranks)
@@ -752,6 +756,7 @@ if __name__ == "__main__":
     sys.stderr.write(f"Parsed {args.blastresults}, found {len(inputdata)} BLAST queries, "
                      f"identified {len(gbaccs)} unique GenBank accession values without known "
                      f"taxids, {len(taxids)} known taxids\n")
+    
     # If taxids not present, search the unique accession numbers to retreive taxids
     gbtaxids = dict()
     if len(gbaccs) > 0:
