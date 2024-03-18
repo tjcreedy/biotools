@@ -20,7 +20,7 @@ from Bio.Blast import NCBIXML
 
 # Class definitions
 
-# This reclasses the argparse.HelpFormatter object to have newlines in the help text for paragrahps
+# This reclasses the argparse.HelpFormatter object to have newlines in the help text for paragraphs
 class MultilineFormatter(argparse.HelpFormatter):
     def _fill_text(self, text, width, indent):
         text = self._whitespace_matcher.sub(' ', text).strip()
@@ -221,6 +221,7 @@ def get_authentication(path):
 
 def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=10):
     #ids, searchfunc, responsekey, chunksize, auth, maxerrors = absent, esummary_read_taxids, 'AccessionVersion', chunksize, authdict, 1
+    #ids, searchfunc, responsekey, chunksize, auth, maxerrors = absent, efetch_read_taxonomy, 'TaxId', chunksize, authdict, searchtries
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
     Entrez.tool = "biotools/blast2taxonomy.py:retrieve_ncbi_remote"
@@ -280,6 +281,11 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 yield out, complete
                 break
 
+def filter_taxid2taxonomy(db):
+    out = {}
+    for tid, dat in db.items():
+        out[tid] = {k:v for k, v in dat.items() if k in ["ScientificName", "LineageEx"]}
+    return out
 
 def retrieve_ncbi_local(ids, dbpath):
     # dbpath = gbtiddbpath
@@ -367,15 +373,14 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None,
 
 def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=None, 
                       searchtries = 10):
-    #tidtaxdbpath, chunksize, authpath, authdict = args.tidtaxdb, args.chunksize, args.ncbiauth, auth
+    #tidtaxdbpath, chunksize, authpath, authdict, searchtries = args.tidtaxdb, args.chunksize, args.ncbiauth, auth, 10
     """Search NCBI for lineage information given a tax id.
     """
-    # taxids, chunksize = absent, 1000
 
     out, absent = retrieve_ncbi_local(taxids, tidtaxdbpath)
     if len(out) > 0:
         sys.stderr.write(f"Retrieved {len(out)} taxonomies from local database\n")
-
+    
     if len(absent) > 0:
         if not authdict:
             if not authpath:
@@ -394,9 +399,9 @@ def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=N
         rem = {}
         complete = set()
         for outsub, success in ncbigen:
-            # outsub = next(ncbigen)
-            success.add(complete)
-            rem.update(outsub)
+            # outsub, success = next(ncbigen)
+            complete.add(success)
+            rem.update(filter_taxid2taxonomy(outsub))
 
         update_ncbi_local(rem, tidtaxdbpath)
         
@@ -797,7 +802,7 @@ if __name__ == "__main__":
 
     sys.stderr.write(f"Total {len(taxids)} unique taxids to retrieve taxonomy for\n")
 
-    # Retrieve taxonomy from local if available
+    # Retrieve taxonomy 
     taxonomy, absent = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
                                     authpath=args.ncbiauth, authdict=auth, 
                                     searchtries = args.searchtries)
