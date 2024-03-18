@@ -740,7 +740,6 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
-    args = getcliargs('--blastresults 002cf59cd2e44a32182a87f3c418dd82 -i 85 -s 300 -l 300 -p megan --gbtiddb NCBI_accession2taxid.json --tidtaxdb NCBI_taxid2taxonomy.json --ncbiauth /home/thomc/secure/api_tokens/ncbi_authentication.txt -w 100 -e 0.01 -t 10 -f 90 --outhits outhits.csv --outtaxonomy outtaxonomy.csv'.split(' '))
     auth = None
     
     # Parse the inputs, filtering out results below idthreshold
