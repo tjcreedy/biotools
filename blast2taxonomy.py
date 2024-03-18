@@ -416,7 +416,7 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
                 if gbid in gbtax:
                     tx = data[qseqid][i]['tx'] = gbtax[gbid]
                 else:
-                    tx = None
+                    tx = data[qseqid][i]['tx'] = None
             # Retrieve the taxonomy for this taxid and format it
             if str(tx) in taxonomies:
                 data[qseqid][i]['taxonomy'] = get_standard_lineage(taxonomies[str(tx)], ranks)
@@ -582,7 +582,7 @@ def writehits(data, path, ranks):
     for q, hits in data.items():
         # q, hits = list(data.items())[0]
         for hit in hits:
-            # hit = hits[0]
+            # hit = hits[462]
             fh.write(','.join([q] + [str(hit[h]) for h in header] + hit['taxonomy']) + '\n')
     fh.close()
 
@@ -744,6 +744,7 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
+    args = getcliargs('--blastresults 002cf59cd2e44a32182a87f3c418dd82 -i 85 -s 300 -l 300 -p megan --gbtiddb NCBI_accession2taxid.json --tidtaxdb NCBI_taxid2taxonomy.json --ncbiauth /home/thomc/secure/api_tokens/ncbi_authentication.txt -w 100 -e 0.01 -t 10 -f 90 --outhits outhits.csv --outtaxonomy outtaxonomy.csv'.split(' '))
     auth = None
     
     # Parse the inputs, filtering out results below idthreshold
@@ -782,7 +783,7 @@ if __name__ == "__main__":
     # Assign taxonomy to the input data
     sys.stderr.write(f"Assigning taxonomy to BLAST hits\n")
     taxonomised = assign_taxonomy(inputdata, gbtaxids, taxonomy, args.ranks)
-
+    
     # Process hits if requested
     if args.process == 'top_score':
         sys.stderr.write(f"Reporting taxonomy of the top hit by bitscore\n")
