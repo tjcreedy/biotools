@@ -220,7 +220,7 @@ def get_authentication(path):
 
 
 def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=10):
-    #ids, searchfunc, responsekey, chunksize, auth = absent, esummary_read_taxids, 'AccessionVersion', chunksize, authdict
+    #ids, searchfunc, responsekey, chunksize, auth, maxerrors = absent, esummary_read_taxids, 'AccessionVersion', chunksize, authdict, 1
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
     Entrez.tool = "biotools/blast2taxonomy.py:retrieve_ncbi_remote"
@@ -240,15 +240,16 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
         except BaseException as exception:
             errors += 1
             if errors < maxerrors:
-                sys.stderr.write(f"\nHit a {type(exception)} in during retrieve_ncbi_remote - will "
+                sys.stderr.write(f"\nHit a {type(exception)} during retrieve_ncbi_remote - will "
                                  f"retry, debug dump follows:\nargs\n{exception.args}\nfull\n"
                                  f"{exception}\n")
                 time.sleep(0.4)
                 continue
             else:
                 sys.stderr.write(f"Reached max errors of {maxerrors} during retrieve_ncbi_remote, "
-                                 f"last error:\n {exception=}, {type(exception)=}")
-                raise
+                                 f"last error:\n {exception=}, {type(exception)=}\n")
+                yield {}, False
+                break
         else:
             # If successful, work through the results received to store records
             out = {}
@@ -264,17 +265,19 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
             sys.stderr.write(f"\rSuccessfully retrieved {done}/{total} records (iteration {it})")
             idset = {ids.pop() for _ in range(min([chunksize, len(ids)]))}
             if len(idset) > 0 and it < maxiterations:
-                yield out
+                yield out, True
                 it += 1
                 time.sleep(0.4)
             else:
+                complete = True
                 if done < total:
                     sys.stderr.write(", failed to retrieve the remainder")
+                    complete = False
                 meanmissprop = np.mean(missprop) if len(missprop) > 0 else 0
                 sys.stderr.write(f", {errors} failed NCBI calls"
 #                                 f", mean {round(meanmissprop, 3)*100}% complete NCBI returns"
                                  f".\n")
-                yield out
+                yield out, complete
                 break
 
 
@@ -318,8 +321,8 @@ def update_ncbi_local(newdb, dbpath):
         json.dump(olddb, fp)
 
 
-def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None, searchreps = 10):
-    # gbids, gbtiddbpath, chunksize, authpath, auth = gbaccs, args.gbtiddb, args.chunksize, args.ncbiauth, None
+def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None, searchtries = 10):
+    # gbids, gbtiddbpath, chunksize, authpath, auth, searchtries = gbaccs, args.gbtiddb, 50, args.ncbiauth, None, 1
 
     out, absent = retrieve_ncbi_local(gbids, gbtiddbpath)
     if len(out) > 0:
@@ -338,15 +341,22 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None,
             return summaries
         sys.stderr.write(f"Searching NCBI nt for {len(absent)} taxids\n")
         ncbigen = retrieve_ncbi_remote(absent, esummary_read_taxids, 'AccessionVersion', chunksize,
-                                       authdict, maxerrors = searchreps)
+                                       authdict, maxerrors = searchtries)
         rem = {}
-        for outsub in ncbigen:
-            # outsub = next(ncbigen)
+        complete = set()
+        for outsub, success in ncbigen:
+            # outsub, success = next(ncbigen)
+            complete.add(success)
             for gb, smry in outsub.items():
                 if type(smry['TaxId']) is Entrez.Parser.IntegerElement:
                     rem[gb] = int(smry['TaxId']) 
 
         update_ncbi_local(rem, gbtiddbpath)
+        
+        if not all(complete):
+            sys.stderr.write(f"Exceeded maximum attempts for an NCBI retrieval; successful "
+                             f"retrievals have been added to {gbtiddbpath}, exiting.\n")
+            sys.exit()
 
         out.update(rem)
 
@@ -356,7 +366,7 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None,
 
 
 def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=None, 
-                      searchreps = 10):
+                      searchtries = 10):
     #tidtaxdbpath, chunksize, authpath, authdict = args.tidtaxdb, args.chunksize, args.ncbiauth, auth
     """Search NCBI for lineage information given a tax id.
     """
@@ -380,14 +390,21 @@ def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=N
 
         sys.stderr.write(f"Searching NCBI taxonomy for {len(absent)} taxonomies\n")
         ncbigen = retrieve_ncbi_remote(absent, efetch_read_taxonomy, 'TaxId', chunksize, authdict, 
-                                       maxerrors = searchreps)
+                                       maxerrors = searchtries)
         rem = {}
-        for outsub in ncbigen:
+        complete = set()
+        for outsub, success in ncbigen:
             # outsub = next(ncbigen)
+            success.add(complete)
             rem.update(outsub)
 
         update_ncbi_local(rem, tidtaxdbpath)
-
+        
+        if not all(complete):
+            sys.stderr.write(f"Exceeded maximum attempts for an NCBI retrieval; successful "
+                             f"retrievals have been added to tidtaxdbpath, exiting.\n")
+            sys.exit()
+        
         out.update(rem)
 
     absent = set(i for i in taxids if str(i) not in out)
@@ -656,9 +673,9 @@ def getcliargs(arglist=None):
         NCBI authentication is required but absent.
         |n
         NCBI requests and parsing by biopython can be buggy. By default, the script will send 
-        chunks of 1000 ids to NCBI in each request, and repeat a specific search up to 10 times if 
+        chunks of 1000 ids to NCBI in each request, and attempt a specific search up to 10 times if 
         any errors are reported. If this doesn't seem to be sufficiently error-tolerant, set 
-        -z/--chunksize to a lower value and or -u/--searchreps to a higher value. 
+        -z/--chunksize to a lower value and or -u/--searchtries to a higher value. 
         """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
@@ -712,8 +729,8 @@ def getcliargs(arglist=None):
                              'processing')
     parser.add_argument('-z', '--chunksize', type=int, metavar='N', default=1000,
                     help='number of ids per request, default 1000')
-    parser.add_argument('-u', '--searchreps', type=int, metavar='N', default=10,
-                    help='number of times to repeat a search if errors, default 10')
+    parser.add_argument('-u', '--searchtries', type=int, metavar='N', default=10,
+                    help='number of times to attempt a search if errors, default 10')
 
 
     # Parse the arguments from the function call if specified, otherwise from the command line
@@ -725,8 +742,8 @@ def getcliargs(arglist=None):
         parser.error("-c/--chunksize should not be greater than 1000")
     if args.chunksize < 1:
         parser.error("-c/--chunksize shouldn't be less than 1")
-    if args.searchreps < 1:
-        parser.error("-u/--searchreps shouldn't be less than 1")
+    if args.searchtries < 1:
+        parser.error("-u/--searchtries shouldn't be less than 1")
 
     # Process arguments
     args.ranks = args.ranks.lower().split(',')
@@ -768,8 +785,9 @@ if __name__ == "__main__":
     # If taxids not present, search the unique accession numbers to retreive taxids
     gbtaxids = dict()
     if len(gbaccs) > 0:
-        gbtaxids, absent, auth = retrieve_taxids(gbaccs, args.gbtiddb, args.chunksize,
-                                            authpath=args.ncbiauth, searchreps = args.searchreps)
+        gbtaxids, absent, auth = retrieve_taxids(gbaccs, args.gbtiddb, args.chunksize, 
+                                                 authpath=args.ncbiauth, 
+                                                 searchtries = args.searchtries)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
     if len(absent) > 0:
@@ -782,7 +800,7 @@ if __name__ == "__main__":
     # Retrieve taxonomy from local if available
     taxonomy, absent = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
                                     authpath=args.ncbiauth, authdict=auth, 
-                                    searchreps = args.searchreps)
+                                    searchtries = args.searchtries)
     if len(absent) > 0:
         sys.stderr.write(f"Failed to get taxids for {len(absent)} taxids, these may have been "
                          f"withdrawn from GenBank:\n"
