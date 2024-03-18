@@ -220,8 +220,7 @@ def get_authentication(path):
 
 
 def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerrors=10):
-    #ids, searchfunc, responsekey = taxids, efetch_read_taxonomy, 'TaxId'
-    #ids, searchfunc, responsekey, auth, maxerrors = absent, efetch_read_taxonomy, 'TaxId', authdict, 10
+    #ids, searchfunc, responsekey, chunksize, auth = absent, esummary_read_taxids, 'AccessionVersion', chunksize, authdict
     Entrez.email = auth['email']
     Entrez.api_key = auth['key']
     Entrez.tool = "biotools/blast2taxonomy.py:retrieve_ncbi_remote"
@@ -272,8 +271,9 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 if done < total:
                     sys.stderr.write(", failed to retrieve the remainder")
                 meanmissprop = np.mean(missprop) if len(missprop) > 0 else 0
-                sys.stderr.write(f", {errors} failed NCBI calls, "
-                                 f"mean {round(meanmissprop, 3)*100}% complete NCBI returns.\n")
+                sys.stderr.write(f", {errors} failed NCBI calls"
+#                                 f", mean {round(meanmissprop, 3)*100}% complete NCBI returns"
+                                 f".\n")
                 yield out
                 break
 
@@ -333,7 +333,7 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None)
 
         def esummary_read_taxids(idset):
             sh = Entrez.esummary(db='nucleotide', id=','.join(idset))
-            summaries = Entrez.read(sh)
+            summaries = Entrez.read(sh, validate = False)
             sh.close()
             return summaries
         sys.stderr.write(f"Searching NCBI nt for {len(absent)} taxids\n")
@@ -343,7 +343,8 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None)
         for outsub in ncbigen:
             # outsub = next(ncbigen)
             for gb, smry in outsub.items():
-                rem[gb] = int(smry['TaxId'])
+                if type(smry['TaxId']) is Entrez.Parser.IntegerElement:
+                    rem[gb] = int(smry['TaxId']) 
 
         update_ncbi_local(rem, gbtiddbpath)
 
@@ -372,7 +373,7 @@ def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=N
 
         def efetch_read_taxonomy(idset):
             sh = Entrez.efetch(db='taxonomy', id=[str(t) for t in idset])
-            records = Entrez.read(sh)
+            records = Entrez.read(sh, validate = False)
             sh.close()
             return records
 
@@ -739,6 +740,7 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
+    args = getcliargs('--blastresults 002cf59cd2e44a32182a87f3c418dd82 -i 85 -s 300 -l 300 -p megan --gbtiddb NCBI_accession2taxid.json --tidtaxdb NCBI_taxid2taxonomy.json --ncbiauth /home/thomc/secure/api_tokens/ncbi_authentication.txt -w 100 -e 0.01 -t 10 -f 90 --outhits outhits.csv --outtaxonomy outtaxonomy.csv'.split(' '))
     auth = None
     
     # Parse the inputs, filtering out results below idthreshold
@@ -754,16 +756,24 @@ if __name__ == "__main__":
     # If taxids not present, search the unique accession numbers to retreive taxids
     gbtaxids = dict()
     if len(gbaccs) > 0:
-        gbtaxids, _, auth = retrieve_taxids(gbaccs, args.gbtiddb, args.chunksize,
+        gbtaxids, absent, auth = retrieve_taxids(gbaccs, args.gbtiddb, args.chunksize,
                                             authpath=args.ncbiauth)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
+    if len(absent) > 0:
+        sys.stderr.write(f"Failed to get taxids for {len(absent)} GenBank accession values, these "
+                        f"may have been withdrawn from GenBank:\n"
+                        f"{','.join(absent)}\n")
 
     sys.stderr.write(f"Total {len(taxids)} unique taxids to retrieve taxonomy for\n")
 
     # Retrieve taxonomy from local if available
-    taxonomy, _ = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
+    taxonomy, absent = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
                                     authpath=args.ncbiauth, authdict=auth)
+    if len(absent) > 0:
+        sys.stderr.write(f"Failed to get taxids for {len(absent)} taxids, these may have been "
+                         f"withdrawn from GenBank:\n"
+                         f"{','.join(absent)}\n")
 
     # Assign taxonomy to the input data
     sys.stderr.write(f"Assigning taxonomy to BLAST hits\n")
