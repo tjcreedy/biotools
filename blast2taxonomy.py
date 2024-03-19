@@ -8,11 +8,10 @@
 import os
 import sys
 import re
-import json
+import sqlite3
 import time
 import argparse
 
-import numpy as np
 import textwrap as _textwrap
 
 from Bio import Entrez
@@ -205,7 +204,8 @@ def get_authentication(path):
     with open(path, 'r') as fh:
         for line in fh:
             line = line.strip()
-            if line[0] == '#' or line == '': continue
+            if line[0] == '#' or line == '':
+                continue
             if re.match(emailregex, line):
                 auth['email'] = line
             elif re.match("^[a-z\d]{36}$", line):
@@ -274,7 +274,7 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 if done < total:
                     sys.stderr.write(", failed to retrieve the remainder")
                     complete = False
-                meanmissprop = np.mean(missprop) if len(missprop) > 0 else 0
+                #meanmissprop = np.mean(missprop) if len(missprop) > 0 else 0
                 sys.stderr.write(f", {errors} failed NCBI calls"
 #                                 f", mean {round(meanmissprop, 3)*100}% complete NCBI returns"
                                  f".\n")
@@ -284,56 +284,112 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
 def filter_taxid2taxonomy(db):
     out = {}
     for tid, dat in db.items():
-        out[tid] = {k:v for k, v in dat.items() if k in ["ScientificName", "LineageEx"]}
+        out[tid] = {k:v for k, v in dat.items() if k in ["ScientificName", "Rank", "LineageEx"]}
     return out
 
-def retrieve_ncbi_local(ids, dbpath):
-    # dbpath = gbtiddbpath
-    # ids, dbpath = taxids, tidtaxdbpath
+def chunker(seq, size):
+    if isinstance(seq, set):
+        seq = list(seq)
+    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+
+def retrieve_taxids_sqlite(ids, dbpath):
+    # ids, dbpath = gbids, gbtiddbpath
+    
     out = dict()
-    absent = set()
 
-    if os.path.exists(dbpath):
-        with open(dbpath, 'r') as fp:
-            db = json.load(fp)
+    connection = sqlite3.connect(dbpath)
+    cursor = connection.cursor()
+    
+    for idset in chunker(ids, 10000):
+        query = (f"SELECT \"accession.version\", taxid FROM gb_taxid WHERE \"accession.version\" "
+                 f"in ({', '.join('?' for _ in idset)})")
+        out.update({av: tx for av, tx in cursor.execute(query, tuple(idset)).fetchall()})
+    
+    absent = set(ids) - set(out.keys())
 
-        for i in ids:
-            if str(i) in db:
-                out[str(i)] = db[str(i)]
-            else:
-                absent.add(i)
-    else:
-        # Check that we can write to the file for future use
-        with open(dbpath, 'w') as fp:
-            pass
-        os.remove(dbpath)
-        absent = {i for i in ids}
-
+    connection.close()
     return out, absent
 
+def retrieve_lineages_sqlite(ids, dbpath):
+    # ids, dbpath = taxids, tidtaxdbpath
+    # ids, dbpath = list(rem.keys()), "/home/thomc/scratch/ncbidb/test.db"
+    def formattax(ret):
+        return {'TaxID': ret[0],
+                'ScientificName': ret[3],
+                'Rank': ret[2]}
 
-def update_ncbi_local(newdb, dbpath):
+    out = dict()
+    absent = set()
+    connection = sqlite3.connect(dbpath)
+    cursor = connection.cursor()
+    for id in ids:
+        # id = ids[0]
+        query = "SELECT * FROM taxid_lineage WHERE taxid = ?"
+        idret = cursor.execute(query, (id,)).fetchall()
+        if len(idret) == 0:
+            absent.add(id)
+            continue
+        out[id] = formattax(idret[0])
+        query = ("WITH RECURSIVE cte_lineage (taxid, parent, rank, scientificname) AS ("
+                "SELECT tl.taxid, tl.parent, tl.rank, tl.scientificname "
+                "FROM taxid_lineage tl "
+                "WHERE tl.taxid = ? "
+                "UNION ALL "
+                "SELECT tl.taxid, tl.parent, tl.rank, tl.scientificname "
+                "FROM taxid_lineage tl "
+                "JOIN cte_lineage cl ON cl.parent = tl.taxid "
+                ") "
+                "SELECT * FROM cte_lineage cl WHERE cl.taxid != ?;")
+        out[id]['LineageEx'] = [formattax(v) for v in cursor.execute(query, (id, id)).fetchall()]
+    
+    connection.close()
+    return out, absent
 
-    olddb = dict()
+def update_taxids_sqlite(new, dbpath):
+    #new = rem
+    connection = sqlite3.connect(dbpath)
+    cursor = connection.cursor()
 
-    if os.path.exists(dbpath):
-        with open(dbpath, 'r') as fp:
-            olddb = json.load(fp)
+    for values in new:
+        insertsql = f"INSERT INTO gb_taxid VALUES ({', '.join('?' for _ in values)})"
+        cursor.execute(insertsql, values)
+    connection.commit()
+    connection.close()
 
-    for k, v in newdb.items():
-        olddb[k] = v
+def update_lineages_sqlite(new, dbpath):
+    #new, dbpath = rem, database
+    def inserttxidlin(cursor, dict):
+        query = "SELECT * FROM taxid_lineage WHERE taxid = ?"
+        idret = cursor.execute(query, (dict['TaxId'],)).fetchall()
+        if len(idret) > 0:
+            return False
+        values = [dict[k] for k in ['TaxId', 'ParentTaxId', 'Rank', 'ScientificName']]
+        insertsql = f"INSERT INTO taxid_lineage VALUES({', '.join('?' for _ in values)})"
+        cursor.execute(insertsql, values)
+        return True
 
-    with open(dbpath, 'w') as fp:
-        json.dump(olddb, fp)
+    connection = sqlite3.connect(dbpath)
+    cursor = connection.cursor()
+
+    for tdata in new.values():
+        # tdata = list(new.values())[0]
+        inserttxidlin(cursor, tdata)
+        for d, p in zip(tdata['LineageEx'], ['1'] + [d['TaxId'] for d in tdata['LineageEx']][:-1]):
+            d['ParentTaxId'] = p
+            insertneeded = inserttxidlin(cursor, d)
+            if not insertneeded:
+                break
+    
+    connection.close()
 
 
-def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None, searchtries = 10):
-    # gbids, gbtiddbpath, chunksize, authpath, auth, searchtries = gbaccs, args.gbtiddb, 50, args.ncbiauth, None, 1
+def retrieve_taxids(gbids, database, chunksize, 
+                    authpath=None, authdict=None, searchtries = 10, update = False):
+    # gbids, database, chunksize, authpath, authdict, searchtries, update = gbaccs, args.database, args.chunksize, args.ncbiauth, None, args.searchtries, (not args.dontupdate)
 
-    out, absent = retrieve_ncbi_local(gbids, gbtiddbpath)
+    out, absent = retrieve_taxids_sqlite(gbids, database)
     if len(out) > 0:
         sys.stderr.write(f"Retrieved {len(out)} taxids from local database\n")
-
     if len(absent) > 0:
         if not authdict:
             if not authpath:
@@ -348,20 +404,24 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None,
         sys.stderr.write(f"Searching NCBI nt for {len(absent)} taxids\n")
         ncbigen = retrieve_ncbi_remote(absent, esummary_read_taxids, 'AccessionVersion', chunksize,
                                        authdict, maxerrors = searchtries)
-        rem = {}
+        rem = []
         complete = set()
         for outsub, success in ncbigen:
             # outsub, success = next(ncbigen)
             complete.add(success)
             for gb, smry in outsub.items():
+                # gb, smry = list(outsub.items())[0]
                 if type(smry['TaxId']) is Entrez.Parser.IntegerElement:
-                    rem[gb] = int(smry['TaxId']) 
-
-        update_ncbi_local(rem, gbtiddbpath)
+                    rem.append((smry['Caption'], smry['AccessionVersion'], 
+                               int(smry['TaxId']), int(smry['Gi'])))
+        if update:
+            update_taxids_sqlite(rem, database)
         
+        rem = {r[1]:r[2] for r in rem}
+
         if not all(complete):
             sys.stderr.write(f"Exceeded maximum attempts for an NCBI retrieval; successful "
-                             f"retrievals have been added to {gbtiddbpath}, exiting.\n")
+                             f"retrievals have been added to {database}, exiting.\n")
             sys.exit()
 
         out.update(rem)
@@ -371,13 +431,13 @@ def retrieve_taxids(gbids, gbtiddbpath, chunksize, authpath=None, authdict=None,
     return out, absent, authdict
 
 
-def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=None, 
-                      searchtries = 10):
-    #tidtaxdbpath, chunksize, authpath, authdict, searchtries = args.tidtaxdb, args.chunksize, args.ncbiauth, auth, 10
+def retrieve_taxonomy(taxids, database, chunksize, 
+                      authpath=None, authdict=None, searchtries = 10, update = False):
+    # database, chunksize, authpath, authdict, searchtries, update = args.database, args.chunksize, args.ncbiauth, auth, args.searchtries, not args.dontupdate
     """Search NCBI for lineage information given a tax id.
     """
 
-    out, absent = retrieve_ncbi_local(taxids, tidtaxdbpath)
+    out, absent = retrieve_lineages_sqlite(taxids, database)
     if len(out) > 0:
         sys.stderr.write(f"Retrieved {len(out)} taxonomies from local database\n")
     
@@ -401,18 +461,19 @@ def retrieve_taxonomy(taxids, tidtaxdbpath, chunksize, authpath=None, authdict=N
         for outsub, success in ncbigen:
             # outsub, success = next(ncbigen)
             complete.add(success)
-            rem.update(filter_taxid2taxonomy(outsub))
+            rem.update(outsub)
+        if update:
+            update_lineages_sqlite(rem, database)
+        rem = filter_taxid2taxonomy(rem)
 
-        update_ncbi_local(rem, tidtaxdbpath)
-        
         if not all(complete):
-            sys.stderr.write(f"Exceeded maximum attempts for an NCBI retrieval; successful "
-                             f"retrievals have been added to tidtaxdbpath, exiting.\n")
+            sys.stderr.write("Exceeded maximum attempts for an NCBI retrieval; successful "
+                             "retrievals have been added to tidtaxdbpath, exiting.\n")
             sys.exit()
         
         out.update(rem)
 
-    absent = set(i for i in taxids if str(i) not in out)
+    absent = set(i for i in taxids if i not in out)
 
     return out, absent
 
@@ -431,7 +492,7 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
     for qseqid in data.keys():
         # qseqid = list(data.keys())[0]
         for i in range(len(data[qseqid])):
-            # i = 462
+            # i = 0
             # Retrieve the taxid
             if 'tx' in data[qseqid][i]:
                 tx = data[qseqid][i]['tx']
@@ -442,8 +503,8 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
                 else:
                     tx = data[qseqid][i]['tx'] = None
             # Retrieve the taxonomy for this taxid and format it
-            if str(tx) in taxonomies:
-                data[qseqid][i]['taxonomy'] = get_standard_lineage(taxonomies[str(tx)], ranks)
+            if tx in taxonomies:
+                data[qseqid][i]['taxonomy'] = get_standard_lineage(taxonomies[tx], ranks)
             else:
                 data[qseqid][i]['taxonomy'] = ['']  * len(ranks)
     return data
@@ -600,7 +661,7 @@ def writetaxonomy(data, path, ranks):
 def writehits(data, path, ranks):
     #data, path, ranks = taxonomised, args.outhits, args.ranks
     header = list(data.values())[0][0].keys()
-    header = [h for h in header if not h in ["data", "taxonomy"]]
+    header = [h for h in header if h not in ["data", "taxonomy"]]
     fh = open(path, 'w')
     fh.write(','.join(['qseqid'] + list(header) + ranks) + '\n')
     for q, hits in data.items():
@@ -626,12 +687,11 @@ def getcliargs(arglist=None):
         length (-l/--minalen). By default, no filtering is done.
         |n
         The taxonomy will be retrieved from NCBI Taxonomy based on the taxid of the (remaining) 
-        hit(s). To efficiently retrieve taxonomy, the script uses a pair of local datasets in json 
-        files, one recording taxids for GenBank accession numbers, one recording taxonomy for 
-        taxids. These might have been created by a previous run of this script, or the latter with 
-        get_NCBI_taxonomy.py. Supply a path to the accession-taxid json with -g/--gbtiddb and the 
-        taxid-taxonomy json with -x/--tidtaxdb. If this is your first run, the script will create 
-        new databases at the locations supplied.
+        hit(s). To efficiently retrieve taxonomy, the script uses a local SQLite database, which 
+        should be passed to -d/--database. To create this database, use makedb4b2t.py. This 
+        database is queried for taxids and taxonomic lineages before remote queries to NCBI 
+        servers. If remote queries are requried, these will be added to the database if it is 
+        writable - if you don't want to update the database, supply -x/--dontupdate
         |n
         Optionally, hits can then be processed to select a single taxonomy for each query using the 
         option -p/--process. Currently, three options are available. The two simple options are Top 
@@ -684,6 +744,7 @@ def getcliargs(arglist=None):
         """, formatter_class=MultilineFormatter)
 
     # Add individual argument specifications
+    # Available: g j k q v x
     parser.add_argument('-b', '--blastresults', required=True, metavar='PATH',
                         help='path to blast results file')
     parser.add_argument('-i', '--minid', type=float, metavar='N', choices=[Range(0,100)],
@@ -696,10 +757,10 @@ def getcliargs(arglist=None):
                         choices=('top_score', 'top_id', 'lca', 'megan'),
                         help='if desired, process hits using the given method and return one '
                              'taxonomy per query')
-    parser.add_argument('-g', '--gbtiddb', type=str, metavar='PATH', required=True,
-                        help='path to accession-taxid json, will be created if absent')
-    parser.add_argument('-x', '--tidtaxdb', type=str, metavar='PATH', required=True,
-                        help='path to taxid-taxonomy json, will be created if absent')
+    parser.add_argument('-d', '--database', type=str, metavar='PATH', required=True,
+                        help='path to SQLite database')
+    parser.add_argument('-x', '--dontupdate', action='store_true',
+                        help="don't update the SQLite database with new NCBI data")
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
     parser.add_argument('-c', '--taxidcolumn', type=int, metavar='N',
@@ -721,7 +782,7 @@ def getcliargs(arglist=None):
                         choices=[Range(0,100)],
                         help="minimum percentage of all hits remaining after filtering for LCA in "
                         "MEGAN LCA")
-    parser.add_argument('-d', '--minhitn', type=int, metavar='N', default=1,
+    parser.add_argument('-m', '--minhitn', type=int, metavar='N', default=1,
                         help="minimum number of hits remaning after filtering for LCA in MEGAN LCA")
     parser.add_argument('-f', '--minsupppc', type = float, metavar='N', default=90, 
                         choices=[Range(0,100)],
@@ -761,10 +822,16 @@ def getcliargs(arglist=None):
             args.minscore = args.minscore if args.minscore else 1
             args.minalen = args.minalen if args.minalen else 100
             if not args.outhits:
-                sys.stderr.write(f"Warning: no hit details will be output; supply a path to "
-                                 f"-h/--outhits to review hit taxonomies and details\n")
+                sys.stderr.write("Warning: no hit details will be output; supply a path to "
+                                 "-h/--outhits to review hit taxonomies and details\n")
     elif not args.outhits:
         parser.error("supply a path to -h/--outhits")
+
+    if not args.dontupdate:
+        try:
+            open(args.database, 'r')
+        except PermissionError :
+            args.dontupdate = True
 
     # If the arguments are all OK, output them
     return args
@@ -786,13 +853,14 @@ if __name__ == "__main__":
     sys.stderr.write(f"Parsed {args.blastresults}, found {len(inputdata)} BLAST queries, "
                      f"identified {len(gbaccs)} unique GenBank accession values without known "
                      f"taxids, {len(taxids)} known taxids\n")
-    
+
     # If taxids not present, search the unique accession numbers to retreive taxids
     gbtaxids = dict()
     if len(gbaccs) > 0:
-        gbtaxids, absent, auth = retrieve_taxids(gbaccs, args.gbtiddb, args.chunksize, 
+        gbtaxids, absent, auth = retrieve_taxids(gbaccs, args.database, args.chunksize, 
                                                  authpath=args.ncbiauth, 
-                                                 searchtries = args.searchtries)
+                                                 searchtries = args.searchtries,
+                                                 update = not args.dontupdate)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
     if len(absent) > 0:
@@ -803,30 +871,30 @@ if __name__ == "__main__":
     sys.stderr.write(f"Total {len(taxids)} unique taxids to retrieve taxonomy for\n")
 
     # Retrieve taxonomy 
-    taxonomy, absent = retrieve_taxonomy(taxids, args.tidtaxdb, args.chunksize,
-                                    authpath=args.ncbiauth, authdict=auth, 
-                                    searchtries = args.searchtries)
+    taxonomy, absent = retrieve_taxonomy(taxids, args.database, args.chunksize,
+                                         authpath=args.ncbiauth, authdict=auth, 
+                                         searchtries = args.searchtries, update = not args.dontupdate)
     if len(absent) > 0:
         sys.stderr.write(f"Failed to get taxids for {len(absent)} taxids, these may have been "
                          f"withdrawn from GenBank:\n"
-                         f"{','.join(absent)}\n")
+                         f"{','.join(str(a) for a in absent)}\n")
 
     # Assign taxonomy to the input data
-    sys.stderr.write(f"Assigning taxonomy to BLAST hits\n")
+    sys.stderr.write("Assigning taxonomy to BLAST hits\n")
     taxonomised = assign_taxonomy(inputdata, gbtaxids, taxonomy, args.ranks)
     
     # Process hits if requested
     if args.process == 'top_score':
-        sys.stderr.write(f"Reporting taxonomy of the top hit by bitscore\n")
+        sys.stderr.write("Reporting taxonomy of the top hit by bitscore\n")
         taxonomies = filter_tophit(taxonomised, "bitscore")
     elif args.process == 'top_id':
-        sys.stderr.write(f"Reporting taxonomy of the top hit by percent identity\n")
+        sys.stderr.write("Reporting taxonomy of the top hit by percent identity\n")
         taxonomies = filter_tophit(taxonomised, "pident")
     elif args.process == 'lca':
-        sys.stderr.write(f"Performing basic LCA analysis\n")
+        sys.stderr.write("Performing basic LCA analysis\n")
         taxonomies = lca(taxonomised, args.ranks)
     elif args.process == 'megan':
-        sys.stderr.write(f'Performing MEGAN naive LCA analysis\n')
+        sys.stderr.write('Performing MEGAN naive LCA analysis\n')
         taxonomies, taxonomised = megan_naive_lca(taxonomised, args.ranks, args.minscore, 
                                                   args.maxexp, args.minid, args.toppc, args.winid,
                                                   args.minhitpc, args.minhitn, args.minalen,
@@ -838,4 +906,4 @@ if __name__ == "__main__":
     if args.outtaxonomy:
         writetaxonomy(taxonomies, args.outtaxonomy, args.ranks)
 
-    sys.stderr.write(f"Done\n")
+    sys.stderr.write("Done\n")
