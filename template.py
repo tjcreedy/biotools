@@ -55,7 +55,7 @@ def getcliargs(arglist=None):
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
 
     # Do some checking of the inputs
-    if args.filepath is not "what you want"
+    if args.filepath != "what you want":
         parser.error(f"{args.filpath} is not what I want!")
 
     # If the arguments are all OK, output them
