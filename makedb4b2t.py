@@ -88,10 +88,9 @@ if __name__ == "__main__":
             
         # Create table
         tablesql = ("create table gb_taxid ("
-                    "accession TEXT NOT NULL,"
-                    "\"accession.version\" TEXT PRIMARY KEY,"
-                    "taxid INTEGER NOT NULL,"
-                    "gi INTEGER NOT NULL)")
+                    "accession TEXT,"
+                    "version TEXT,"
+                    "taxid INTEGER)")
         cursor.execute(tablesql)
 
         # Load data into database
@@ -102,10 +101,14 @@ if __name__ == "__main__":
                 if(values[0] == "accession"):
                     continue
                 i += 1
+                values = values[:2]
                 insertsql = (f"INSERT INTO gb_taxid VALUES ({', '.join('?' for _ in values)})")
                 cursor.execute(insertsql, values)
                 if i < 10000 or i%1000 == 0:
                     sys.stderr.write(f"\rRead {i} lines from {args.acc2taxid} into gb_taxid")
+        sys.stderr.write("\nCreating indices\n")
+        cursor.execute("CREATE INDEX index_accession ON gb_taxid(accession)")
+        cursor.execute("CREATE INDEX index_version ON gb_taxid(version)")
         connection.commit()
 
     
@@ -116,7 +119,7 @@ if __name__ == "__main__":
         
         # Create table
         tablesql = ("create table taxid_lineage ("
-                    "taxid INTEGER PRIMARY KEY,"
+                    "taxid INTEGER NOT NULL,"
                     "parent INTEGER,"
                     "rank TEXT,"
                     "scientificname TEXT NOT NULL)")
@@ -147,6 +150,9 @@ if __name__ == "__main__":
                 cursor.execute(insertsql, values)
                 sys.stderr.write(f"\rRead {i} lines from {args.taxdump} into taxid_lineage")
         tar.close()
+        sys.stderr.write("\nCreating indices\n")
+        cursor.execute("CREATE INDEX index_taxid ON taxid_lineage(taxid)")
+        cursor.execute("CREATE INDEX index_parent ON taxid_lineage(parent)")
         connection.commit()
     connection.close()
     
