@@ -101,7 +101,7 @@ if __name__ == "__main__":
                 if(values[0] == "accession"):
                     continue
                 i += 1
-                values = values[:2]
+                values = values[:3]
                 insertsql = (f"INSERT INTO gb_taxid VALUES ({', '.join('?' for _ in values)})")
                 cursor.execute(insertsql, values)
                 if i < 10000 or i%1000 == 0:
