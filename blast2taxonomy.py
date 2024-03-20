@@ -89,7 +89,7 @@ def parse_title(title):
         if gbsrch:
             return gbsrch.group(0)
     sys.stderr.write(f"Warning: cannot recognise a single genbank accession number in {title} - "
-                     f"this hit will be ignored")
+                     f"this hit will be ignored\n")
     #sys.exit()
 
 
@@ -166,9 +166,9 @@ def parse_input(path, taxidc, minscore = 0, minid = 0, minalen = 0):
     taxids = set()
     for qseqid, hits in indata.items():
         for hit in hits:
-            if taxidc and 'tx' in hit:
+            if taxidc and 'tx' in hit and hit['tx'] is not None:
                 taxids.add(hit['tx'])
-            else:
+            elif hit['id'] is not None:
                 accs.add(hit['id'])
 
     return indata, accs, taxids
@@ -406,7 +406,7 @@ def update_lineages_sqlite(new, dbpath):
 
 def retrieve_taxids(gbids, database, chunksize, 
                     authpath=None, authdict=None, searchtries = 10, update = False):
-    # gbids, database, chunksize, authpath, authdict, searchtries, update = gbaccs, args.database, args.chunksize, args.ncbiauth, None, args.searchtries, not args.dontupdate
+    # gbids, database, chunksize, authpath, authdict, searchtries, update = gbaccs, args.database, args.chunksize, args.ncbiauth, None, args.searchtries, args.update
     
     dbupdated = False
 
@@ -415,7 +415,7 @@ def retrieve_taxids(gbids, database, chunksize,
     # If any absent, try searching by base accession
     if len(absent) > 0:
         absent2base = {v.split(".", 1)[0]:v for v in absent}
-        outbase, abase = retrieve_taxids_sqlite(list(absent2base.keys()), database, "accession")
+        outbase, _ = retrieve_taxids_sqlite(list(absent2base.keys()), database, "accession")
         # Update out and absent
         out.update({absent2base[b]: t for b, t in outbase.items()})
         # Remove from absent any gbids that have been found
