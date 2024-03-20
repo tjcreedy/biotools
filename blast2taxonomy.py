@@ -200,7 +200,7 @@ def get_authentication(path):
     if not path:
         absent_authentication()
     auth = dict()
-    emailregex = "^(\D)+(\w)*((\.(\w)+)?)+@(\D)+(\w)*((\.(\D)+(\w)*)+)?(\.)[a-z]{2,}$"
+    emailregex = r"^(\D)+(\w)*((\.(\w)+)?)+@(\D)+(\w)*((\.(\D)+(\w)*)+)?(\.)[a-z]{2,}$"
     with open(path, 'r') as fh:
         for line in fh:
             line = line.strip()
@@ -208,7 +208,7 @@ def get_authentication(path):
                 continue
             if re.match(emailregex, line):
                 auth['email'] = line
-            elif re.match("^[a-z\d]{36}$", line):
+            elif re.match(r"^[a-z\d]{36}$", line):
                 auth['key'] = line
             else:
                 sys.stderr.write(f"Error: don't recognise {line} in {path}")
