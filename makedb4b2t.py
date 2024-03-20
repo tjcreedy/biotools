@@ -106,7 +106,8 @@ if __name__ == "__main__":
                 cursor.execute(insertsql, values)
                 if i < 10000 or i%1000 == 0:
                     sys.stderr.write(f"\rRead {i} lines from {args.acc2taxid} into gb_taxid")
-        sys.stderr.write("\nCreating indices\n")
+            sys.stderr.write(f"\rRead {i} lines from {args.acc2taxid} into gb_taxid\n")
+        sys.stderr.write("Creating indices\n")
         cursor.execute("CREATE INDEX index_accession ON gb_taxid(accession)")
         cursor.execute("CREATE INDEX index_version ON gb_taxid(version)")
         connection.commit()
@@ -151,7 +152,7 @@ if __name__ == "__main__":
                 insertsql = (f"INSERT INTO taxid_lineage VALUES ({', '.join('?' for _ in values)})")
                 cursor.execute(insertsql, values)
                 sys.stderr.write(f"\rRead {i} lines from {args.taxdump} into taxid_lineage")
-
+        sys.stderr.write("\n")
 
         # Load merges
         # Check if the table exists, and remove if it does
@@ -187,4 +188,4 @@ if __name__ == "__main__":
     sys.stderr.write("Optimising database\n")
     cursor.execute("VACUUM;")
     connection.close()
-    sys.stderr.write("\nDone\n")
+    sys.stderr.write("Done\n")
