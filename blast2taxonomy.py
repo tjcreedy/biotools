@@ -967,10 +967,16 @@ if __name__ == "__main__":
     sys.stderr.write(f"Output {' and '.join(outmsg)}.\n")
     
     # Clean database
-    if args.update and upd:
+    if not args.dontupdate and upd:
         sys.stderr.write(f"New data has been added to {args.database}, running optimisation. "
                          "This may take some time, but all results have already been output. "
                          "Please don't terminate this process.\n")
+        connection = sqlite3.connect(args.database)
+        cursor = connection.cursor()
+        cursor.execute("VACUUM;")
+        connection.commit()
+        connection.close()
+    
     # Exit
     sys.stderr.write("Done!\n")
     exit()
