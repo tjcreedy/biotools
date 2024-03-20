@@ -274,7 +274,7 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 it += 1
                 time.sleep(0.4)
             else:
-                if it >= maxiterations:
+                if len(idset) > 0 and it >= maxiterations:
                     sys.stderr.write(", failed to retrieve the remainder after repeated attempts")
                 sys.stderr.write(f", {errors} failed NCBI calls"
 #                                 f", mean {round(meanmissprop, 3)*100}% complete NCBI returns"
@@ -743,8 +743,8 @@ def getcliargs(arglist=None):
         hit(s). To efficiently retrieve taxonomy, the script uses a local SQLite database, which 
         should be passed to -d/--database. To create this database, use makedb4b2t.py. This 
         database is queried for taxids and taxonomic lineages before remote queries to NCBI 
-        servers. If remote queries are requried, these will be added to the database if it is 
-        writable - if you don't want to update the database, supply -x/--dontupdate
+        servers. If remote queries are required, these can be added to the database if you can 
+        write to it by supplying -x/--update
         |n
         Optionally, hits can then be processed to select a single taxonomy for each query using the 
         option -p/--process. Currently, three options are available. The two simple options are Top 
@@ -812,8 +812,8 @@ def getcliargs(arglist=None):
                              'taxonomy per query')
     parser.add_argument('-d', '--database', type=str, metavar='PATH', required=True,
                         help='path to SQLite database')
-    parser.add_argument('-x', '--dontupdate', action='store_true',
-                        help="don't update the SQLite database with new NCBI data")
+    parser.add_argument('-x', '--update', action='store_true',
+                        help="update the SQLite database with new NCBI data")
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
     parser.add_argument('-c', '--taxidcolumn', type=int, metavar='N',
@@ -880,11 +880,11 @@ def getcliargs(arglist=None):
     elif not args.outhits:
         parser.error("supply a path to -h/--outhits")
 
-    if not args.dontupdate:
+    if args.update:
         try:
             open(args.database, 'r')
         except PermissionError :
-            args.dontupdate = True
+            args.update = False
 
     # If the arguments are all OK, output them
     return args
@@ -914,7 +914,7 @@ if __name__ == "__main__":
         gbtaxids, absent, auth, upd = retrieve_taxids(gbaccs, args.database, args.chunksize, 
                                                       authpath = args.ncbiauth, 
                                                       searchtries = args.searchtries,
-                                                      update = not args.dontupdate)
+                                                      update = args.update)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
     if len(absent) > 0:
@@ -928,7 +928,7 @@ if __name__ == "__main__":
     taxonomy, absent, upd = retrieve_taxonomy(taxids, args.database, args.chunksize,
                                               authpath=args.ncbiauth, authdict=auth, 
                                               searchtries = args.searchtries, 
-                                              update = not args.dontupdate)
+                                              update = args.update)
     if len(absent) > 0:
         sys.stderr.write(f"Failed to get taxids for {len(absent)} taxids, these may have been "
                          f"withdrawn from NCBI Taxonomy:\n"
