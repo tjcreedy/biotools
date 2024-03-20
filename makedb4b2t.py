@@ -127,15 +127,17 @@ if __name__ == "__main__":
 
         # Load tar
         tar = tarfile.open(args.taxdump, "r:gz")
+
         # Read names into dict
         namesdict = {}
         with tar.extractfile("names.dmp") as fh:
             i = 0
             for line in fh:
                 values = line.decode().rstrip("\t|\n").split("\t|\t")
-                namesdict[values[0]] = values[1]
+                if values[3] == "scientific name":
+                    namesdict[values[0]] = values[1]
         
-        # Load data into database
+        # Load node data into database
         with tar.extractfile("nodes.dmp") as fh:
         #fh = tar.extractfile("nodes.dmp")
             i = 0
@@ -149,11 +151,38 @@ if __name__ == "__main__":
                 insertsql = (f"INSERT INTO taxid_lineage VALUES ({', '.join('?' for _ in values)})")
                 cursor.execute(insertsql, values)
                 sys.stderr.write(f"\rRead {i} lines from {args.taxdump} into taxid_lineage")
-        tar.close()
+
+
+        # Load merges
+        # Check if the table exists, and remove if it does
+        if "taxid_merges" in tables:
+            cursor.execute("DROP TABLE taxid_merges")
+        
+        # Create table
+        tablesql = ("create table taxid_merges ("
+                    "old INTEGER NOT NULL,"
+                    "new INTEGER NOT NULL)")
+        cursor.execute(tablesql)
+
+        # Load merge data into database
+        with tar.extractfile("merged.dmp") as fh:
+        #fh = tar.extractfile("nodes.dmp")
+            i = 0
+            for line in fh:
+                # line = fh.readline()
+                values = line.decode().rstrip("\t|\n").split("\t|\t")
+                i += 1
+                insertsql = (f"INSERT INTO taxid_merges VALUES ({', '.join('?' for _ in values)})")
+                cursor.execute(insertsql, values)
+                sys.stderr.write(f"\rRead {i} lines from {args.taxdump} into taxid_merges")
+
         sys.stderr.write("\nCreating indices\n")
         cursor.execute("CREATE INDEX index_taxid ON taxid_lineage(taxid)")
         cursor.execute("CREATE INDEX index_parent ON taxid_lineage(parent)")
+        cursor.execute("CREATE INDEX index_old ON taxid_merges(old)")
         connection.commit()
+
+        tar.close()
     
     sys.stderr.write("Optimising database\n")
     cursor.execute("VACUUM;")
