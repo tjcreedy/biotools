@@ -967,7 +967,7 @@ if __name__ == "__main__":
     sys.stderr.write(f"Output {' and '.join(outmsg)}.\n")
     
     # Clean database
-    if not args.dontupdate and upd:
+    if args.update and upd:
         sys.stderr.write(f"New data has been added to {args.database}, running optimisation. "
                          "This may take some time, but all results have already been output. "
                          "Please don't terminate this process.\n")
