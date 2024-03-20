@@ -587,73 +587,73 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
     for qseqid, hits in data.items():
         # qseqid, hits = list(data.items())[2]
         # print(json.dumps(hits[0:20], indent = 4))
-        # Filter out any hit rejected for the various filters
-        scores = [h['bitscore'] for h in hits]
-        mintopscore = (100 - toppc)/100 * max(scores)
-        winidactive = winid and max([h['pident'] for h in hits]) >= winid
-        for hit in hits:
-            if hit['bitscore'] < minscore:
-                hit['status'] = 'reject-minscore'
-            elif hit['bitscore'] < mintopscore:
-                hit['status'] = 'reject-outsidetoppc'
-            elif hit['pident'] < minid:
-                hit['status'] = 'reject-minid'
-            elif hit['evalue'] > maxexp:
-                hit['status'] = 'reject-maxexp'
-            elif hit['length'] < minlen:
-                hit['status'] = 'reject-minlen'
-            elif winidactive and hit['pident'] < winid:
-                hit['status'] = 'reject-belowwinid'
-            else:
-                hit['status'] = 'acceptforlca'
-        
-        # Do LCA
-        lcaids, lcascores = [], []
-        lcasets = {r: dict() for r in ranks}
-        for hit in hits:
-            # hit = hits[0]
-            if hit['status'] != 'acceptforlca':
-                continue
+        # Set up outputs
+        lcaids, lcascores, lcataxonomy, suppn = [], [], [], 0
+        if len(hits) > 0:
+            # Filter out any hit rejected for the various filters
+            scores = [h['bitscore'] for h in hits]
+            mintopscore = (100 - toppc)/100 * max(scores)
+            winidactive = winid and max([h['pident'] for h in hits]) >= winid
+            for hit in hits:
+                if hit['bitscore'] < minscore:
+                    hit['status'] = 'reject-minscore'
+                elif hit['bitscore'] < mintopscore:
+                    hit['status'] = 'reject-outsidetoppc'
+                elif hit['pident'] < minid:
+                    hit['status'] = 'reject-minid'
+                elif hit['evalue'] > maxexp:
+                    hit['status'] = 'reject-maxexp'
+                elif hit['length'] < minlen:
+                    hit['status'] = 'reject-minlen'
+                elif winidactive and hit['pident'] < winid:
+                    hit['status'] = 'reject-belowwinid'
+                else:
+                    hit['status'] = 'acceptforlca'
             
-            lcaids.append(hit['pident'])
-            lcascores.append(hit['bitscore'])
-            for j, r in enumerate(ranks):
-                # j = 1
-                taxlist = hit['taxonomy'][:(j+1)]
-                taxhash = str(hash(tuple(taxlist)))
-                if taxhash in lcasets[r].keys():
-                    lcasets[r][taxhash]['n'] += 1
-                else:
-                    lcasets[r][taxhash] = {'taxonomy': taxlist, 'n': 1}
-        
-        # Do LCA
-        suppn = 0
-        lcataxonomy = []
-        if len(lcaids) > 0:
-            minsuppn = minsupppc/100 * len(lcaids)
-            for r in ranks[::-1]:
-                # r = 'superkingdom'
-                # Filter out taxonomies without sufficient support
-                maxn = max(d['n'] for t, d in lcasets[r].items())
-                if maxn < minsuppn:
+            # Set up LCA
+            lcasets = {r: dict() for r in ranks}
+            for hit in hits:
+                # hit = hits[0]
+                if hit['status'] != 'acceptforlca':
                     continue
-                sets = {t:d for t, d in lcasets[r].items() if d['n'] == maxn}
-                if len(sets) > 1:
-                    continue
-                else:
-                    finaltaxonomy = list(sets.values())[0]
-                    lcataxonomy = finaltaxonomy['taxonomy']
-                    suppn = finaltaxonomy['n']
-                    break
+                
+                lcaids.append(hit['pident'])
+                lcascores.append(hit['bitscore'])
+                for j, r in enumerate(ranks):
+                    # j = 1
+                    taxlist = hit['taxonomy'][:(j+1)]
+                    taxhash = str(hash(tuple(taxlist)))
+                    if taxhash in lcasets[r].keys():
+                        lcasets[r][taxhash]['n'] += 1
+                    else:
+                        lcasets[r][taxhash] = {'taxonomy': taxlist, 'n': 1}
+            
+            # Do LCA
+            if len(lcaids) > 0:
+                minsuppn = minsupppc/100 * len(lcaids)
+                for r in ranks[::-1]:
+                    # r = 'superkingdom'
+                    # Filter out taxonomies without sufficient support
+                    maxn = max(d['n'] for t, d in lcasets[r].items())
+                    if maxn < minsuppn:
+                        continue
+                    sets = {t:d for t, d in lcasets[r].items() if d['n'] == maxn}
+                    if len(sets) > 1:
+                        continue
+                    else:
+                        finaltaxonomy = list(sets.values())[0]
+                        lcataxonomy = finaltaxonomy['taxonomy']
+                        suppn = finaltaxonomy['n']
+                        break
         
         # Pad LCA taxonomy
         lcataxonomy += [''] * (len(ranks) - len(lcataxonomy))
 
         # Start output
         out[qseqid] = {'hits': len(hits),
-                    'considered': len(lcaids),
-                    'consideredpc': 100 * len(lcaids)/len(hits),
-                    'supportingn': suppn}
+                       'considered': len(lcaids),
+                       'consideredpc': (100 * len(lcaids)/len(hits)) if len(hits) > 0 else 0,
+                       'supportingn': suppn}
 
         # Check sufficient support and report taxonomy and support
         if len(lcaids) < minhitn or len(lcaids)/len(hits) < minhitpc/100:
