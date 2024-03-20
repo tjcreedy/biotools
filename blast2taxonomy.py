@@ -665,7 +665,7 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
             supprep = {'taxonomy': lcataxonomy,
                        'support': 'accept-sufficient'}
         out[qseqid].update(supprep)
-        
+
         # Report stats for considered hits
         if len(lcaids) > 0:
             out[qseqid].update(
@@ -681,12 +681,8 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                 )
     
         # Add info for top hit
-        out[qseqid].update(
-            {'toppident': hits[0]['pident'],
-             'topscore': hits[0]['bitscore'],
-             'toplen': hits[0]['length'],
-             'topstatus': hits[0]['status']}
-             )
+        for i in ['pident', 'bitscore', 'length', 'status']:
+            out[qseqid][f"top{i}"] = hits[0][i] if len(hits) > 0 else ''
 
     return out, data
 
