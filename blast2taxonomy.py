@@ -608,7 +608,8 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                 else:
                     hit['status'] = 'pending'
                     pendingids.append(hit['pident'])
-            winidactive = winid and max(pendingids) >= winid
+            
+            winidactive = winid and len(pendingids) > 0 and max(pendingids) >= winid
             
             # Set up LCA
             lcasets = {r: dict() for r in ranks}
@@ -617,6 +618,7 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                 if hit['status'] != 'pending':
                     continue
                 elif winidactive and hit['pident'] < winid:
+                    hit['status'] = 'reject-belowwinid'
                     continue
                 else:
                     hit['status'] = 'acceptforlca'
