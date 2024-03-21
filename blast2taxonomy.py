@@ -555,15 +555,13 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                 hit['status'] = 'acceptforlca'
         
         # Do LCA
-        lcaids, lcascores = [], []
+        lcahits = []
         lcasets = {r: dict() for r in ranks}
         for hit in hits:
             # hit = hits[0]
             if hit['status'] != 'acceptforlca':
                 continue
-            
-            lcaids.append(hit['pident'])
-            lcascores.append(hit['bitscore'])
+            lcahits.append(hit)
             for j, r in enumerate(ranks):
                 # j = 1
                 taxlist = hit['taxonomy'][:(j+1)]
@@ -576,8 +574,8 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
         # Do LCA
         suppn = 0
         lcataxonomy = []
-        if len(lcaids) > 0:
-            minsuppn = minsupppc/100 * len(lcaids)
+        if len(lcahits) > 0:
+            minsuppn = minsupppc/100 * len(lcahits)
             for r in ranks[::-1]:
                 # r = 'superkingdom'
                 # Filter out taxonomies without sufficient support
@@ -598,12 +596,12 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
 
         # Start output
         out[qseqid] = {'hits': len(hits),
-                    'considered': len(lcaids),
-                    'consideredpc': 100 * len(lcaids)/len(hits),
-                    'supportingn': suppn}
+                       'considered': len(lcahits),
+                       'consideredpc': 100 * len(lcahits)/len(hits),
+                       'supportingn': suppn}
 
         # Check sufficient support and report taxonomy and support
-        if len(lcaids) < minhitn or len(lcaids)/len(hits) < minhitpc/100:
+        if len(lcahits) < minhitn or len(lcahits)/len(hits) < minhitpc/100:
             out[qseqid].update({'taxonomy': ['' for r in ranks],
                                 'support': 'reject-insufficient'})
         else:
@@ -611,7 +609,9 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                                 'support': 'accept-sufficient'})
 
         # Report stats for considered hits
-        if len(lcaids) > 0:
+        if len(lcahits) > 0:
+            lcaids = [h['pident'] for h in lcahits]
+            lcascores = [h['bitscore'] for h in lcahits]
             out[qseqid].update(
                 {'consideredminpident': min(lcaids),
                  'consideredmaxpident': max(lcaids),
@@ -621,15 +621,16 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
         else:
             out[qseqid].update(
                 {k: '' for k in ['consideredminpident', 'consideredmaxpident', 
-                                   'consideredminscore', 'consideredmaxscore']}
+                                 'consideredminscore', 'consideredmaxscore']}
                 )
     
         # Add info for top hit
+        tophit = lcahits[0] if len(lcahits) > 0 else hits[0]
         out[qseqid].update(
-            {'toppident': hits[0]['pident'],
-             'topscore': hits[0]['bitscore'],
-             'toplen': hits[0]['length'],
-             'topstatus': hits[0]['status']}
+            {'toppident': tophit['pident'],
+             'topscore': tophit['bitscore'],
+             'toplen': tophit['length'],
+             'topstatus': tophit['status']}
              )
 
     return out, data
