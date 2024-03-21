@@ -687,7 +687,7 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                 )
     
         # Add info for top hit
-        tophit = lcahits[0] if len(lcahits) > 0 else hits[0]
+        tophit = lcahits[0] if len(lcahits) > 0 else hits[0] if len(hits) > 0 else []
         for i in ['pident', 'bitscore', 'length', 'status']:
             out[qseqid][f"top{i}"] = tophit[i] if len(hits) > 0 else ''
 
