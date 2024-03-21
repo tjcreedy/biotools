@@ -589,12 +589,11 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
         # print(json.dumps(hits[0:20], indent = 4))
         # Set up outputs
         lcahits, lcataxonomy, suppn = [], [], 0
-
         if len(hits) > 0:
             # Filter out any hit rejected for the various filters
             scores = [h['bitscore'] for h in hits]
             mintopscore = (100 - toppc)/100 * max(scores)
-            winidactive = winid and max([h['pident'] for h in hits]) >= winid
+            pendingids = []
             for hit in hits:
                 if hit['bitscore'] < minscore:
                     hit['status'] = 'reject-minscore'
@@ -606,18 +605,22 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                     hit['status'] = 'reject-maxexp'
                 elif hit['length'] < minlen:
                     hit['status'] = 'reject-minlen'
-                elif winidactive and hit['pident'] < winid:
-                    hit['status'] = 'reject-belowwinid'
                 else:
-                    hit['status'] = 'acceptforlca'
-        
+                    hit['status'] = 'pending'
+                    pendingids.append(hit['pident'])
+            winidactive = winid and max(pendingids) >= winid
+            
             # Set up LCA
             lcasets = {r: dict() for r in ranks}
             for hit in hits:
                 # hit = hits[0]
-                if hit['status'] != 'acceptforlca':
+                if hit['status'] != 'pending':
                     continue
-            
+                elif winidactive and hit['pident'] < winid:
+                    continue
+                else:
+                    hit['status'] = 'acceptforlca'
+                
                 lcahits.append(hit)
                 
                 for j, r in enumerate(ranks):
