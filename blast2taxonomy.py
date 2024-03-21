@@ -652,9 +652,6 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                         suppn = finaltaxonomy['n']
                         break
         
-        # Pad LCA taxonomy
-        lcataxonomy += [''] * (len(ranks) - len(lcataxonomy))
-
         # Start output
         out[qseqid] = {'hits': len(hits),
                        'considered': len(lcahits),
@@ -662,13 +659,16 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
                        'supportingn': suppn}
 
         # Check sufficient support and report taxonomy and support
+        if len(hits) == 0:
+            out[qseqid]['support'] = 'nohits'
         if len(lcahits) < minhitn or len(lcahits)/len(hits) < minhitpc/100:
-            out[qseqid].update({'taxonomy': ['' for r in ranks],
-                                'support': 'reject-insufficient'})
+            out[qseqid]['support'] = 'insufficienthits'
+            lcataxonomy = []
         else:
-            supprep = {'taxonomy': lcataxonomy,
-                       'support': 'accept-sufficient'}
-        out[qseqid].update(supprep)
+            out[qseqid]['support'] = 'sufficienthits'
+        
+        # Finalise taxonomy
+        out['taxonomy'] = lcataxonomy + [''] * (len(ranks) - len(lcataxonomy))
 
         # Report stats for considered hits
         if len(lcahits) > 0:
