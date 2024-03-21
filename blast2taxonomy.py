@@ -89,7 +89,7 @@ def parse_title(title):
         if gbsrch:
             return gbsrch.group(0)
     sys.stderr.write(f"Warning: cannot recognise a single genbank accession number in {title} - "
-                     f"this hit will be ignored")
+                     f"this hit will be ignored\n")
     #sys.exit()
 
 
@@ -166,9 +166,9 @@ def parse_input(path, taxidc, minscore = 0, minid = 0, minalen = 0):
     taxids = set()
     for qseqid, hits in indata.items():
         for hit in hits:
-            if taxidc and 'tx' in hit:
+            if taxidc and 'tx' in hit and hit['tx'] is not None:
                 taxids.add(hit['tx'])
-            else:
+            elif hit['id'] is not None:
                 accs.add(hit['id'])
 
     return indata, accs, taxids
@@ -200,7 +200,7 @@ def get_authentication(path):
     if not path:
         absent_authentication()
     auth = dict()
-    emailregex = "^(\D)+(\w)*((\.(\w)+)?)+@(\D)+(\w)*((\.(\D)+(\w)*)+)?(\.)[a-z]{2,}$"
+    emailregex = r"^(\D)+(\w)*((\.(\w)+)?)+@(\D)+(\w)*((\.(\D)+(\w)*)+)?(\.)[a-z]{2,}$"
     with open(path, 'r') as fh:
         for line in fh:
             line = line.strip()
@@ -208,7 +208,7 @@ def get_authentication(path):
                 continue
             if re.match(emailregex, line):
                 auth['email'] = line
-            elif re.match("^[a-z\d]{36}$", line):
+            elif re.match(r"^[a-z\d]{36}$", line):
                 auth['key'] = line
             else:
                 sys.stderr.write(f"Error: don't recognise {line} in {path}")
@@ -248,7 +248,11 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 continue
             else:
                 sys.stderr.write(f"Reached max errors of {maxerrors} during retrieve_ncbi_remote, "
-                                 f"last error:\n {exception=}, {type(exception)=}\n")
+                                 f"last error:\n {exception=}, {type(exception)=}, offending "
+                                 "queries written to ncbi_failed_queries.txt\n")
+                with open("ncbi_failed.txt", 'w') as fh:
+                    for i in idset:
+                        fh.write(f"{str(i)}\n")
                 yield {}, False
                 break
         else:
@@ -270,15 +274,12 @@ def retrieve_ncbi_remote(ids, searchfunc, responsekey, chunksize, auth, maxerror
                 it += 1
                 time.sleep(0.4)
             else:
-                complete = True
-                if done < total:
-                    sys.stderr.write(", failed to retrieve the remainder")
-                    complete = False
-                #meanmissprop = np.mean(missprop) if len(missprop) > 0 else 0
+                if len(idset) > 0 and it >= maxiterations:
+                    sys.stderr.write(", failed to retrieve the remainder after repeated attempts")
                 sys.stderr.write(f", {errors} failed NCBI calls"
 #                                 f", mean {round(meanmissprop, 3)*100}% complete NCBI returns"
-                                 f".\n")
-                yield out, complete
+                                 ".\n")
+                yield out, True
                 break
 
 def filter_taxid2taxonomy(db):
@@ -292,8 +293,8 @@ def chunker(seq, size):
         seq = list(seq)
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
-def retrieve_taxids_sqlite(ids, dbpath):
-    # ids, dbpath = gbids, gbtiddbpath
+def retrieve_taxids_sqlite(ids, dbpath, column):
+    # ids, dbpath, column = gbids, database, "version"
     
     out = dict()
 
@@ -301,8 +302,9 @@ def retrieve_taxids_sqlite(ids, dbpath):
     cursor = connection.cursor()
     
     for idset in chunker(ids, 10000):
-        query = (f"SELECT \"accession.version\", taxid FROM gb_taxid WHERE \"accession.version\" "
-                 f"in ({', '.join('?' for _ in idset)})")
+        # idset = next(chunker(ids, 10000))
+        query = (f"SELECT {column}, taxid FROM gb_taxid WHERE {column} in "
+                 f"({', '.join('?' for _ in idset)})")
         out.update({av: tx for av, tx in cursor.execute(query, tuple(idset)).fetchall()})
     
     absent = set(ids) - set(out.keys())
@@ -340,16 +342,35 @@ def retrieve_lineages_sqlite(ids, dbpath):
                 "JOIN cte_lineage cl ON cl.parent = tl.taxid "
                 ") "
                 "SELECT * FROM cte_lineage cl WHERE cl.taxid != ?;")
-        out[id]['LineageEx'] = [formattax(v) for v in cursor.execute(query, (id, id)).fetchall()]
+        out[id]['LineageEx'] = [formattax(v) for v in cursor.execute(query, (id, id)).fetchall() 
+                                                                                    if v[0] > 1]
     
     connection.close()
     return out, absent
+
+def retrieve_merges_sqlite(ids, dbpath):
+    #ids, dbpath = absent, database
+    out = dict()
+    absent = set()
+    connection = sqlite3.connect(dbpath)
+    cursor = connection.cursor()
+
+    for idset in chunker(ids, 10000):
+        # idset = ids
+        query = (f"SELECT * FROM taxid_merges WHERE old in "
+                 f"({', '.join('?' for _ in idset)})")
+        out.update({new: old for old, new in cursor.execute(query, tuple(idset)).fetchall()})
+    
+    absent = set(ids) - set(out.values())
+
+    return out, absent
+
 
 def update_taxids_sqlite(new, dbpath):
     #new = rem
     connection = sqlite3.connect(dbpath)
     cursor = connection.cursor()
-
+    sys.stderr.write(f"Updating {dbpath} with {len(new)} new accession - taxid mappings\n")
     for values in new:
         insertsql = f"INSERT INTO gb_taxid VALUES ({', '.join('?' for _ in values)})"
         cursor.execute(insertsql, values)
@@ -370,7 +391,7 @@ def update_lineages_sqlite(new, dbpath):
 
     connection = sqlite3.connect(dbpath)
     cursor = connection.cursor()
-
+    sys.stderr.write(f"Updating {dbpath} with {len(new)} new taxids\n")
     for tdata in new.values():
         # tdata = list(new.values())[0]
         inserttxidlin(cursor, tdata)
@@ -385,11 +406,25 @@ def update_lineages_sqlite(new, dbpath):
 
 def retrieve_taxids(gbids, database, chunksize, 
                     authpath=None, authdict=None, searchtries = 10, update = False):
-    # gbids, database, chunksize, authpath, authdict, searchtries, update = gbaccs, args.database, args.chunksize, args.ncbiauth, None, args.searchtries, (not args.dontupdate)
+    # gbids, database, chunksize, authpath, authdict, searchtries, update = gbaccs, args.database, args.chunksize, args.ncbiauth, None, args.searchtries, args.update
+    
+    dbupdated = False
 
-    out, absent = retrieve_taxids_sqlite(gbids, database)
+    # Retrieve taxids by version from database
+    out, absent = retrieve_taxids_sqlite(gbids, database, "version")
+    # If any absent, try searching by base accession
+    if len(absent) > 0:
+        absent2base = {v.split(".", 1)[0]:v for v in absent}
+        outbase, _ = retrieve_taxids_sqlite(list(absent2base.keys()), database, "accession")
+        # Update out and absent
+        out.update({absent2base[b]: t for b, t in outbase.items()})
+        # Remove from absent any gbids that have been found
+        absent = absent - set(out.keys())
+
     if len(out) > 0:
-        sys.stderr.write(f"Retrieved {len(out)} taxids from local database\n")
+        sys.stderr.write(f"Retrieved {len(out)} taxids from {database}\n")
+    
+    # If any still absent, search NCBI
     if len(absent) > 0:
         if not authdict:
             if not authpath:
@@ -401,7 +436,7 @@ def retrieve_taxids(gbids, database, chunksize,
             summaries = Entrez.read(sh, validate = False)
             sh.close()
             return summaries
-        sys.stderr.write(f"Searching NCBI nt for {len(absent)} taxids\n")
+        sys.stderr.write(f"Searching NCBI nt for taxids for {len(absent)} accession numbers\n")
         ncbigen = retrieve_ncbi_remote(absent, esummary_read_taxids, 'AccessionVersion', chunksize,
                                        authdict, maxerrors = searchtries)
         rem = []
@@ -412,34 +447,49 @@ def retrieve_taxids(gbids, database, chunksize,
             for gb, smry in outsub.items():
                 # gb, smry = list(outsub.items())[0]
                 if type(smry['TaxId']) is Entrez.Parser.IntegerElement:
-                    rem.append((smry['Caption'], smry['AccessionVersion'], 
-                               int(smry['TaxId']), int(smry['Gi'])))
-        if update:
+                    rem.append((smry['Caption'], smry['AccessionVersion'], int(smry['TaxId'])))
+        if update and len(rem) > 0:
             update_taxids_sqlite(rem, database)
+            dbupdated = True
         
         rem = {r[1]:r[2] for r in rem}
 
         if not all(complete):
-            sys.stderr.write(f"Exceeded maximum attempts for an NCBI retrieval; successful "
-                             f"retrievals have been added to {database}, exiting.\n")
+            sys.stderr.write("Exceeded maximum attempts for an NCBI retrieval")
+            if update:
+                sys.stderr.write(f"; successful retrievals have been added to {database}, exiting")
+            sys.stderr.write(".\n")
             sys.exit()
 
         out.update(rem)
 
     absent = set(i for i in gbids if str(i) not in out)
 
-    return out, absent, authdict
+    return out, absent, authdict, dbupdated
 
 
 def retrieve_taxonomy(taxids, database, chunksize, 
                       authpath=None, authdict=None, searchtries = 10, update = False):
-    # database, chunksize, authpath, authdict, searchtries, update = args.database, args.chunksize, args.ncbiauth, auth, args.searchtries, not args.dontupdate
+    # taxids, database, chunksize, authpath, authdict, searchtries, update = taxids, args.database, args.chunksize, args.ncbiauth, auth, args.searchtries, not args.dontupdate
     """Search NCBI for lineage information given a tax id.
     """
+    dbupdated = False
 
+    # Retrieve from local database
     out, absent = retrieve_lineages_sqlite(taxids, database)
+    
+    # If any absent, check if they're in the merges database
+    if len(absent) > 0:
+        merged, _ = retrieve_merges_sqlite(absent, database)
+
+        if len(merged) > 0:
+            mergeout, _ = retrieve_lineages_sqlite(list(merged.keys()), database)
+            out.update({merged[ntx]: lin for ntx, lin in mergeout.items()})
+
+        absent = absent - set(out.keys())
+
     if len(out) > 0:
-        sys.stderr.write(f"Retrieved {len(out)} taxonomies from local database\n")
+        sys.stderr.write(f"Retrieved {len(out)} taxonomies from {database}\n")
     
     if len(absent) > 0:
         if not authdict:
@@ -462,20 +512,23 @@ def retrieve_taxonomy(taxids, database, chunksize,
             # outsub, success = next(ncbigen)
             complete.add(success)
             rem.update(outsub)
-        if update:
+        if update and len(rem) > 0:
             update_lineages_sqlite(rem, database)
+            dbupdated = True
         rem = filter_taxid2taxonomy(rem)
 
         if not all(complete):
-            sys.stderr.write("Exceeded maximum attempts for an NCBI retrieval; successful "
-                             "retrievals have been added to tidtaxdbpath, exiting.\n")
+            sys.stderr.write("Exceeded maximum attempts for an NCBI retrieval")
+            if update and len(rem) > 0:
+                sys.stderr.write(f"; successful retrievals have been added to {database}, exiting")
+            sys.stderr.write(".\n")
             sys.exit()
         
         out.update(rem)
 
     absent = set(i for i in taxids if i not in out)
 
-    return out, absent
+    return out, absent, dbupdated
 
 
 def get_standard_lineage(record, ranks):
@@ -534,62 +587,65 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
     for qseqid, hits in data.items():
         # qseqid, hits = list(data.items())[2]
         # print(json.dumps(hits[0:20], indent = 4))
-        # Filter out any hit rejected for the various filters
-        scores = [h['bitscore'] for h in hits]
-        mintopscore = (100 - toppc)/100 * max(scores)
-        winidactive = winid and max([h['pident'] for h in hits]) >= winid
-        for hit in hits:
-            if hit['bitscore'] < minscore:
-                hit['status'] = 'reject-minscore'
-            elif hit['bitscore'] < mintopscore:
-                hit['status'] = 'reject-outsidetoppc'
-            elif hit['pident'] < minid:
-                hit['status'] = 'reject-minid'
-            elif hit['evalue'] > maxexp:
-                hit['status'] = 'reject-maxexp'
-            elif hit['length'] < minlen:
-                hit['status'] = 'reject-minlen'
-            elif winidactive and hit['pident'] < winid:
-                hit['status'] = 'reject-belowwinid'
-            else:
-                hit['status'] = 'acceptforlca'
-        
-        # Do LCA
-        lcahits = []
-        lcasets = {r: dict() for r in ranks}
-        for hit in hits:
-            # hit = hits[0]
-            if hit['status'] != 'acceptforlca':
-                continue
-            lcahits.append(hit)
-            for j, r in enumerate(ranks):
-                # j = 1
-                taxlist = hit['taxonomy'][:(j+1)]
-                taxhash = str(hash(tuple(taxlist)))
-                if taxhash in lcasets[r].keys():
-                    lcasets[r][taxhash]['n'] += 1
+        # Set up outputs
+        lcahits, lcataxonomy, suppn = [], [], 0
+
+        if len(hits) > 0:
+            # Filter out any hit rejected for the various filters
+            scores = [h['bitscore'] for h in hits]
+            mintopscore = (100 - toppc)/100 * max(scores)
+            winidactive = winid and max([h['pident'] for h in hits]) >= winid
+            for hit in hits:
+                if hit['bitscore'] < minscore:
+                    hit['status'] = 'reject-minscore'
+                elif hit['bitscore'] < mintopscore:
+                    hit['status'] = 'reject-outsidetoppc'
+                elif hit['pident'] < minid:
+                    hit['status'] = 'reject-minid'
+                elif hit['evalue'] > maxexp:
+                    hit['status'] = 'reject-maxexp'
+                elif hit['length'] < minlen:
+                    hit['status'] = 'reject-minlen'
+                elif winidactive and hit['pident'] < winid:
+                    hit['status'] = 'reject-belowwinid'
                 else:
-                    lcasets[r][taxhash] = {'taxonomy': taxlist, 'n': 1}
+                    hit['status'] = 'acceptforlca'
         
-        # Do LCA
-        suppn = 0
-        lcataxonomy = []
-        if len(lcahits) > 0:
-            minsuppn = minsupppc/100 * len(lcahits)
-            for r in ranks[::-1]:
-                # r = 'superkingdom'
-                # Filter out taxonomies without sufficient support
-                maxn = max(d['n'] for t, d in lcasets[r].items())
-                if maxn < minsuppn:
+            # Set up LCA
+            lcasets = {r: dict() for r in ranks}
+            for hit in hits:
+                # hit = hits[0]
+                if hit['status'] != 'acceptforlca':
                     continue
-                sets = {t:d for t, d in lcasets[r].items() if d['n'] == maxn}
-                if len(sets) > 1:
-                    continue
-                else:
-                    finaltaxonomy = list(sets.values())[0]
-                    lcataxonomy = finaltaxonomy['taxonomy']
-                    suppn = finaltaxonomy['n']
-                    break
+            
+                lcahits.append(hit)
+                
+                for j, r in enumerate(ranks):
+                    # j = 1
+                    taxlist = hit['taxonomy'][:(j+1)]
+                    taxhash = str(hash(tuple(taxlist)))
+                    if taxhash in lcasets[r].keys():
+                        lcasets[r][taxhash]['n'] += 1
+                    else:
+                        lcasets[r][taxhash] = {'taxonomy': taxlist, 'n': 1}
+        
+            # Do LCA
+            if len(lcahits) > 0:
+                minsuppn = minsupppc/100 * len(lcahits)
+                for r in ranks[::-1]:
+                    # r = 'superkingdom'
+                    # Filter out taxonomies without sufficient support
+                    maxn = max(d['n'] for t, d in lcasets[r].items())
+                    if maxn < minsuppn:
+                        continue
+                    sets = {t:d for t, d in lcasets[r].items() if d['n'] == maxn}
+                    if len(sets) > 1:
+                        continue
+                    else:
+                        finaltaxonomy = list(sets.values())[0]
+                        lcataxonomy = finaltaxonomy['taxonomy']
+                        suppn = finaltaxonomy['n']
+                        break
         
         # Pad LCA taxonomy
         lcataxonomy += [''] * (len(ranks) - len(lcataxonomy))
@@ -597,7 +653,7 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
         # Start output
         out[qseqid] = {'hits': len(hits),
                        'considered': len(lcahits),
-                       'consideredpc': 100 * len(lcahits)/len(hits),
+                       'consideredpc': (100 * len(lcahits)/len(hits)) if len(hits) > 0 else 0,
                        'supportingn': suppn}
 
         # Check sufficient support and report taxonomy and support
@@ -605,8 +661,9 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
             out[qseqid].update({'taxonomy': ['' for r in ranks],
                                 'support': 'reject-insufficient'})
         else:
-            out[qseqid].update({'taxonomy': lcataxonomy,
-                                'support': 'accept-sufficient'})
+            supprep = {'taxonomy': lcataxonomy,
+                       'support': 'accept-sufficient'}
+        out[qseqid].update(supprep)
 
         # Report stats for considered hits
         if len(lcahits) > 0:
@@ -626,12 +683,8 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
     
         # Add info for top hit
         tophit = lcahits[0] if len(lcahits) > 0 else hits[0]
-        out[qseqid].update(
-            {'toppident': tophit['pident'],
-             'topscore': tophit['bitscore'],
-             'toplen': tophit['length'],
-             'topstatus': tophit['status']}
-             )
+        for i in ['pident', 'bitscore', 'length', 'status']:
+            out[qseqid][f"top{i}"] = tophit[i] if len(hits) > 0 else ''
 
     return out, data
 
@@ -691,8 +744,8 @@ def getcliargs(arglist=None):
         hit(s). To efficiently retrieve taxonomy, the script uses a local SQLite database, which 
         should be passed to -d/--database. To create this database, use makedb4b2t.py. This 
         database is queried for taxids and taxonomic lineages before remote queries to NCBI 
-        servers. If remote queries are requried, these will be added to the database if it is 
-        writable - if you don't want to update the database, supply -x/--dontupdate
+        servers. If remote queries are required, these can be added to the database if you can 
+        write to it by supplying -x/--update
         |n
         Optionally, hits can then be processed to select a single taxonomy for each query using the 
         option -p/--process. Currently, three options are available. The two simple options are Top 
@@ -760,8 +813,8 @@ def getcliargs(arglist=None):
                              'taxonomy per query')
     parser.add_argument('-d', '--database', type=str, metavar='PATH', required=True,
                         help='path to SQLite database')
-    parser.add_argument('-x', '--dontupdate', action='store_true',
-                        help="don't update the SQLite database with new NCBI data")
+    parser.add_argument('-x', '--update', action='store_true',
+                        help="update the SQLite database with new NCBI data")
     parser.add_argument('-n', '--ncbiauth', type=str, metavar='PATH',
                         help='ncbi authentication path')
     parser.add_argument('-c', '--taxidcolumn', type=int, metavar='N',
@@ -828,11 +881,11 @@ def getcliargs(arglist=None):
     elif not args.outhits:
         parser.error("supply a path to -h/--outhits")
 
-    if not args.dontupdate:
+    if args.update:
         try:
             open(args.database, 'r')
         except PermissionError :
-            args.dontupdate = True
+            args.update = False
 
     # If the arguments are all OK, output them
     return args
@@ -843,7 +896,8 @@ if __name__ == "__main__":
     # Get the arguments
     args = getcliargs()
     auth = None
-    
+    upd = False
+
     # Parse the inputs, filtering out results below idthreshold
     if args.process == 'megan':
         inputdata, gbaccs, taxids = parse_input(args.blastresults, args.taxidcolumn)
@@ -858,10 +912,10 @@ if __name__ == "__main__":
     # If taxids not present, search the unique accession numbers to retreive taxids
     gbtaxids = dict()
     if len(gbaccs) > 0:
-        gbtaxids, absent, auth = retrieve_taxids(gbaccs, args.database, args.chunksize, 
-                                                 authpath=args.ncbiauth, 
-                                                 searchtries = args.searchtries,
-                                                 update = not args.dontupdate)
+        gbtaxids, absent, auth, upd = retrieve_taxids(gbaccs, args.database, args.chunksize, 
+                                                      authpath = args.ncbiauth, 
+                                                      searchtries = args.searchtries,
+                                                      update = args.update)
         # Add to the master list of taxids
         taxids.update(set(gbtaxids.values()))
     if len(absent) > 0:
@@ -872,12 +926,13 @@ if __name__ == "__main__":
     sys.stderr.write(f"Total {len(taxids)} unique taxids to retrieve taxonomy for\n")
 
     # Retrieve taxonomy 
-    taxonomy, absent = retrieve_taxonomy(taxids, args.database, args.chunksize,
-                                         authpath=args.ncbiauth, authdict=auth, 
-                                         searchtries = args.searchtries, update = not args.dontupdate)
+    taxonomy, absent, upd = retrieve_taxonomy(taxids, args.database, args.chunksize,
+                                              authpath=args.ncbiauth, authdict=auth, 
+                                              searchtries = args.searchtries, 
+                                              update = args.update)
     if len(absent) > 0:
         sys.stderr.write(f"Failed to get taxids for {len(absent)} taxids, these may have been "
-                         f"withdrawn from GenBank:\n"
+                         f"withdrawn from NCBI Taxonomy:\n"
                          f"{','.join(str(a) for a in absent)}\n")
 
     # Assign taxonomy to the input data
@@ -902,9 +957,28 @@ if __name__ == "__main__":
                                                   args.minsupppc)
 
     # Output
+    outmsg = []
     if args.outhits:
         writehits(taxonomised, args.outhits, args.ranks)
+        outmsg.append(f"per-hit taxonomic lineage to {args.outhits}")
     if args.outtaxonomy:
         writetaxonomy(taxonomies, args.outtaxonomy, args.ranks)
+        outmsg.append(f"assigned taxonomic lineage for each query to {args.outtaxonomy}")
+    
+    sys.stderr.write(f"Output {' and '.join(outmsg)}.\n")
+    
+    # Clean database
+    if args.update and upd:
+        sys.stderr.write(f"New data has been added to {args.database}, running optimisation. "
+                         "This may take some time, but all results have already been output. "
+                         "Please don't terminate this process.\n")
+        connection = sqlite3.connect(args.database)
+        cursor = connection.cursor()
+        cursor.execute("VACUUM;")
+        connection.commit()
+        connection.close()
+    
+    # Exit
+    sys.stderr.write("Done!\n")
+    exit()
 
-    sys.stderr.write("Done\n")
