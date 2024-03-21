@@ -668,7 +668,7 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
             out[qseqid]['support'] = 'sufficienthits'
         
         # Finalise taxonomy
-        out['taxonomy'] = lcataxonomy + [''] * (len(ranks) - len(lcataxonomy))
+        out[qseqid]['taxonomy'] = lcataxonomy + [''] * (len(ranks) - len(lcataxonomy))
 
         # Report stats for considered hits
         if len(lcahits) > 0:
