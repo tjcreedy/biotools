@@ -715,8 +715,12 @@ def writetaxonomy(data, path, ranks):
     fh.write(','.join(['qseqid'] + ranks + ['taxid', 'taxidlineage'] + list(header)) + '\n')
     for q, v in data.items():
         # q, v = list(data.items())[0]
+        outline = [q] + [sn for sn, _ in v['taxonomy']]
         taxids = [str(tx) for _, tx in v['taxonomy'] if tx is not None]
-        outline = [q] + [sn for sn, _ in v['taxonomy']] + [taxids[-1]] + ['-'.join(taxids)] 
+        if len(taxids) > 0:
+                outline += [taxids[-1]] + ['-'.join(taxids)]
+        else:
+            outline += ['', '']
         fh.write(','.join(outline + [str(v[h]) for h in header]) + '\n')
     fh.close()
 
@@ -732,7 +736,11 @@ def writehits(data, path, ranks):
             # hit = hits[1] 
             outline = [q] + [str(hit[h]) for h in header] + [sn for sn, _ in hit['taxonomy']]
             taxids = [str(tx) for _, tx in hit['taxonomy'] if tx is not None]
-            fh.write(','.join(outline + [taxids[-1]] + ['-'.join(taxids)]) + '\n')
+            if len(taxids) > 0:
+                outline += [taxids[-1]] + ['-'.join(taxids)]
+            else:
+                outline += ['', '']
+            fh.write(','.join(outline) + '\n')
     fh.close()
 
 def getcliargs(arglist=None):
