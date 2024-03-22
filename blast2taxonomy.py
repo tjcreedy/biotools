@@ -532,12 +532,12 @@ def retrieve_taxonomy(taxids, database, chunksize,
 
 
 def get_standard_lineage(record, ranks):
-    # record = db[i]
-    names = {r['Rank']: r['ScientificName'] for r in record['LineageEx']
+    # record = taxonomies[tx]
+    names = {r['Rank']: (r['ScientificName'], r['TaxID']) for r in record['LineageEx']
              if r['Rank'] != 'no rank'}
-    names[record['Rank']] = record['ScientificName']
-
-    return [names[r] if r in names else '' for r in ranks]
+    if record['Rank'] not in names:
+        names[record['Rank']] = (record['ScientificName'], record['TaxID'])
+    return [names[r] if r in names else ('', None) for r in ranks]
 
 
 def assign_taxonomy(data, gbtax, taxonomies, ranks):
@@ -545,7 +545,7 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
     for qseqid in data.keys():
         # qseqid = list(data.keys())[0]
         for i in range(len(data[qseqid])):
-            # i = 0
+            # i = 1
             # Retrieve the taxid
             if 'tx' in data[qseqid][i]:
                 tx = data[qseqid][i]['tx']
@@ -557,9 +557,10 @@ def assign_taxonomy(data, gbtax, taxonomies, ranks):
                     tx = data[qseqid][i]['tx'] = None
             # Retrieve the taxonomy for this taxid and format it
             if tx in taxonomies:
+
                 data[qseqid][i]['taxonomy'] = get_standard_lineage(taxonomies[tx], ranks)
             else:
-                data[qseqid][i]['taxonomy'] = ['']  * len(ranks)
+                data[qseqid][i]['taxonomy'] = [('', None)]  * len(ranks)
     return data
 
 def lca(data, ranks):
@@ -581,11 +582,11 @@ def lca(data, ranks):
 
 def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc, minhitn, minlen, 
                     minsupppc):
-    # data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc, minhitn, minlen, minsupppc = taxonomised, args.ranks, args.minscore, args.maxexp, args.minid, args.winid, args.toppc, args.minhitpc, args.minhitn, args.minalen, args.minsupppc
+    # data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc, minhitn, minlen, minsupppc = taxonomised, args.ranks, args.minscore, args.maxexp, args.minid, args.toppc, args.winid, args.minhitpc, args.minhitn, args.minalen, args.minsupppc
     
     out = {}
     for qseqid, hits in data.items():
-        # qseqid, hits = list(data.items())[2]
+        # qseqid, hits = list(data.items())[0]
         # print(json.dumps(hits[0:20], indent = 4))
         # Set up outputs
         lcahits, lcataxonomy, suppn = [], [], 0
@@ -668,7 +669,7 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
             out[qseqid]['support'] = 'sufficienthits'
         
         # Finalise taxonomy
-        out[qseqid]['taxonomy'] = lcataxonomy + [''] * (len(ranks) - len(lcataxonomy))
+        out[qseqid]['taxonomy'] = lcataxonomy + [('', None)] * (len(ranks) - len(lcataxonomy))
 
         # Report stats for considered hits
         if len(lcahits) > 0:
@@ -711,10 +712,12 @@ def writetaxonomy(data, path, ranks):
     header = list(data.values())[0].keys()
     header = [h for h in header if h != "taxonomy"]
     fh = open(path, 'w') 
-    fh.write(','.join(['qseqid'] + ranks + list(header)) + '\n')
+    fh.write(','.join(['qseqid'] + ranks + ['taxid', 'taxidlineage'] + list(header)) + '\n')
     for q, v in data.items():
         # q, v = list(data.items())[0]
-        fh.write(','.join([q] + v['taxonomy'] + [str(v[h]) for h in header]) + '\n')
+        taxids = [str(tx) for _, tx in v['taxonomy'] if tx is not None]
+        outline = [q] + [sn for sn, _ in v['taxonomy']] + [taxids[-1]] + ['-'.join(taxids)] 
+        fh.write(','.join(outline + [str(v[h]) for h in header]) + '\n')
     fh.close()
 
 def writehits(data, path, ranks):
@@ -722,12 +725,14 @@ def writehits(data, path, ranks):
     header = list(data.values())[0][0].keys()
     header = [h for h in header if h not in ["data", "taxonomy"]]
     fh = open(path, 'w')
-    fh.write(','.join(['qseqid'] + list(header) + ranks) + '\n')
+    fh.write(','.join(['qseqid'] + list(header) + ranks + ['taxid', 'taxidlineage']) + '\n')
     for q, hits in data.items():
         # q, hits = list(data.items())[0]
         for hit in hits:
-            # hit = hits[462]
-            fh.write(','.join([q] + [str(hit[h]) for h in header] + hit['taxonomy']) + '\n')
+            # hit = hits[1] 
+            outline = [q] + [str(hit[h]) for h in header] + [sn for sn, _ in hit['taxonomy']]
+            taxids = [str(tx) for _, tx in hit['taxonomy'] if tx is not None]
+            fh.write(','.join(outline + [taxids[-1]] + ['-'.join(taxids)]) + '\n')
     fh.close()
 
 def getcliargs(arglist=None):
@@ -900,6 +905,7 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
+    args = getcliargs("--blastresults /home/thomc/work/NHM_bioinformatician/JTBBMB_2023-12-19/ampliseqout_2024-02-20/blast/test1.txt -i 85 -s 300 -l 300 -p megan --database /home/thomc/scratch/ncbidb/B2T_NCBIlookup.sqlite3 --ncbiauth /home/thomc/secure/api_tokens/ncbi_authentication.txt -w 100 -e 0.01 -t 10 -f 90 -z 500 -u 20 --outhits /home/thomc/scratch/b2test/outhits.csv --outtaxonomy /home/thomc/scratch/b2test/full_outtaxonomy.csv".split(' '))
     auth = None
     upd = False
 
