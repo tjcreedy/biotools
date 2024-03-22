@@ -905,7 +905,6 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs()
-    args = getcliargs("--blastresults /home/thomc/work/NHM_bioinformatician/JTBBMB_2023-12-19/ampliseqout_2024-02-20/blast/test1.txt -i 85 -s 300 -l 300 -p megan --database /home/thomc/scratch/ncbidb/B2T_NCBIlookup.sqlite3 --ncbiauth /home/thomc/secure/api_tokens/ncbi_authentication.txt -w 100 -e 0.01 -t 10 -f 90 -z 500 -u 20 --outhits /home/thomc/scratch/b2test/outhits.csv --outtaxonomy /home/thomc/scratch/b2test/full_outtaxonomy.csv".split(' '))
     auth = None
     upd = False
 
