@@ -661,7 +661,7 @@ def megan_naive_lca(data, ranks, minscore, maxexp, minid, toppc, winid, minhitpc
         # Check sufficient support and report taxonomy and support
         if len(hits) == 0:
             out[qseqid]['support'] = 'nohits'
-        if len(lcahits) < minhitn or len(lcahits)/len(hits) < minhitpc/100:
+        elif len(lcahits) < minhitn or len(lcahits)/len(hits) < minhitpc/100:
             out[qseqid]['support'] = 'insufficienthits'
             lcataxonomy = []
         else:
