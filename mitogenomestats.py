@@ -132,6 +132,9 @@ def getcliargs(arglist=None):
     parser.add_argument("-g", "--genestats", type=str, metavar='PATH', required=True,
                         help="the path to which gene statistics csv will be written, if "
                              "desired")
+#    parser.add_argument("-x", "--maxspace", type=str, metavar='N', required=False, default=3000,
+#                        help="the maximum likely intergenic spacing; values exceeding this will "
+#                             "not be reported")
 
     # Parse the arguments from the function call if specified, otherwise from the command line
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
@@ -152,20 +155,23 @@ if __name__ == "__main__":
 
     # Get the arguments
     args = getcliargs(None)
-    #args = getcliargs('-i /home/thomas/work/iBioGen_postdoc/MMGdatabase/gbmaster_2024-07-24/GBDL02016.gb -g /home/thomas/scratch/genes.csv -m /home/thomas/scratch/mito.csv'.split(' '))  # Read from a string, good for testing
+    #args = getcliargs('-i /home/thomas/work/iBioGen_postdoc/MMGdatabase/gbmaster_2024-07-24/GBDL00327.gb -g /home/thomas/scratch/genes.csv -m /home/thomas/scratch/mito.csv'.split(' '))  # Read from a string, good for testing
+    
+    # Print Biopython version
     sys.stderr.write(f"Biopython version {bioversion}\n")
+
     # Set up for unrecognised genes
     unrecgenes = defaultdict(list)
 
     # Set up output handles
     if args.mitostats:
         args.mitostats = open(args.mitostats, 'w')
-        args.mitostats.write("mt_id,length,ngenes,topology,GCfraction,genes,genepresence,geneorder\n")
+        args.mitostats.write("mt_id,length,ngenes,topology,GCfraction,genepresence,geneorder\n")
         args.mitostats.flush()
     if args.genestats:
         args.genestats = open(args.genestats, 'w')
-        args.genestats.write("mt_id,gene,GCfraction,prev_genename,prev_genedist,next_genename,"
-                             "next_genedist,startcodon,starttrunc,stopcodon,stoptrunc\n")
+        args.genestats.write("mt_id,gene,length,GCfraction,next_gene,next_dist,"
+                             "startcodon,starttrunc,stopcodon,stoptrunc\n")
         args.genestats.flush()
 
 
@@ -180,7 +186,7 @@ if __name__ == "__main__":
             seqname = seqrecord.name
 
             # Set up genes containers
-            genes = {}
+            genedict = {}
             
             # Work through features
             for feat in seqrecord.features:
@@ -194,35 +200,57 @@ if __name__ == "__main__":
                     continue
 
                 if name in stdorder:
-                    if name in genes and genes[name].type == 'CDS':
+                    if name in genedict and genedict[name].type == 'CDS':
                         continue
                     else:
-                        genes[name] = feat
+                        genedict[name] = feat
+
+
+            # Genelist
+            genelist = [[n, int(f.location.start), int(f.location.end)] + list(istrunc(f)) 
+                            for n, f in genedict.items()]
+                # Sort by location on mitogenome
+            genelist = sorted(genelist, key=lambda i: i[1])
+                # Convert out
+            genelist = [[[i[0], i[1], i[3]], [i[0], i[2], i[4]]] for i in genelist] # Split out positions
+            genelist = [z for x in genelist for z in x] # Flatten
 
             # Gene order
-            genes = [(n, f) for n, f in genes.items()]
-            if len(genes) > 1:
-                    # Sort by location on mitogenome
-                genes = sorted(genes, key=lambda i: int(i[1].location.start))
-                order = [i[0] for i in genes]
-                    # Find direction of genes and flip if necessary
-                iorder = [stdorder.index(l) for l in order]
+            if len(genedict) > 1:
+                # Find direction of genes and flip if necessary
+                iorder = [stdorder.index(l[0]) for l in genelist][::2]
                 diffs = [y - x for x, y in zip(iorder, iorder[1:])]
                 if median(diffs) < 0:
-                    genes.reverse()
-                    order = [i[0] for i in genes]
-                    iorder = [order.index(l) for i, l in enumerate(stdorder) if l in order]
+                    genelist.reverse() # Flip
+                    # Zero the position
+                    pos = [g[1] for g in genelist]
+                    for i in range(len(genelist)):
+                        genelist[i][1] = max(pos) - genelist[i][1]
+                    iorder = [stdorder.index(l[0]) for l in genelist][::2]
                     diffs = [y - x for x, y in zip(iorder, iorder[1:])]
+                
                 # Reset to a common starting point
                 if min(diffs) < -10:
-                    breaki = diffs.index(min(diffs))+1
-                    genes = genes[breaki:] + genes[:breaki]
+                    breaki = (diffs.index(min(diffs))+1)*2
+                    if seqrecord.annotations['topology'] != 'circular':
+                        genelist[0][2] = True # If the mitogenome is not circular, calculating intergenic distance between genes at the ends of the contig is likely erroneous. Set one end of one of these genes to truncated so this doesn't happen.
+                    bringforward = genelist[breaki:]
+                    pushback = genelist[:breaki]
+                    pushbacklen = bringforward[0][1] # The segment being pushed back is equal in length to the first position in the segment being brought forward
+                    for i in range(len(bringforward)):
+                        bringforward[i][1] = bringforward[i][1] - pushbacklen # Subtract the pushbacklength from each position in the segment brought forward
+                    bringforlen = len(seqrecord) - pushbacklen 
+                    for i in range(len(pushback)):
+                        pushback[i][1] = pushback[i][1] +  bringforlen # Add the bringforlength to each position in the segment pushed back
+                    genelist = bringforward + pushback
+
+            order = [g[0] for g in genelist][::2] 
 
             if args.mitostats:
                 args.mitostats.write(','.join([
                     seqname,
                     str(len(seqrecord.seq)),
-                    str(len(genes)),
+                    str(len(order)),
                     seqrecord.annotations['topology'],
                     str(gc_fraction(seqrecord.seq)),
                     ''.join('X' if i in order else '-' for i in stdorder),
@@ -231,39 +259,20 @@ if __name__ == "__main__":
 
             # Gene statistics
             if args.genestats:
-                for i, (n, f) in enumerate(genes):
-                    # i, (n, f) = list(enumerate(genes))[0]
+
+                dist = [gy[1] - gx[1] for gx, gy in zip(genelist, genelist[1:])][1::2]
+                disttrunc = [gx[2] or gy[2] for gx, gy in zip(genelist, genelist[1:])][1::2]
+
+                for i, n in enumerate(order):
+                    # i, n = list(enumerate(order))[0]
+                    f = genedict[n]
                     seq = f.extract(seqrecord.seq)
                     gene_codons = get_codons(f, seqrecord.seq)
                     
-                    prev_genename, next_genename = '', ''
-                    prev_genedist, next_genedist = '', ''
-                    if not istrunc(f)[0] and i > 0:
-                        bi = i -1
-                        prev_genename = genes[bi][0]
-                        if not istrunc(genes[bi][1])[1]:
-                            be = int(genes[bi][1].location.end)
-                            if int(genes[bi][1].location.start) < int(f.location.start):
-                                prev_genedist = int(f.location.start) - be
-                            else: 
-                                prev_genedist = int(f.location.start) + len(seqrecord.seq) - be
-                        else:
-                            prev_genedist = ''
-                    if not istrunc(f)[1] and i < len(genes)-1:
-                        ni = i + 1
-                        next_genename = genes[ni][0]
-                        if not istrunc(genes[ni][1])[0]:
-                            ns = int(genes[ni][1].location.start)
-                            if int(genes[ni][1].location.end) > int(f.location.end):
-                                next_genedist = ns - int(f.location.end)
-                            else:
-                                next_genedist = ns + len(seqrecord.seq) - int(f.location.end)
-                        else:
-                            next_genedist = ''
-
                     args.genestats.write(','.join([
                         seqname, n, str(len(seq)), str(gc_fraction(seq)),
-                        prev_genename, str(prev_genedist), next_genename, str(next_genedist),
+                        order[i+1] if i < len(order)-1 else '',
+                        str(dist[i]) if i < len(order)-1 and not disttrunc[i] else '',
                         gene_codons[0], str(istrunc(f)[0]), gene_codons[1], str(istrunc(f)[1])
                         ]) + '\n')
                         
