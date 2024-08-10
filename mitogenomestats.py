@@ -276,9 +276,9 @@ if __name__ == "__main__":
         args.genestats.close()
 
     # Report unrecognised genes
-#    if len(unrecgenes) > 0:
-#        sys.stderr.write(f"Warning: unrecognised genes present in the following entries.\n")
-#        for gene, entries in unrecgenes.items():
-#            sys.stderr.write(f"\t{gene} - {', '.join(sorted(list(set(entries))))}\n")
+    if len(unrecgenes) > 0:
+        sys.stderr.write(f"Warning: unrecognised genes present in the following entries.\n")
+        for gene, entries in unrecgenes.items():
+            sys.stderr.write(f"\t{gene} - {', '.join(sorted(list(set(entries))))}\n")
 
 exit()
