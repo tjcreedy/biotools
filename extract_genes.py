@@ -33,6 +33,8 @@ class MultilineFormatter(argparse.HelpFormatter):
 
 # Global variables
 
+version = '1.0'
+
 # Function definitions
 
 def loadnamevariants(report=False):
@@ -156,11 +158,16 @@ def getcliargs(arglist=None, knowngenes=None, knowntypes=None):
                              "of genes present for each input entry")
     parser.add_argument("-s", "--showgenes", action='store_true',
                         help="print the known gene name variants")
+    parser.add_argument("-v", "--version", action='store_true',
+                        help="print the version and exit")
 
     # Parse the arguments from the function call if specified, otherwise from the command line
     args = parser.parse_args(arglist) if arglist else parser.parse_args()
 
     # Do some checking of the inputs
+    if args.version:
+        sys.stdout.write(args.version)
+        exit()
     if args.mingenes < 0:
         parser.error(f"{args.mingenes} is not a possible minimum number of genes")
 
