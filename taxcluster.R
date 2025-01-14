@@ -93,22 +93,22 @@ ASVs <- read.FASTA(opt$asvfasta)
 # Check colnames
 
 if(names(taxonomy)[1] != "ASV_ID"){
-  stop("Error: the first column of the supplied taxonomy csv is not called \"ASV_ID\".")
+  stop(" the first column of the supplied taxonomy csv is not called \"ASV_ID\".")
 }
 
 if(names(reads)[1] != "ASV_ID"){
-  stop("Error: the first column of the supplied reads csv is not called \"ASV_ID\".")
+  stop(" the first column of the supplied reads csv is not called \"ASV_ID\".")
 }
 
 present_taxlevels <- names(taxonomy)[-1]
 taxnamerr <- present_taxlevels[!present_taxlevels %in% taxlevels]
 if(length(taxnamerr) > 0){
-  stop(paste("Error: column names in the supplied taxonomy csv are not known taxonomic levels. Taxonomic levels must be lower case. Issues:",
+  stop(paste(" column names in the supplied taxonomy csv are not known taxonomic levels. Taxonomic levels must be lower case. Issues:",
              paste(taxnamerr, collapse = ",")))
 }
 
 if(! "species" %in% present_taxlevels ){
-  stop("Error: species is not present in the supplied taxonomy")
+  stop(" species is not present in the supplied taxonomy")
 }
 
 taxlevels <- taxlevels[taxlevels %in% present_taxlevels]
@@ -117,7 +117,7 @@ taxlevels <- taxlevels[taxlevels %in% present_taxlevels]
 allasvs <- c(taxonomy$ASV_ID, reads$ASV_ID, names(ASVs)) %>% unique %>% sort
 
 if(! ( all(taxonomy$ASV_ID %in% allasvs) & all(reads$ASV_ID %in% allasvs) & all(names(ASVs) %in% allasvs) ) ){
-  stop("Error: the same set of ASVs must be present in the taxonomy csv, the reads csv and the fasta. Please check")
+  stop(" the same set of ASVs must be present in the taxonomy csv, the reads csv and the fasta. Please check")
 }
 
 taxonomylong <- taxonomy %>% 
