@@ -68,8 +68,6 @@ if ( is.null(opt) | !is.null(opt$help) ){
 
 rm(spec)
 
-opt$reads <- "ampliseqout_2024-02-20/dada2/ASV_table.tsv"
-
 if( is.null(opt$keepsingletons) ){
   opt$keepsingletons <- F
 }
