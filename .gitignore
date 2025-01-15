@@ -4,3 +4,4 @@ venv/
 *.RDS
 .Rproj.user
 .Rproj
+.Rhistory
