@@ -37,6 +37,16 @@ plotter <- function(reads, norm, vline = NULL){
   }
 }
 
+typeline <- function(msg="Enter text: ") {
+  if (interactive() ) {
+    txt <- readline(msg)
+  } else {
+    cat(msg);
+    txt <- readLines("stdin",n=1);
+  }
+  return(txt)
+}
+
 # Set global variables ----------------------------------------------------
 
 
@@ -86,14 +96,14 @@ if(names(reads)[1] != "ASV_ID"){
 ncols <- ncol(reads)-1
 nrows <- nrow(reads)
 
-message("Loaded initial reads data for ", nrows, " ASVs and ", ncols, 
+message("\nLoaded initial reads data for ", nrows, " ASVs and ", ncols, 
         " sequenced samples: ", sum(as.matrix(reads[,-1])), " total reads.")
 
 drop0cols <- sum(colSums(reads[,-1])==0)
 drop0rows <- sum(rowSums(reads[,-1])==0)
 message("Dropped ", drop0rows, " ASVs and ", drop0cols, " sequenced samples for having 0 reads.")
 if(drop0cols > 0 | drop0rows > 0){
-  message("Filtering ", nrows - drop0rows, "ASVs and ", ncols - drop0cols, " sequenced samples that have > 0 reads.")
+  message("Filtering ", nrows - drop0rows, " ASVs and ", ncols - drop0cols, " sequenced samples that have > 0 reads.")
 }
 
 # Reformat reads ----------------------------------------------------------
@@ -107,37 +117,37 @@ reads %<>%
 reformatsum <- reads %>% summarise_all(n_distinct)
 
 if(ncols != reformatsum$samplename + drop0cols){
-  warning("Some sequenced sample names are duplicated and these samples will be merged in a later step. The most common cause is sequencing the same sample on different runs with the same ID, in which case there is no cause for concern.")
+  warning("\nSome sequenced sample names are duplicated and these samples will be merged in a later step. The most common cause is sequencing the same sample on different runs with the same ID, in which case there is no cause for concern.")
 }
 if(nrows != reformatsum$ASV_ID + drop0rows){
-  warning("Some ASV IDs are duplicated and these samples will be merged in a later step.")
+  warning("\nSome ASV IDs are duplicated and these samples will be merged in a later step.")
 }
 
 
 # Initial plots -----------------------------------------------------------
 
 # Distribution of ASVwise read counts
-reads %>% 
-  group_by(ASV_ID) %>%
-  summarise(`Reads per ASV` = sum(count)) %>%
-  ggplot(aes(x = `Reads per ASV`)) + 
-  geom_histogram() + 
-  scale_x_log10() + 
-  theme_bw()
-
-# Distribution of samplewise read counts
-reads %>%
-  group_by(sampleid) %>%
-  summarise(`Reads per sequenced sample` = sum(count)) %>%
-  ggplot(aes(x = `Reads per sequenced sample`)) + 
-  geom_histogram() + 
-  scale_x_log10() + 
-  theme_bw()
+# reads %>% 
+#   group_by(ASV_ID) %>%
+#   summarise(`Reads per ASV` = sum(count)) %>%
+#   ggplot(aes(x = `Reads per ASV`)) + 
+#   geom_histogram() + 
+#   scale_x_log10() + 
+#   theme_bw()
+# 
+# # Distribution of samplewise read counts
+# reads %>%
+#   group_by(sampleid) %>%
+#   summarise(`Reads per sequenced sample` = sum(count)) %>%
+#   ggplot(aes(x = `Reads per sequenced sample`)) + 
+#   geom_histogram() + 
+#   scale_x_log10() + 
+#   theme_bw()
 
 
 # Normalised filter -------------------------------------------------------
 
-message("Computing normalised read counts for filtering.")
+message("\n\nComputing normalised read counts for filtering.")
 
 # Calculate proportion of total reads in a sample for each ASV. As this is likely
 # not normally distributed, log transform
@@ -185,14 +195,14 @@ if(! opt$keepsingletons){
 
 # Decide on filtering threshold and apply it ------------------------------
 
-message("Please see rarefilter_thresholdchooser.pdf to review the normalised read counts. You may then experiment with the effect of different thresholds.")
+message("\nPlease see rarefilter_thresholdchooser.pdf to review the normalised read counts. You may then experiment with the effect of different thresholds.")
 ggsave(paste0(opt$outprefix, "rarefilter_thresholdchooser.pdf"), plot = plotter(reads, norm), device = "pdf", width = 8, height = 11)
 
-choice <- 1
+keeptrying <- TRUE
 threshold <- 0
 
-while(choice == 1){
-  threshold <- readline("Please enter a threshold to test:")
+while(keeptrying){
+  threshold <- typeline("\nPlease enter a threshold to test: ")
   if( is.na(suppressWarnings(as.numeric(threshold))) ) {
     message("Error: threshold can't be interpreted as a number.")
     next
@@ -210,29 +220,37 @@ while(choice == 1){
   threshreads <- reads %>% 
     filter(p > threshold)
   threshreadssum <- threshreads %>% summarise_all(n_distinct)
-  message("Choosing a threshold of ", 
+  message("\nChoosing a threshold of ", 
           threshold, " will retain ", 
           threshreadssum$ASV_ID, "/", reformatsum$ASV_ID, " ASVs and ", 
           threshreadssum$sampleid, "/", reformatsum$sampleid, " sequenced samples. ",
           "Please see ", filename, " to review this threshold on the histogram." )
-  choice <- menu(c("Try another threshold", "Filter with this threshold"), title="Do you want to:")
+  while(1){
+    choice <- typeline("\nDo you want to (T)ry another threshold or (F)ilter with this threshold? ")
+    if(choice %in% c("F", "f", "T", "t")){
+      break
+    } else {
+      message("Input not understood.")
+    }
+  }
+  keeptrying <- as.logical(toupper(choice))
 }
 
-message("Threshold filtering complete.")
+message("\nThreshold filtering complete, finalising outputs.")
 
 
 # Merge samples -----------------------------------------------------------
 
 mergedreads <- threshreads %>%
   group_by(ASV_ID, samplename) %>%
-  summarise(count = sum(count)) %>%
+  summarise(count = sum(count), .groups = "drop") %>%
   ungroup()
 
 merge1sum <- mergedreads %>% summarise_all(n_distinct)
 
 if(ncols != reformatsum$samplename + drop0cols | 
    nrows != reformatsum$ASV_ID + drop0rows) {
-  message("Merging duplicate ASV ids and/or duplicate sequence sample names complete, ", merge1sum$samplename, " sequenced samples remain.")
+  message("\nMerging duplicate ASV ids and/or duplicate sequence sample names complete, ", merge1sum$samplename, " sequenced samples remain.")
 }
 
 if( !is.null(opt$mergetable) ){
@@ -241,13 +259,13 @@ if( !is.null(opt$mergetable) ){
   
   mergedreads <- left_join(mergedreads, mergedetails, by = c("samplename")) %>%
     group_by(ASV_ID, sample) %>%
-    summarise(count = sum(count)) %>%
+    summarise(count = sum(count), .groups = "drop") %>%
     ungroup() %>%
     rename("samplename" = "sample")
   
   merge2sum <- mergedreads %>% summarise_all(n_distinct)
   
-  message("Merging using the supplied mergetable complete, ", merge2sum$samplename, " samples remain.")
+  message("\nMerging using the supplied mergetable complete, ", merge2sum$samplename, " samples remain.")
 
 }
 
@@ -266,3 +284,4 @@ if( !is.null(opt$taxonomy) ){
     write.csv(paste0(opt$outprefix, "filtered_taxonomy.csv"), row.names = F, quote = F)
 }
 
+message("\nAll done!")
