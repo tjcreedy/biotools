@@ -23,7 +23,7 @@ plotter <- function(reads, norm, vline = NULL){
     geom_histogram(data = reads, binwidth = bw) + 
     geom_line(data = norm, aes(y = norm), col = "blue") + 
     scale_x_continuous(labels =  ~ signif(10^.x, digits = 2), breaks = scales::pretty_breaks(n = 10)) + 
-    coord_cartesian(xlim = c(min(reads$log10p), max(vline, moments$meanlog10))) + 
+    coord_cartesian(xlim = c(min(reads$log10p), max(log10(vline), moments$meanlog10))) + 
     labs(x = "Normalised read counts", y = "Frequency") + 
     theme_bw()
   
@@ -63,6 +63,7 @@ spec <- matrix(c(
   'reads'          , 'r', 1, "character", "path to a tsv table recording the read count for each ASV within each sequenced sample, the first column (ASV_ID) must contain asv names and all subsequent columns samples.",
   'taxonomy'       , 'x', 2, "character", "path to a csv table with taxonomy data, with column header, from which to remove discarded ASVs. The first column will be assumed to be ASV IDs.",
   'mergetable'     , 'm', 2, "character", "optional path to a two-column csv that groups sequenced samples (column 1) into true samples (column 2), for example in the case of sequencing replicates. No column header.",
+  'threshold'      , 't', 2, "double"   , "optionally supply a threshold to filter without reviewing graphs (not recommended)",
   'keepsingletons' , 's', 0, "logical"  , "turn off the default behaviour of removing all singletons no matter the threshold chosen",
   'outprefix'      , 'o', 2, "character", "prefix file path to write intermediate threshold plots and final filtered reads data"
 ), byrow = T, ncol = 5)
@@ -78,6 +79,10 @@ if ( is.null(opt) | !is.null(opt$help) ){
 
 rm(spec)
 
+#opt$reads <- "./ampliseqout_2024-02-20/dada2/ASV_table.tsv"
+#opt$taxonomy <- "./ampliseqout_2024-02-20/blast/b2t_outtaxonomy99.csv"
+#opt$threshold <- 3e-05
+
 if( is.null(opt$keepsingletons) ){
   opt$keepsingletons <- F
 }
@@ -89,7 +94,6 @@ reads <- read.table(opt$reads, header = T)
 if(names(reads)[1] != "ASV_ID"){
   stop(" the first column of the supplied reads tsv is not called \"ASV_ID\"")
 }
-
 
 # Report initial statistics -----------------------------------------------
 
@@ -103,7 +107,7 @@ drop0cols <- sum(colSums(reads[,-1])==0)
 drop0rows <- sum(rowSums(reads[,-1])==0)
 message("Dropped ", drop0rows, " ASVs and ", drop0cols, " sequenced samples for having 0 reads.")
 if(drop0cols > 0 | drop0rows > 0){
-  message("Filtering ", nrows - drop0rows, " ASVs and ", ncols - drop0cols, " sequenced samples that have > 0 reads.")
+  message("Filtering ", nrows - drop0rows, " ASVs and ", ncols - drop0cols, " sequenced samples that have >0 reads.")
 }
 
 # Reformat reads ----------------------------------------------------------
@@ -145,6 +149,18 @@ if(nrows != reformatsum$ASV_ID + drop0rows){
 #   theme_bw()
 
 
+
+# Filter singletons -------------------------------------------------------
+
+if(! opt$keepsingletons){
+  reads <- reads %>%
+    filter(count > 1)
+  readsmultsum <- reads %>% summarise_all(n_distinct)
+  message("Removed singleton records, ", 
+          readsmultsum$ASV_ID, "/", reformatsum$ASV_ID, " ASVs and ", 
+          readsmultsum$sampleid, "/", reformatsum$sampleid, " sequenced samples remain.")
+}
+
 # Normalised filter -------------------------------------------------------
 
 message("\n\nComputing normalised read counts for filtering.")
@@ -182,62 +198,60 @@ norm <-
          p = 10^log10p)
 
 
-# Filter singletons -------------------------------------------------------
-
-if(! opt$keepsingletons){
-  reads <- reads %>%
-    filter(count > 1)
-  readsmultsum <- reads %>% summarise_all(n_distinct)
-  message("Removing singleton records retains ", 
-          readsmultsum$ASV_ID, "/", reformatsum$ASV_ID, " ASVs and ", 
-          readsmultsum$sampleid, "/", reformatsum$sampleid, " sequenced samples.")
-}
-
 # Decide on filtering threshold and apply it ------------------------------
 
-message("\nPlease see rarefilter_thresholdchooser.pdf to review the normalised read counts. You may then experiment with the effect of different thresholds.")
-ggsave(paste0(opt$outprefix, "rarefilter_thresholdchooser.pdf"), plot = plotter(reads, norm), device = "pdf", width = 8, height = 11)
-
-keeptrying <- TRUE
-threshold <- 0
-
-while(keeptrying){
-  threshold <- typeline("\nPlease enter a threshold to test: ")
-  if( is.na(suppressWarnings(as.numeric(threshold))) ) {
-    message("Error: threshold can't be interpreted as a number.")
-    next
-  } else {
-    threshold <- as.numeric(threshold)
-  }
-  if(threshold < 0 | threshold > 1){
-    message("Error: threshold must be between 0 and 1 inclusive.")
-    next
-  }
-  filename <- paste0(opt$outprefix, "rarefilter_thresholdchooser_", threshold, ".pdf")
-  ggsave(filename, 
-         plot = plotter(reads, norm, threshold), 
-         device = "pdf", width = 8, height = 11)
+if(opt$threshold){
   threshreads <- reads %>% 
-    filter(p > threshold)
+    filter(p > opt$threshold)
   threshreadssum <- threshreads %>% summarise_all(n_distinct)
-  message("\nChoosing a threshold of ", 
-          threshold, " will retain ", 
+  message("\nFiltering at a threshold of ", 
+          opt$threshold, " retained ", 
           threshreadssum$ASV_ID, "/", reformatsum$ASV_ID, " ASVs and ", 
-          threshreadssum$sampleid, "/", reformatsum$sampleid, " sequenced samples. ",
-          "Please see ", filename, " to review this threshold on the histogram." )
-  while(1){
-    choice <- typeline("\nDo you want to (T)ry another threshold or (F)ilter with this threshold? ")
-    if(choice %in% c("F", "f", "T", "t")){
-      break
+          threshreadssum$sampleid, "/", reformatsum$sampleid, " sequenced samples.")
+} else {
+  message("\nPlease see rarefilter_thresholdchooser.pdf to review the normalised read counts. You may then experiment with the effect of different thresholds.")
+  ggsave(paste0(opt$outprefix, "rarefilter_thresholdchooser.pdf"), plot = plotter(reads, norm), device = "pdf", width = 8, height = 11)
+  
+  keeptrying <- TRUE
+  threshold <- 0
+  
+  while(keeptrying){
+    threshold <- typeline("\nPlease enter a threshold to test: ")
+    if( is.na(suppressWarnings(as.numeric(threshold))) ) {
+      message("Error: threshold can't be interpreted as a number.")
+      next
     } else {
-      message("Input not understood.")
+      threshold <- as.numeric(threshold)
     }
+    if(threshold < 0 | threshold > 1){
+      message("Error: threshold must be between 0 and 1 inclusive.")
+      next
+    }
+    filename <- paste0(opt$outprefix, "rarefilter_thresholdchooser_", threshold, ".pdf")
+    ggsave(filename, 
+           plot = plotter(reads, norm, threshold), 
+           device = "pdf", width = 8, height = 11)
+    threshreads <- reads %>% 
+      filter(p > threshold)
+    threshreadssum <- threshreads %>% summarise_all(n_distinct)
+    message("\nChoosing a threshold of ", 
+            threshold, " will retain ", 
+            threshreadssum$ASV_ID, "/", reformatsum$ASV_ID, " ASVs and ", 
+            threshreadssum$sampleid, "/", reformatsum$sampleid, " sequenced samples. ",
+            "Please see ", filename, " to review this threshold on the histogram." )
+    while(1){
+      choice <- typeline("\nDo you want to (T)ry another threshold or (F)ilter with this threshold? ")
+      if(choice %in% c("F", "f", "T", "t")){
+        break
+      } else {
+        message("Input not understood.")
+      }
+    }
+    keeptrying <- as.logical(toupper(choice))
   }
-  keeptrying <- as.logical(toupper(choice))
 }
 
 message("\nThreshold filtering complete, finalising outputs.")
-
 
 # Merge samples -----------------------------------------------------------
 
@@ -279,7 +293,7 @@ mergedreads %>%
 # Filter and reoutput taxonomy --------------------------------------------
 
 if( !is.null(opt$taxonomy) ){
-  read.csv(opt$taxonomy) %>%
+  read.csv(opt$taxonomy) %>% as_tibble()
     filter(.[[1]] %in% mergedreads$ASV_ID) %>%
     write.csv(paste0(opt$outprefix, "filtered_taxonomy.csv"), row.names = F, quote = F)
 }
