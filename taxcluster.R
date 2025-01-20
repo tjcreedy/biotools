@@ -16,6 +16,16 @@ suppressMessages(require(knitr))
 
 # Load functions ----------------------------------------------------------
 
+# From phangorn
+upgma <- function (D, method = "average", ...) 
+{
+  DD <- as.dist(D)
+  hc <- hclust(DD, method = method, ...)
+  result <- as.phylo(hc)
+  result <- reorder(result, "postorder")
+  result
+}
+
 cluster <- function(.x, .y, distm){
   taxa <- .y %>% unlist() %>% {.[!is.na(.)]} %>% rev()
   taxon <- taxa  %>% pluck(1)
@@ -31,7 +41,7 @@ cluster <- function(.x, .y, distm){
         break
       }
     }
-    cutree(as.hclust.phylo(phangorn::upgma(d)), h = mean(dists)) %>% enframe() %>%
+    cutree(as.hclust.phylo(upgma(d)), h = mean(dists)) %>% enframe() %>%
       setNames(c("ASV_ID", "otu")) %>%
       mutate(otu = paste0(taxon, " otu", sprintf("%03d", otu)),
              distance = mean(dists), disttaxon = disttaxon, distrank = names(disttaxon)) %>%
