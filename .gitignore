@@ -2,6 +2,6 @@ venv/
 .idea/
 *.json
 *.RDS
-.Rproj.user
-.Rproj
-.Rhistory
+*.Rproj.user
+*.Rproj
+*.Rhistory
