@@ -26,7 +26,7 @@ upgma <- function (D, method = "average", ...)
   result
 }
 
-cluster <- function(.x, .y, distm){
+cluster <- function(.x, .y, distm, ddist){
   taxa <- .y %>% unlist() %>% {.[!is.na(.)]} %>% rev()
   taxon <- taxa  %>% pluck(1)
   if(nrow(.x) > 1){
@@ -156,6 +156,7 @@ lineages <- taxonomy %>%
   unique
 
 # How many assigned to different taxonomic levels?
+
 message("\nInput taxonomy has the following numbers of ASVs assigned at each rank:")
 rankcounts <- taxonomylong %>% count(rank) 
 rankcounts %>% kable %>% print
@@ -188,6 +189,7 @@ if( rankcounts %>% filter(rank == "species") %>% pull(n) == nrow(taxonomy) ){
 } else {
 
 # Find similarity for ASVs assigned to the same species ---------------------------------------
+
 message("\nCalculating within-species similarity.")
 similarity <- taxonomylong %>%
   filter(rank == "species") %>%
