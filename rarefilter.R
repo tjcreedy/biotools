@@ -197,7 +197,7 @@ norm <-
 
 # Decide on filtering threshold and apply it ------------------------------
 
-if(opt$threshold){
+if(! is.null(opt$threshold) ){
   threshreads <- reads %>% 
     filter(p > opt$threshold)
   threshreadssum <- threshreads %>% summarise_all(n_distinct)
