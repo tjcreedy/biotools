@@ -14,23 +14,43 @@ suppressMessages(require(ggplot2))
 
 # Load functions ----------------------------------------------------------
 
-plotter <- function(reads, norm, vline = NULL){
-  caption <- "The lower half of the distribution of normalised read counts in your samples (bars), and the expected normal distribution (blue line).\n Potentially erroneous low counts will appear as bars above the normal line on the left side of the plot.\n"
-  plot <- ggplot(mapping = aes(x = log10p)) + 
-    geom_histogram(data = reads, binwidth = bw) + 
-    geom_line(data = norm, aes(y = norm), col = "blue") + 
-    scale_x_continuous(labels =  ~ signif(10^.x, digits = 2), breaks = scales::pretty_breaks(n = 10)) + 
-    coord_cartesian(xlim = c(min(reads$log10p), max(log10(vline), moments$meanlog10))) + 
-    labs(x = "Normalised read counts", y = "Frequency") + 
-    theme_bw()
+p <- paste0
+vline = NULL
+trim = TRUE
+plotter <- function(reads, vline = NULL, trim = TRUE){
+  caption <- p("The lower half of the distribution of normalised read counts in your samples (bars), and the expected ",
+               "normal distribution (blue line).\n Potentially erroneous low counts will appear as bars above the ",
+               "normal line on the left side of the plot.\n")
+  
+  moments <- reads %>%
+    ungroup() %>%
+    summarise(mean = mean(count),
+              meanlog10 = mean(log10p),
+              sdlog10 = sd(log10p))
+  
+  plot <- ggplot(reads, aes(x = log10p)) + 
+    geom_histogram(aes(y = after_stat(density)), bins = 60) + 
+    stat_function(fun = dnorm, args = list(mean = moments$meanlog10, sd = moments$sdlog10), col = "blue") + 
+    scale_x_continuous(labels =  ~ signif(10^.x, digits = 2) %>% scales::comma(), breaks = scales::pretty_breaks(n = 10)) + 
+    labs(x = "Normalised read counts", y = "Density") + 
+    theme_bw() + 
+    theme(axis.text.x = element_text(angle = 25, hjust = 1))
+  
+  if(trim){
+    xlimmax <- max(if(is.null(vline)) -Inf else log10(vline), mean(reads$log10p))
+    plot <- plot + coord_cartesian(xlim = c(min(reads$log10p), xlimmax))
+  }
   
   if(!is.null(vline)){
     plot + 
       geom_vline(xintercept = log10(vline), lty = "dashed", col = "red") + 
-      labs(caption = paste(caption, "The vertical dashed red line represents your currently selected threshold, below which all counts will be dropped."))
+      labs(caption = paste(caption, "The vertical dashed red line represents your currently selected threshold, below",
+                           "which all counts will be dropped."))
   } else {
     plot + 
-      labs(caption = paste(caption, "Based on this, select a threshold below which counts should be dropped. A strict option would be the x value\nat which the bars appear to meet the normal distribution; to be less conservative, choose a lower value."))
+      labs(caption = paste(caption, "Based on this, select a threshold below which counts should be dropped. A strict",
+                           "option would be the x value\nat which the bars appear to meet the normal distribution; to",
+                           "be less conservative, choose a lower value."))
   }
 }
 
@@ -57,12 +77,20 @@ typeline <- function(msg="Enter text: ") {
 
 spec <- matrix(c(
   'help'           , 'h', 0, "logical"  , "show this helpful message.",
-  'reads'          , 'r', 1, "character", "path to a tsv table recording the read count for each ASV within each sequenced sample, the first column (ASV_ID) must contain asv names and all subsequent columns samples.",
-  'taxonomy'       , 'x', 2, "character", "path to a csv table with taxonomy data, with column header, from which to remove discarded ASVs. The first column will be assumed to be ASV IDs.",
-  'mergetable'     , 'm', 2, "character", "optional path to a two-column csv that groups sequenced samples (column 1) into true samples (column 2), for example in the case of sequencing replicates. No column header.",
-  'threshold'      , 't', 2, "double"   , "optionally supply a threshold to filter without reviewing graphs (not recommended)",
-  'keepsingletons' , 's', 0, "logical"  , "turn off the default behaviour of removing all singletons no matter the threshold chosen",
-  'outprefix'      , 'o', 2, "character", "prefix file path to write intermediate threshold plots and final filtered reads data"
+  'reads'          , 'r', 1, "character", p("path to a tsv table recording the read count for each ASV within each ",
+                                            "sequenced sample, the first column (ASV_ID) must contain asv names and ",
+                                            "and all subsequent columns samples."),
+  'taxonomy'       , 'x', 2, "character", p("path to a csv table with taxonomy data, with column header, from which to", 
+                                            " remove discarded ASVs. The first column will be assumed to be ASV IDs."),
+  'mergetable'     , 'm', 2, "character", p("optional path to a two-column csv that groups sequenced samples (column ",
+                                            "1) into true samples (column 2), for example in the case of sequencing ", 
+                                            "replicates. No column header."),
+  'threshold'      , 't', 2, "double"   , p("optionally supply a threshold to filter without reviewing graphs (not ",
+                                            "recommended)"),
+  'keepsingletons' , 's', 0, "logical"  , p("turn off the default behaviour of removing all singletons no matter the ",
+                                            "threshold chosen"),
+  'outprefix'      , 'o', 2, "character", p("prefix file path to write intermediate threshold plots and final ",
+                                            "filtered reads data")
 ), byrow = T, ncol = 5)
 
 # Read options and do help -----------------------------------------------
@@ -76,8 +104,8 @@ if ( is.null(opt) | !is.null(opt$help) ){
 
 rm(spec)
 
-#opt$reads <- "./ampliseqout_2024-02-20/dada2/ASV_table.tsv"
-#opt$taxonomy <- "./ampliseqout_2024-02-20/blast/b2t_outtaxonomy99.csv"
+#opt$reads <- "ASV_codon_filtered.table.tsv"
+#opt$taxonomy <- "b2t_out_taxonomy.csv"
 #opt$threshold <- 3e-05
 
 if( is.null(opt$keepsingletons) ){
@@ -118,7 +146,9 @@ reads %<>%
 reformatsum <- reads %>% summarise_all(n_distinct)
 
 if(ncols != reformatsum$samplename + drop0cols){
-  warning("\nSome sequenced sample names are duplicated and these samples will be merged in a later step. The most common cause is sequencing the same sample on different runs with the same ID, in which case there is no cause for concern.")
+  warning("\nSome sequenced sample names are duplicated and these samples will be merged in a later step. The most ", 
+          "common cause is sequencing the same sample on different runs with the same ID, in which case there is no ",
+          "cause for concern.")
 }
 if(nrows != reformatsum$ASV_ID + drop0rows){
   warning("\nSome ASV IDs are duplicated and these samples will be merged in a later step.")
@@ -146,7 +176,6 @@ if(nrows != reformatsum$ASV_ID + drop0rows){
 #   theme_bw()
 
 
-
 # Filter singletons -------------------------------------------------------
 
 if(! opt$keepsingletons){
@@ -171,29 +200,6 @@ reads %<>%
          log10p = log10(p)) %>%
   ungroup()
 
-# Calculate binwidth for plots
-bw <- diff(range(reads$log10p))/60
-
-# Find the moments of the normal distribution of log10p
-
-moments <- reads %>%
-  ungroup() %>%
-  summarise(mean = mean(count),
-            meanlog10 = mean(log10p),
-            sdlog10 = sd(log10p))
-
-
-# Construct an idealised distribution
-norm <- 
-  data.frame(log10p = seq(min(reads$log10p), 
-                                max(reads$log10p), 
-                                by = 0.01)) %>% 
-  mutate(norm = dnorm(log10p, 
-                      mean = moments$meanlog10, 
-                      sd = moments$sdlog10),
-         norm = norm/100 * bw * sum(reads$count),
-         p = 10^log10p)
-
 
 # Decide on filtering threshold and apply it ------------------------------
 
@@ -206,8 +212,10 @@ if(! is.null(opt$threshold) ){
           threshreadssum$ASV_ID, "/", reformatsum$ASV_ID, " ASVs and ", 
           threshreadssum$sampleid, "/", reformatsum$sampleid, " sequenced samples.")
 } else {
-  message("\nPlease see rarefilter_thresholdchooser.pdf to review the normalised read counts. You may then experiment with the effect of different thresholds.")
-  ggsave(paste0(opt$outprefix, "rarefilter_thresholdchooser.pdf"), plot = plotter(reads, norm), device = "pdf", width = 8, height = 11)
+  message("\nPlease see rarefilter_thresholdchooser.pdf to review the normalised read counts. You may then experiment ",
+          "with the effect of different thresholds.")
+  ggsave(paste0(opt$outprefix, "rarefilter_thresholdchooser.pdf"), 
+         plot = plotter(reads), device = "pdf", width = 8, height = 11)
   
   keeptrying <- TRUE
   threshold <- 0
@@ -226,7 +234,7 @@ if(! is.null(opt$threshold) ){
     }
     filename <- paste0(opt$outprefix, "rarefilter_thresholdchooser_", threshold, ".pdf")
     ggsave(filename, 
-           plot = plotter(reads, norm, threshold), 
+           plot = plotter(reads, threshold), 
            device = "pdf", width = 8, height = 11)
     threshreads <- reads %>% 
       filter(p > threshold)
@@ -261,7 +269,8 @@ merge1sum <- mergedreads %>% summarise_all(n_distinct)
 
 if(ncols != reformatsum$samplename + drop0cols | 
    nrows != reformatsum$ASV_ID + drop0rows) {
-  message("\nMerging duplicate ASV ids and/or duplicate sequence sample names complete, ", merge1sum$samplename, " sequenced samples remain.")
+  message("\nMerging duplicate ASV ids and/or duplicate sequence sample names complete, ", merge1sum$samplename, 
+          " sequenced samples remain.")
 }
 
 if( !is.null(opt$mergetable) ){
