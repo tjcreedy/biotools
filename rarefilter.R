@@ -15,8 +15,7 @@ suppressMessages(require(ggplot2))
 # Load functions ----------------------------------------------------------
 
 p <- paste0
-vline = NULL
-trim = TRUE
+
 plotter <- function(reads, vline = NULL, trim = TRUE){
   caption <- p("The lower half of the distribution of normalised read counts in your samples (bars), and the expected ",
                "normal distribution (blue line).\n Potentially erroneous low counts will appear as bars above the ",
@@ -221,7 +220,7 @@ if(! is.null(opt$threshold) ){
   threshold <- 0
   
   while(keeptrying){
-    threshold <- typeline("\nPlease enter a threshold to test: ")
+    threshold <- typeline("\nPlease enter a threshold to try out (this isn't final): ")
     if( is.na(suppressWarnings(as.numeric(threshold))) ) {
       message("Error: threshold can't be interpreted as a number.")
       next
